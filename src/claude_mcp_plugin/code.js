@@ -144,6 +144,9 @@ async function handleCommand(command, params) {
       return await setMultipleTextContents(params);
     case "set_auto_layout":
       return await setAutoLayout(params);
+    // Visual properties commands
+    case "set_opacity":
+      return await setOpacity(params);
     // Nuevos comandos para propiedades de texto
     case "set_font_name":
       return await setFontName(params);
@@ -1022,6 +1025,45 @@ async function setTextContent(params) {
   } catch (error) {
     throw new Error(`Error setting text content: ${error.message}`);
   }
+}
+
+// Function to set the opacity of a node
+async function setOpacity(params) {
+  const { nodeId, opacity } = params || {};
+  
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  
+  if (opacity === undefined) {
+    throw new Error("Missing opacity parameter");
+  }
+  
+  // Validate opacity value (should be between 0 and 1)
+  const opacityValue = parseFloat(opacity);
+  if (isNaN(opacityValue) || opacityValue < 0 || opacityValue > 1) {
+    throw new Error("Opacity must be a number between 0 and 1");
+  }
+  
+  // Get the node
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  
+  // Check if the node supports opacity
+  if (!("opacity" in node)) {
+    throw new Error(`Node does not support opacity: ${nodeId}`);
+  }
+  
+  // Set the opacity
+  node.opacity = opacityValue;
+  
+  return {
+    id: node.id,
+    name: node.name,
+    opacity: node.opacity
+  };
 }
 
 // Initialize settings on load

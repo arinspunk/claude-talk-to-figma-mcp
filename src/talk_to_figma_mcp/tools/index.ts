@@ -4,6 +4,11 @@ import { registerCreationTools } from "./creation-tools";
 import { registerModificationTools } from "./modification-tools";
 import { registerTextTools } from "./text-tools";
 import { registerComponentTools } from "./component-tools";
+// Import new tool categories
+import { registerVisualPropertyTools } from "./visual-properties-tools";
+import { registerStrokeTools } from "./stroke-tools";
+import { registerLayoutTools } from "./layout-tools";
+import { registerComponentAdvancedTools } from "./component-advanced-tools";
 
 /**
  * Register all Figma tools to the MCP server
@@ -16,6 +21,11 @@ export function registerTools(server: McpServer): void {
   registerModificationTools(server);
   registerTextTools(server);
   registerComponentTools(server);
+  // Register new tool categories
+  registerVisualPropertyTools(server);
+  registerStrokeTools(server);
+  registerLayoutTools(server);
+  registerComponentAdvancedTools(server);
 }
 
 // Export all tool registration functions for individual usage if needed
@@ -24,5 +34,10 @@ export {
   registerCreationTools,
   registerModificationTools,
   registerTextTools,
-  registerComponentTools
+  registerComponentTools,
+  // Export new tool categories
+  registerVisualPropertyTools,
+  registerStrokeTools,
+  registerLayoutTools,
+  registerComponentAdvancedTools
 };
