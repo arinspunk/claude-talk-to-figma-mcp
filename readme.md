@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/arinspunk-claude-talk-to-figma-mcp-badge.png)](https://mseep.ai/app/arinspunk-claude-talk-to-figma-mcp)
+
 <img src="images/claude-talk-to-figma.png" alt="Claude Talk to Figma collage" />
 
 # Claude Talk to Figma MCP
