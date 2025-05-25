@@ -1,9 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerDocumentTools } from "./document-tools";
-import { registerCreationTools } from "./creation-tools";
-import { registerModificationTools } from "./modification-tools";
-import { registerTextTools } from "./text-tools";
-import { registerComponentTools } from "./component-tools";
+import { registerDocumentTools } from "./document-tools.js";
+import { registerCreationTools } from "./creation-tools.js";
+import { registerModificationTools } from "./modification-tools.js";
+import { registerTextTools } from "./text-tools.js";
+import { registerComponentTools } from "./component-tools.js";
+import { registerImageTools } from "./image-tools.js";
 
 /**
  * Register all Figma tools to the MCP server
@@ -16,6 +17,7 @@ export function registerTools(server: McpServer): void {
   registerModificationTools(server);
   registerTextTools(server);
   registerComponentTools(server);
+  registerImageTools(server);
 }
 
 // Export all tool registration functions for individual usage if needed
@@ -24,5 +26,6 @@ export {
   registerCreationTools,
   registerModificationTools,
   registerTextTools,
-  registerComponentTools
+  registerComponentTools,
+  registerImageTools
 };
