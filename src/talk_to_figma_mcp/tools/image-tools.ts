@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { sendCommandToFigma } from "../utils/websocket";
+import { sendCommandToFigma } from "../utils/websocket.js";
 
 // Define a type for tool responses
 type CallToolResult = {
@@ -19,6 +19,25 @@ const RGBAColorSchema = z.object({
   b: z.number().min(0).max(1).describe("Blue component (0-1)"),
   a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)")
 });
+
+/**
+ * Helper function to find image nodes recursively
+ */
+function findImageNodes(node: any): any[] {
+  const imageNodes: any[] = [];
+
+  if (node.type === 'RECTANGLE' && node.fills && node.fills.some((fill: any) => fill.type === 'IMAGE')) {
+    imageNodes.push(node);
+  }
+
+  if (node.children) {
+    for (const child of node.children) {
+      imageNodes.push(...findImageNodes(child));
+    }
+  }
+
+  return imageNodes;
+}
 
 /**
  * Create a properly typed success response
@@ -564,5 +583,96 @@ export function registerImageTools(server: McpServer): void {
     }
   );
 
+  // Smart Image Replacement Tool - Replace images with contextually better ones
+  server.tool(
+    "smart_replace_images",
+    "Intelligently replace existing images with better contextual alternatives",
+    {
+      nodeId: z.string().describe("ID of the node containing images to replace"),
+      designContext: z.string().optional().describe("Design context to guide replacement (e.g., 'food delivery app', 'e-commerce')"),
+      improveQuality: z.boolean().optional().describe("Whether to prioritize higher quality images"),
+      maintainLayout: z.boolean().optional().describe("Whether to maintain existing image sizes and positions")
+    },
+    async ({ nodeId, designContext, improveQuality = true, maintainLayout = true }) => {
+      try {
+        console.log("Starting smart image replacement for node:", nodeId);
+
+        // Get all image nodes in the specified node
+        const nodeInfo = await sendCommandToFigma("get_node_info", { nodeId });
+        const imageNodes = findImageNodes(nodeInfo);
+
+        if (imageNodes.length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "No images found in the specified node to replace"
+              }
+            ],
+            structuredContent: {
+              error: {
+                message: "No images found",
+                operation: "finding images to replace"
+              }
+            },
+            isError: true
+          };
+        }
+
+        const replacedImages = [];
+
+        for (const imageNode of imageNodes) {
+          try {
+            // Generate better search query based on context and image name
+            let searchQuery = designContext || "professional image";
+            if (imageNode.name) {
+              searchQuery = `${searchQuery} ${imageNode.name}`;
+            }
+
+            // Search for better image
+            const searchResult = await sendCommandToFigma("search_images", {
+              query: searchQuery,
+              imageType: "PHOTO",
+              maxResults: 1
+            });
+
+            if (searchResult.images && searchResult.images.length > 0) {
+              // Replace the image
+              const replaceResult = await sendCommandToFigma("replace_image", {
+                nodeId: imageNode.id,
+                imageUrl: searchResult.images[0].url
+              });
+
+              replacedImages.push({
+                nodeId: imageNode.id,
+                oldName: imageNode.name,
+                newImageUrl: searchResult.images[0].url,
+                searchQuery
+              });
+            }
+          } catch (error) {
+            console.warn(`Failed to replace image ${imageNode.id}:`, error);
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Successfully replaced ${replacedImages.length} out of ${imageNodes.length} images with contextually better alternatives`
+            }
+          ],
+          structuredContent: {
+            replacedImages,
+            totalImages: imageNodes.length,
+            successfulReplacements: replacedImages.length
+          }
+        };
+
+      } catch (error) {
+        return formatErrorResponse("smart replacing images", error);
+      }
+    }
+  );
 
 }
