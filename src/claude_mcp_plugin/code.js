@@ -516,23 +516,33 @@ async function setFillColor(params) {
     throw new Error(`Node does not support fills: ${nodeId}`);
   }
 
-  // Create RGBA color
+  // Validate that MCP layer provided complete data
+  if (r === undefined || g === undefined || b === undefined || a === undefined) {
+    throw new Error("Incomplete color data received from MCP layer. All RGBA components must be provided.");
+  }
+
+  // Parse values - no defaults, just format conversion
   const rgbColor = {
-    r: parseFloat(r) || 0,
-    g: parseFloat(g) || 0,
-    b: parseFloat(b) || 0,
-    a: parseFloat(a) || 1,
+    r: parseFloat(r),
+    g: parseFloat(g), 
+    b: parseFloat(b),
+    a: parseFloat(a)
   };
 
-  // Set fill
+  // Validate parsing succeeded
+  if (isNaN(rgbColor.r) || isNaN(rgbColor.g) || isNaN(rgbColor.b) || isNaN(rgbColor.a)) {
+    throw new Error("Invalid color values received - all components must be valid numbers");
+  }
+
+  // Set fill - pure translation to Figma API format
   const paintStyle = {
     type: "SOLID",
     color: {
-      r: parseFloat(rgbColor.r),
-      g: parseFloat(rgbColor.g),
-      b: parseFloat(rgbColor.b),
+      r: rgbColor.r,
+      g: rgbColor.g,
+      b: rgbColor.b,
     },
-    opacity: parseFloat(rgbColor.a),
+    opacity: rgbColor.a,
   };
 
   console.log("paintStyle", paintStyle);

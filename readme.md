@@ -111,7 +111,7 @@ Once installed, you just need to start it:
    Talk to Figma, channel {channel-ID}
    ```
 
-## 🏛️ Architecture:
+## 🏛️ Architecture
 
 ```
 +----------------+     +-------+     +---------------+     +---------------+
@@ -122,38 +122,47 @@ Once installed, you just need to start it:
 +----------------+     +-------+     +---------------+     +---------------+
 ```
 
-### Modular Structure
+### Design Principles
 
-The codebase follows a clean, modular architecture:
+The system follows a clear separation of concerns:
+
+- **MCP Server**: Handles business logic, validation, and default values
+- **WebSocket Server**: Routes messages between components  
+- **Figma Plugin**: Pure translator that executes commands in Figma
+
+This approach ensures that each layer has a single responsibility, making the system more reliable and easier to maintain.
+
+### Project Structure
 
 ```
 src/
   talk_to_figma_mcp/     # MCP Server implementation
     server.ts            # Main entry point
     config/              # Server configuration
-    tools/               # Modular tool categories
+    tools/               # Tool categories by function
       index.ts           # Tool registration
       document-tools.ts  # Document interaction tools
       creation-tools.ts  # Shape and element creation tools
       modification-tools.ts # Property modification tools
       text-tools.ts      # Text manipulation tools
       component-tools.ts # Component handling tools
-    utils/               # Shared utilities
+    utils/               # Shared utilities and helpers
+      defaults.ts        # Safe default value handling
       websocket.ts       # WebSocket communication
       logger.ts          # Logging system
       figma-helpers.ts   # Figma-specific helpers
     types/               # TypeScript type definitions
+      color.ts           # Color type definitions
   claude_mcp_plugin/     # Figma plugin
     code.js              # Plugin implementation
     manifest.json        # Plugin configuration
     ui.html              # Plugin UI
 ```
 
-This modular design provides several benefits:
-- **Maintainability**: Each tool category is isolated in its own file
-- **Scalability**: New tools can be added without modifying existing code
-- **Code Navigation**: Easier to find and understand specific functionality
-- **Testing**: Simplified unit testing of individual components
+Benefits of this structure:
+- **Clear ownership**: Each component has well-defined responsibilities
+- **Easy testing**: Components can be tested in isolation
+- **Maintainable**: Changes to one layer don't affect others
 
 ## 🛠️ Available Commands
 

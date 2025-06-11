@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
+import { applyColorDefaults } from "../utils/defaults";
+import { Color } from "../types/color";
 
 /**
  * Register modification tools to the MCP server
@@ -11,26 +13,35 @@ export function registerModificationTools(server: McpServer): void {
   // Set Fill Color Tool
   server.tool(
     "set_fill_color",
-    "Set the fill color of a node in Figma can be TextNode or FrameNode",
+    "Set the fill color of a node in Figma. Alpha component defaults to 1 (fully opaque) if not specified. Use alpha 0 for fully transparent.",
     {
       nodeId: z.string().describe("The ID of the node to modify"),
       r: z.number().min(0).max(1).describe("Red component (0-1)"),
       g: z.number().min(0).max(1).describe("Green component (0-1)"),
       b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-      a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
+      a: z.number().min(0).max(1).optional().describe("Alpha component (0-1, defaults to 1 if not specified)"),
     },
     async ({ nodeId, r, g, b, a }) => {
       try {
+        // Additional validation: Ensure RGB values are provided (they should not be undefined)
+        if (r === undefined || g === undefined || b === undefined) {
+          throw new Error("RGB components (r, g, b) are required and cannot be undefined");
+        }
+        
+        // Apply default values safely - preserves opacity 0 for transparency
+        const colorInput: Color = { r, g, b, a };
+        const colorWithDefaults = applyColorDefaults(colorInput);
+        
         const result = await sendCommandToFigma("set_fill_color", {
           nodeId,
-          color: { r, g, b, a: a || 1 },
+          color: colorWithDefaults,
         });
         const typedResult = result as { name: string };
         return {
           content: [
             {
               type: "text",
-              text: `Set fill color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a || 1})`,
+              text: `Set fill color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${colorWithDefaults.a})`,
             },
           ],
         };
