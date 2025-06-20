@@ -2455,7 +2455,7 @@ export function registerVariableTools(server: McpServer): void {
                 text: `Error deleting variable mode - Validation failed: ${validationErrors}`,
               },
             ],
-          ];
+          };
         }
         
         // Handle other errors
@@ -2609,9 +2609,9 @@ export function registerVariableTools(server: McpServer): void {
             },
           ],
         };
-             }
-     }
-   );
+      }
+    }
+  );
 
   /**
    * Publish a variable collection to make it available as a library
