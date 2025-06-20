@@ -8,12 +8,12 @@
  * @category Variables
  * @phase 1
  * @complexity Medium
- * @version 1.3.0
+ * @version 1.4.0
  */
 
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { sendCommandToFigma } from "../utils/websocket.js";
+import { sendCommandToFigma } from "../utils/websocket";
 
 // Zod Schemas for Variable Tools
 const VariableDataTypeSchema = z.enum(["BOOLEAN", "FLOAT", "STRING", "COLOR"], {
@@ -101,6 +101,107 @@ const VariableCollectionIdSchema = z.string()
   .min(1, "Variable collection ID cannot be empty")
   .regex(/^[a-zA-Z0-9_\-:]+$/, "Invalid variable collection ID format");
 
+// Schemas for Task 1.4 - Variable Binding Tools
+const NodeIdSchema = z.string()
+  .min(1, "Node ID cannot be empty")
+  .regex(/^[a-zA-Z0-9_\-:]+$/, "Invalid node ID format");
+
+const NodePropertySchema = z.enum([
+  // Layout properties
+  "width", "height", "x", "y", "rotation",
+  // Visual properties  
+  "opacity", "visible", "locked",
+  // Text properties
+  "characters", "fontSize", "lineHeight", "letterSpacing",
+  // Effects and styling
+  "cornerRadius", "strokeWeight"
+], {
+  errorMap: () => ({ message: "Invalid property. Must be a supported node property." })
+});
+
+const PaintTypeSchema = z.enum(["fills", "strokes"], {
+  errorMap: () => ({ message: "Paint type must be 'fills' or 'strokes'" })
+});
+
+const SetBoundVariableInputSchema = z.object({
+  nodeId: NodeIdSchema,
+  property: NodePropertySchema,
+  variableId: VariableIdSchema,
+  variableType: VariableDataTypeSchema.optional(),
+});
+
+const SetBoundVariableForPaintInputSchema = z.object({
+  nodeId: NodeIdSchema,
+  paintType: PaintTypeSchema,
+  paintIndex: z.number()
+    .int("Paint index must be an integer")
+    .min(0, "Paint index must be non-negative"),
+  variableId: VariableIdSchema,
+  variableType: VariableDataTypeSchema.optional(),
+});
+
+const RemoveBoundVariableInputSchema = z.object({
+  nodeId: NodeIdSchema,
+  property: NodePropertySchema.optional(),
+  paintType: PaintTypeSchema.optional(),
+  paintIndex: z.number()
+    .int("Paint index must be an integer")
+    .min(0, "Paint index must be non-negative")
+    .optional(),
+  forceCleanup: z.boolean().optional(),
+  removeAllBindings: z.boolean().optional(),
+}).refine(
+  (data) => {
+    // Must specify either property OR paint specification, but not both
+    const hasProperty = data.property !== undefined;
+    const hasPaint = data.paintType !== undefined || data.paintIndex !== undefined;
+    const hasRemoveAll = data.removeAllBindings === true;
+    
+    return hasRemoveAll || (hasProperty && !hasPaint) || (!hasProperty && hasPaint);
+  },
+  {
+    message: "Must specify either 'property' OR 'paintType/paintIndex' OR 'removeAllBindings', but not multiple options",
+    path: ["property"]
+  }
+);
+
+/**
+ * Property-Variable Type Compatibility Map
+ * Defines which variable types are compatible with which node properties
+ */
+const PROPERTY_COMPATIBILITY: Record<string, string[]> = {
+  // Numeric properties - compatible with FLOAT
+  "width": ["FLOAT"],
+  "height": ["FLOAT"],
+  "x": ["FLOAT"],
+  "y": ["FLOAT"],
+  "rotation": ["FLOAT"],
+  "opacity": ["FLOAT"],
+  "fontSize": ["FLOAT"],
+  "lineHeight": ["FLOAT"],
+  "letterSpacing": ["FLOAT"],
+  "cornerRadius": ["FLOAT"],
+  "strokeWeight": ["FLOAT"],
+  
+  // Boolean properties - compatible with BOOLEAN
+  "visible": ["BOOLEAN"],
+  "locked": ["BOOLEAN"],
+  
+  // Text properties - compatible with STRING
+  "characters": ["STRING"],
+};
+
+/**
+ * Validate property-variable type compatibility
+ * @param property - The node property name
+ * @param variableType - The variable data type
+ * @returns true if compatible, false otherwise
+ */
+function validatePropertyCompatibility(property: string, variableType: string): boolean {
+  const compatibleTypes = PROPERTY_COMPATIBILITY[property];
+  return compatibleTypes ? compatibleTypes.includes(variableType) : false;
+}
+
 /**
  * Register variable-related tools to the MCP server
  * 
@@ -108,7 +209,7 @@ const VariableCollectionIdSchema = z.string()
  * Implements robust error handling, filtering, and WebSocket communication.
  * 
  * @param server - The MCP server instance
- * @since 1.3.0
+ * @since 1.4.0
  * @see https://www.figma.com/plugin-docs/api/figma-variables/
  */
 export function registerVariableTools(server: McpServer): void {
@@ -696,6 +797,394 @@ export function registerVariableTools(server: McpServer): void {
           enhancedMessage += '. Please check the collection ID format (expected: alphanumeric with colons/hyphens).';
         } else if (errorMessage.includes('permission') || errorMessage.includes('access')) {
           enhancedMessage += '. You may not have permission to access this collection.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Bind a variable to a node property with compatibility validation
+   * 
+   * Binds a variable to a specific property of a node with comprehensive validation
+   * of property-variable type compatibility. Supports all bindable node properties.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity Medium
+   * @figmaApi figma.variables.setBoundVariable()
+   * 
+   * @param nodeId - The target node ID (format validated)
+   * @param property - The node property to bind to (validated against supported properties)
+   * @param variableId - The variable ID to bind (format validated)
+   * @param variableType - The variable type for compatibility validation (optional)
+   * 
+   * @returns Success message with binding details or error message
+   * 
+   * @example
+   * ```typescript
+   * // Bind a FLOAT variable to width property
+   * const result = await set_bound_variable({
+   *   nodeId: "node-123",
+   *   property: "width",
+   *   variableId: "var-456",
+   *   variableType: "FLOAT"
+   * });
+   * 
+   * // Bind a STRING variable to text content
+   * const textResult = await set_bound_variable({
+   *   nodeId: "text-node-123",
+   *   property: "characters",
+   *   variableId: "text-var-456",
+   *   variableType: "STRING"
+   * });
+   * 
+   * // Bind a BOOLEAN variable to visibility
+   * const visibilityResult = await set_bound_variable({
+   *   nodeId: "node-123",
+   *   property: "visible",
+   *   variableId: "visibility-var-456",
+   *   variableType: "BOOLEAN"
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {CompatibilityError} When property and variable types are incompatible
+   * @throws {NotFoundError} When node or variable ID does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "set_bound_variable",
+    "Bind a variable to a node property with compatibility validation",
+    {
+      nodeId: NodeIdSchema.describe("Target node ID (validated format)"),
+      property: NodePropertySchema.describe("Node property to bind to"),
+      variableId: VariableIdSchema.describe("Variable ID to bind (validated format)"),
+      variableType: VariableDataTypeSchema.optional().describe("Variable type for compatibility validation"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = SetBoundVariableInputSchema.parse(args);
+        
+        // Validate property-variable type compatibility if type is provided
+        if (validatedArgs.variableType) {
+          const isCompatible = validatePropertyCompatibility(
+            validatedArgs.property,
+            validatedArgs.variableType
+          );
+          
+          if (!isCompatible) {
+            const compatibleTypes = PROPERTY_COMPATIBILITY[validatedArgs.property] || [];
+            throw new Error(
+              `Property '${validatedArgs.property}' is incompatible with variable type '${validatedArgs.variableType}'. ` +
+              `Compatible types: ${compatibleTypes.join(', ')}`
+            );
+          }
+        }
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("set_bound_variable", validatedArgs);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Variable "${validatedArgs.variableId}" bound successfully to property "${validatedArgs.property}" of node "${validatedArgs.nodeId}": ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error binding variable - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error binding variable: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('not found') || errorMessage.includes('does not exist')) {
+          enhancedMessage += '. Please verify that both the node and variable exist.';
+        } else if (errorMessage.includes('permission') || errorMessage.includes('access')) {
+          enhancedMessage += '. You may not have permission to modify this node or variable.';
+        } else if (errorMessage.includes('incompatible')) {
+          enhancedMessage += '. Check the property-variable type compatibility.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Bind a COLOR variable to paint properties (fills/strokes)
+   * 
+   * Specialized tool for binding COLOR variables to paint properties with paint-specific
+   * validation and support for multiple paint layers.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity Medium
+   * @figmaApi figma.variables.setBoundVariableForPaint()
+   * 
+   * @param nodeId - The target node ID (format validated)
+   * @param paintType - Type of paint to bind to ("fills" or "strokes")
+   * @param paintIndex - Index of the paint layer (0-based, non-negative)
+   * @param variableId - The COLOR variable ID to bind (format validated)
+   * @param variableType - Must be "COLOR" for paint binding (optional validation)
+   * 
+   * @returns Success message with paint binding details or error message
+   * 
+   * @example
+   * ```typescript
+   * // Bind a color variable to the first fill
+   * const result = await set_bound_variable_for_paint({
+   *   nodeId: "shape-123",
+   *   paintType: "fills",
+   *   paintIndex: 0,
+   *   variableId: "primary-color-var-456",
+   *   variableType: "COLOR"
+   * });
+   * 
+   * // Bind a color variable to the stroke
+   * const strokeResult = await set_bound_variable_for_paint({
+   *   nodeId: "shape-123",
+   *   paintType: "strokes",
+   *   paintIndex: 0,
+   *   variableId: "border-color-var-456"
+   * });
+   * 
+   * // Bind to a specific fill layer (third layer)
+   * const layerResult = await set_bound_variable_for_paint({
+   *   nodeId: "complex-shape-123",
+   *   paintType: "fills",
+   *   paintIndex: 2,
+   *   variableId: "accent-color-var-456"
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {TypeError} When non-COLOR variable is used for paint binding
+   * @throws {RangeError} When paint index is out of range
+   * @throws {NotFoundError} When node or variable ID does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "set_bound_variable_for_paint",
+    "Bind a COLOR variable to paint properties (fills/strokes) with paint-specific validation",
+    {
+      nodeId: NodeIdSchema.describe("Target node ID (validated format)"),
+      paintType: PaintTypeSchema.describe("Type of paint ('fills' or 'strokes')"),
+      paintIndex: z.number().min(0).describe("Paint layer index (0-based, non-negative)"),
+      variableId: VariableIdSchema.describe("COLOR variable ID to bind (validated format)"),
+      variableType: VariableDataTypeSchema.optional().describe("Variable type (must be COLOR for paint binding)"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = SetBoundVariableForPaintInputSchema.parse(args);
+        
+        // Validate that variable type is COLOR if provided
+        if (validatedArgs.variableType && validatedArgs.variableType !== 'COLOR') {
+          throw new Error(
+            `COLOR variable required for paint binding. Received: ${validatedArgs.variableType}`
+          );
+        }
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("set_bound_variable_for_paint", validatedArgs);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `COLOR variable "${validatedArgs.variableId}" bound successfully to ${validatedArgs.paintType}[${validatedArgs.paintIndex}] of node "${validatedArgs.nodeId}": ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error binding variable to paint - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error binding variable to paint: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('out of range') || errorMessage.includes('index')) {
+          enhancedMessage += '. The paint index may be out of range for this node.';
+        } else if (errorMessage.includes('not support') || errorMessage.includes('incompatible')) {
+          enhancedMessage += '. This node type may not support paint binding.';
+        } else if (errorMessage.includes('COLOR variable required')) {
+          enhancedMessage += '. Only COLOR variables can be bound to paint properties.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Remove variable binding from node properties with reference cleanup
+   * 
+   * Removes variable bindings from node properties or paint with comprehensive cleanup
+   * of references. Supports selective unbinding and batch operations.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity Medium
+   * @figmaApi figma.variables.removeBoundVariable()
+   * 
+   * @param nodeId - The target node ID (format validated)
+   * @param property - The node property to unbind (optional, for property binding)
+   * @param paintType - Type of paint to unbind ("fills" or "strokes", optional for paint binding)
+   * @param paintIndex - Index of the paint layer (optional, for paint binding)
+   * @param forceCleanup - Force cleanup of all references (optional)
+   * @param removeAllBindings - Remove all bindings from the node (optional)
+   * 
+   * @returns Success message with unbinding details and cleanup info or error message
+   * 
+   * @example
+   * ```typescript
+   * // Remove binding from a specific property
+   * const result = await remove_bound_variable({
+   *   nodeId: "node-123",
+   *   property: "width"
+   * });
+   * 
+   * // Remove binding from paint property
+   * const paintResult = await remove_bound_variable({
+   *   nodeId: "shape-123",
+   *   paintType: "fills",
+   *   paintIndex: 0
+   * });
+   * 
+   * // Remove all bindings from a node
+   * const allResult = await remove_bound_variable({
+   *   nodeId: "node-123",
+   *   removeAllBindings: true
+   * });
+   * 
+   * // Force cleanup of references
+   * const cleanupResult = await remove_bound_variable({
+   *   nodeId: "node-123",
+   *   property: "opacity",
+   *   forceCleanup: true
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {ArgumentError} When conflicting parameters are provided
+   * @throws {NotFoundError} When node ID or binding does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "remove_bound_variable",
+    "Remove variable binding from node properties with reference cleanup",
+    {
+      nodeId: NodeIdSchema.describe("Target node ID (validated format)"),
+      property: NodePropertySchema.optional().describe("Node property to unbind (for property binding)"),
+      paintType: PaintTypeSchema.optional().describe("Paint type to unbind (for paint binding)"),
+      paintIndex: z.number().min(0).optional().describe("Paint layer index (for paint binding)"),
+      forceCleanup: z.boolean().optional().describe("Force cleanup of all references"),
+      removeAllBindings: z.boolean().optional().describe("Remove all bindings from the node"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = RemoveBoundVariableInputSchema.parse(args);
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("remove_bound_variable", validatedArgs);
+
+        // Build success message based on operation type
+        let successMessage = '';
+        if (validatedArgs.removeAllBindings) {
+          successMessage = `All variable bindings removed successfully from node "${validatedArgs.nodeId}"`;
+        } else if (validatedArgs.property) {
+          successMessage = `Variable binding removed successfully from property "${validatedArgs.property}" of node "${validatedArgs.nodeId}"`;
+        } else if (validatedArgs.paintType) {
+          successMessage = `Variable binding removed successfully from ${validatedArgs.paintType}[${validatedArgs.paintIndex}] of node "${validatedArgs.nodeId}"`;
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `${successMessage}: ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error removing variable binding - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error removing variable binding: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('No binding found') || errorMessage.includes('not bound')) {
+          enhancedMessage += '. The specified property or paint may not have a variable binding.';
+        } else if (errorMessage.includes('cleanup') || errorMessage.includes('references')) {
+          enhancedMessage += '. There may be issues with cleaning up variable references.';
+        } else if (errorMessage.includes('permission') || errorMessage.includes('access')) {
+          enhancedMessage += '. You may not have permission to modify bindings on this node.';
         }
         
         return {
