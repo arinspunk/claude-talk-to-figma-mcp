@@ -322,6 +322,73 @@ const ReorderVariableModesInputSchema = z.object({
     .describe("Validate collection integrity after reordering"),
 });
 
+// Schemas for Task 1.7 - Variable Publishing Tools
+const PublishVariableCollectionInputSchema = z.object({
+  collectionId: VariableCollectionIdSchema,
+  description: z.string()
+    .max(2000, "Description too long")
+    .optional()
+    .describe("Optional description for the published collection"),
+  validatePermissions: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Validate publishing permissions before attempting to publish"),
+  forcePublish: z.boolean()
+    .optional()
+    .default(false)
+    .describe("Force publish even if collection has warnings"),
+  includeAllModes: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Include all modes in the published collection"),
+  publishingOptions: z.object({
+    makePublic: z.boolean().optional().default(false),
+    allowEditing: z.boolean().optional().default(false),
+    requirePermission: z.boolean().optional().default(true),
+  }).optional().describe("Advanced publishing configuration options"),
+});
+
+const GetPublishedVariablesInputSchema = z.object({
+  libraryKey: z.string()
+    .min(1, "Library key cannot be empty")
+    .optional()
+    .describe("Specific library key to filter published variables"),
+  includeMetadata: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Include metadata about published variables"),
+  filterByType: z.enum(["BOOLEAN", "FLOAT", "STRING", "COLOR"])
+    .optional()
+    .describe("Filter variables by their type"),
+  filterByCollection: VariableCollectionIdSchema.optional()
+    .describe("Filter variables by collection ID"),
+  includeUsageStats: z.boolean()
+    .optional()
+    .default(false)
+    .describe("Include usage statistics for published variables"),
+  sortBy: z.enum(["name", "datePublished", "usageCount", "type"])
+    .optional()
+    .default("name")
+    .describe("Sort published variables by specified criteria"),
+  sortOrder: z.enum(["asc", "desc"])
+    .optional()
+    .default("asc")
+    .describe("Sort order for published variables"),
+  limit: z.number()
+    .int()
+    .min(1)
+    .max(1000)
+    .optional()
+    .default(100)
+    .describe("Maximum number of published variables to return"),
+  offset: z.number()
+    .int()
+    .min(0)
+    .optional()
+    .default(0)
+    .describe("Offset for pagination of published variables"),
+});
+
 /**
  * Property-Variable Type Compatibility Map
  * Defines which variable types are compatible with which node properties
@@ -2532,6 +2599,314 @@ export function registerVariableTools(server: McpServer): void {
           enhancedMessage += '. Each mode ID must appear only once in the ordered list.';
         } else if (errorMessage.includes('INTEGRITY_VIOLATION') || errorMessage.includes('integrity')) {
           enhancedMessage += '. The reordering would violate collection integrity. Check mode dependencies.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+             }
+     }
+   );
+
+  /**
+   * Publish a variable collection to make it available as a library
+   * 
+   * Publishes a variable collection with comprehensive permission validation,
+   * publishing options configuration, and error handling for publishing-specific issues.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity High
+   * @figmaApi figma.variables.publishVariableCollection()
+   * 
+   * @param collectionId - The unique collection ID to publish (format validated)
+   * @param description - Optional description for the published collection
+   * @param validatePermissions - Validate publishing permissions before attempting (optional, default true)
+   * @param forcePublish - Force publish even if collection has warnings (optional, default false)
+   * @param includeAllModes - Include all modes in the published collection (optional, default true)
+   * @param publishingOptions - Advanced publishing configuration options
+   * 
+   * @returns Success message with publishing details or error message
+   * 
+   * @example
+   * ```typescript
+   * // Basic collection publishing
+   * const result = await publish_variable_collection({
+   *   collectionId: "collection-123",
+   *   description: "Design system color tokens"
+   * });
+   * 
+   * // Advanced publishing with custom options
+   * const advancedResult = await publish_variable_collection({
+   *   collectionId: "collection-456",
+   *   description: "Typography scale variables",
+   *   validatePermissions: true,
+   *   includeAllModes: true,
+   *   publishingOptions: {
+   *     makePublic: false,
+   *     allowEditing: false,
+   *     requirePermission: true
+   *   }
+   * });
+   * 
+   * // Force publish with warnings
+   * const forceResult = await publish_variable_collection({
+   *   collectionId: "collection-789",
+   *   forcePublish: true,
+   *   description: "Experimental variables collection"
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {PermissionError} When user lacks publishing permissions
+   * @throws {PublishingError} When collection has validation errors
+   * @throws {NotFoundError} When collection ID does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "publish_variable_collection",
+    "Publish a variable collection to make it available as a library with permission validation",
+    {
+      collectionId: VariableCollectionIdSchema.describe("Unique collection ID to publish (format validated)"),
+      description: z.string().optional().describe("Optional description for the published collection"),
+      validatePermissions: z.boolean().optional().describe("Validate publishing permissions before attempting (default: true)"),
+      forcePublish: z.boolean().optional().describe("Force publish even if collection has warnings (default: false)"),
+      includeAllModes: z.boolean().optional().describe("Include all modes in the published collection (default: true)"),
+      publishingOptions: z.object({
+        makePublic: z.boolean().optional(),
+        allowEditing: z.boolean().optional(),
+        requirePermission: z.boolean().optional(),
+      }).optional().describe("Advanced publishing configuration options"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = PublishVariableCollectionInputSchema.parse(args);
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("publish_variable_collection", {
+          collectionId: validatedArgs.collectionId,
+          description: validatedArgs.description || "",
+          validatePermissions: validatedArgs.validatePermissions,
+          forcePublish: validatedArgs.forcePublish,
+          includeAllModes: validatedArgs.includeAllModes,
+          publishingOptions: validatedArgs.publishingOptions || {
+            makePublic: false,
+            allowEditing: false,
+            requirePermission: true,
+          },
+        });
+
+        // Build success message with publishing details
+        const publishedInfo = (result as any).publishedAt ? ` at ${(result as any).publishedAt}` : '';
+        const modesInfo = validatedArgs.includeAllModes ? ' (all modes included)' : ' (selected modes only)';
+        const libraryKey = (result as any).libraryKey || 'unknown';
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Collection "${validatedArgs.collectionId}" published successfully${publishedInfo}${modesInfo}. Library key: ${libraryKey}. Details: ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error publishing variable collection - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error publishing variable collection: ${errorMessage}`;
+        
+        // Provide more helpful messages for common publishing errors
+        if (errorMessage.includes('PERMISSION_DENIED') || errorMessage.includes('insufficient permissions')) {
+          enhancedMessage += '. You may not have permission to publish collections in this team or organization.';
+        } else if (errorMessage.includes('COLLECTION_NOT_FOUND') || errorMessage.includes('collection not found')) {
+          enhancedMessage += '. The collection ID may not exist or may have been deleted.';
+        } else if (errorMessage.includes('VALIDATION_ERRORS') || errorMessage.includes('collection has errors')) {
+          enhancedMessage += '. The collection has validation errors. Use forcePublish=true to override, or fix the errors first.';
+        } else if (errorMessage.includes('ALREADY_PUBLISHED') || errorMessage.includes('already published')) {
+          enhancedMessage += '. The collection is already published. You may need to update the existing publication.';
+        } else if (errorMessage.includes('EMPTY_COLLECTION') || errorMessage.includes('no variables')) {
+          enhancedMessage += '. The collection is empty or has no variables to publish.';
+        } else if (errorMessage.includes('TEAM_LIBRARY_LIMIT') || errorMessage.includes('library limit')) {
+          enhancedMessage += '. Your team has reached the maximum number of published libraries.';
+        } else if (errorMessage.includes('INVALID_MODES') || errorMessage.includes('mode')) {
+          enhancedMessage += '. Some modes in the collection may be invalid or incomplete.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Get published variables from libraries with comprehensive filtering
+   * 
+   * Retrieves published variables from team libraries with advanced filtering,
+   * sorting, pagination, and metadata options for comprehensive library management.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity Medium
+   * @figmaApi figma.variables.getPublishedVariables()
+   * 
+   * @param libraryKey - Specific library key to filter published variables (optional)
+   * @param includeMetadata - Include metadata about published variables (optional, default true)
+   * @param filterByType - Filter variables by their type (optional)
+   * @param filterByCollection - Filter variables by collection ID (optional)
+   * @param includeUsageStats - Include usage statistics for published variables (optional, default false)
+   * @param sortBy - Sort published variables by specified criteria (optional, default "name")
+   * @param sortOrder - Sort order for published variables (optional, default "asc")
+   * @param limit - Maximum number of published variables to return (optional, default 100)
+   * @param offset - Offset for pagination of published variables (optional, default 0)
+   * 
+   * @returns List of published variables with filtering and metadata or error message
+   * 
+   * @example
+   * ```typescript
+   * // Get all published variables
+   * const result = await get_published_variables({});
+   * 
+   * // Get variables from specific library
+   * const libraryResult = await get_published_variables({
+   *   libraryKey: "lib-abc123",
+   *   includeMetadata: true
+   * });
+   * 
+   * // Get COLOR variables with usage stats
+   * const colorResult = await get_published_variables({
+   *   filterByType: "COLOR",
+   *   includeUsageStats: true,
+   *   sortBy: "usageCount",
+   *   sortOrder: "desc"
+   * });
+   * 
+   * // Paginated results for large libraries
+   * const paginatedResult = await get_published_variables({
+   *   limit: 50,
+   *   offset: 100,
+   *   sortBy: "datePublished",
+   *   sortOrder: "desc"
+   * });
+   * 
+   * // Filter by collection with metadata
+   * const collectionResult = await get_published_variables({
+   *   filterByCollection: "collection-456",
+   *   includeMetadata: true,
+   *   includeUsageStats: true
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {AccessError} When user lacks access to specified libraries
+   * @throws {NotFoundError} When library key or collection ID does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "get_published_variables",
+    "Get published variables from libraries with comprehensive filtering and metadata",
+    {
+      libraryKey: z.string().optional().describe("Specific library key to filter published variables"),
+      includeMetadata: z.boolean().optional().describe("Include metadata about published variables (default: true)"),
+      filterByType: z.enum(["BOOLEAN", "FLOAT", "STRING", "COLOR"]).optional().describe("Filter variables by their type"),
+      filterByCollection: VariableCollectionIdSchema.optional().describe("Filter variables by collection ID"),
+      includeUsageStats: z.boolean().optional().describe("Include usage statistics (default: false)"),
+      sortBy: z.enum(["name", "datePublished", "usageCount", "type"]).optional().describe("Sort criteria (default: name)"),
+      sortOrder: z.enum(["asc", "desc"]).optional().describe("Sort order (default: asc)"),
+      limit: z.number().optional().describe("Maximum number to return (default: 100, max: 1000)"),
+      offset: z.number().optional().describe("Offset for pagination (default: 0)"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = GetPublishedVariablesInputSchema.parse(args);
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("get_published_variables", {
+          libraryKey: validatedArgs.libraryKey,
+          includeMetadata: validatedArgs.includeMetadata,
+          filterByType: validatedArgs.filterByType,
+          filterByCollection: validatedArgs.filterByCollection,
+          includeUsageStats: validatedArgs.includeUsageStats,
+          sortBy: validatedArgs.sortBy,
+          sortOrder: validatedArgs.sortOrder,
+          limit: validatedArgs.limit,
+          offset: validatedArgs.offset,
+        });
+
+        // Build success message with result statistics
+        const totalCount = (result as any).totalCount || 0;
+        const returnedCount = (result as any).variables?.length || 0;
+        const libraryInfo = validatedArgs.libraryKey ? ` from library "${validatedArgs.libraryKey}"` : ' from all accessible libraries';
+        const filterInfo = validatedArgs.filterByType ? ` (filtered by type: ${validatedArgs.filterByType})` : '';
+        const paginationInfo = validatedArgs.offset > 0 ? ` (offset: ${validatedArgs.offset})` : '';
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Retrieved ${returnedCount} published variables${libraryInfo}${filterInfo}${paginationInfo}. Total available: ${totalCount}. Details: ${JSON.stringify(result, null, 2)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error getting published variables - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error getting published variables: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('LIBRARY_NOT_FOUND') || errorMessage.includes('library not found')) {
+          enhancedMessage += '. The specified library key may not exist or may not be accessible.';
+        } else if (errorMessage.includes('ACCESS_DENIED') || errorMessage.includes('no access')) {
+          enhancedMessage += '. You may not have access to the specified library or team libraries.';
+        } else if (errorMessage.includes('COLLECTION_NOT_FOUND') || errorMessage.includes('collection not found')) {
+          enhancedMessage += '. The specified collection ID may not exist in the accessible libraries.';
+        } else if (errorMessage.includes('INVALID_FILTER') || errorMessage.includes('filter')) {
+          enhancedMessage += '. The specified filter parameters may be invalid or not supported.';
+        } else if (errorMessage.includes('PAGINATION_ERROR') || errorMessage.includes('offset')) {
+          enhancedMessage += '. The pagination parameters may be out of range or invalid.';
+        } else if (errorMessage.includes('NO_PUBLISHED_VARIABLES') || errorMessage.includes('no variables')) {
+          enhancedMessage += '. No published variables found matching the specified criteria.';
+        } else if (errorMessage.includes('RATE_LIMIT') || errorMessage.includes('too many requests')) {
+          enhancedMessage += '. Rate limit exceeded. Please wait before making more requests.';
         }
         
         return {

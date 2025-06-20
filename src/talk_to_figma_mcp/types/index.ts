@@ -199,8 +199,9 @@ export type FigmaCommand =
   | "create_variable_mode"
   | "delete_variable_mode"
   | "reorder_variable_modes"
-  | "get_variable_references"
-  | "set_variable_mode_value"
+  // Task 1.7 - Variable Publishing Tools
+  | "publish_variable_collection"
+  | "get_published_variables"
   | "create_variable_mode"
   | "delete_variable_mode"
   | "reorder_variable_modes"
