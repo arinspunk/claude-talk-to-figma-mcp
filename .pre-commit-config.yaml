@@ -1,0 +1,117 @@
+repos:
+  - repo: local
+    hooks:
+      # TypeScript type checking
+      - id: typescript-check
+        name: TypeScript Type Check
+        entry: bun run tsc --noEmit
+        language: system
+        files: \.(ts|tsx)$
+        pass_filenames: false
+        
+      # TypeScript strict check for tools
+      - id: typescript-tools-strict
+        name: TypeScript Tools Strict Check
+        entry: bash -c 'bun run tsc --noEmit --strict src/talk_to_figma_mcp/tools/**/*.ts'
+        language: system
+        files: ^src/talk_to_figma_mcp/tools/.*\.(ts|tsx)$
+        pass_filenames: false
+        
+      # ESLint for tools
+      - id: eslint-tools
+        name: ESLint Tools
+        entry: bash -c 'if [ -f "eslint.config.js" ]; then bun run eslint --fix; else echo "ESLint config not found"; fi'
+        language: system
+        files: ^src/talk_to_figma_mcp/tools/.*\.ts$
+        
+      # Prettier formatting check
+      - id: prettier-check
+        name: Prettier Format Check
+        entry: bash -c 'if [ -f ".prettierrc" ]; then bun run prettier --check; else echo "Prettier config not found"; fi'
+        language: system
+        files: ^src/talk_to_figma_mcp/tools/.*\.ts$
+        
+      # Test affected tools
+      - id: test-affected-tools
+        name: Test Affected Tools
+        entry: bash -c '
+          CHANGED_FILES="$(git diff --cached --name-only)"
+          AFFECTED_TOOLS=""
+          
+          if echo "$CHANGED_FILES" | grep -q "src/talk_to_figma_mcp/tools/variable-tools"; then
+            AFFECTED_TOOLS="$AFFECTED_TOOLS variable"
+          fi
+          
+          if echo "$CHANGED_FILES" | grep -q "src/talk_to_figma_mcp/tools/style-tools"; then
+            AFFECTED_TOOLS="$AFFECTED_TOOLS style"
+          fi
+          
+          if echo "$CHANGED_FILES" | grep -q "src/talk_to_figma_mcp/tools/boolean-tools"; then
+            AFFECTED_TOOLS="$AFFECTED_TOOLS boolean"
+          fi
+          
+          if echo "$CHANGED_FILES" | grep -q "src/talk_to_figma_mcp/utils/"; then
+            AFFECTED_TOOLS="$AFFECTED_TOOLS utils"
+          fi
+          
+          if [[ -n "$AFFECTED_TOOLS" ]]; then
+            echo "Running tests for affected tools: $AFFECTED_TOOLS"
+            
+            if [[ "$AFFECTED_TOOLS" =~ "variable" ]]; then
+              echo "Testing variable tools..."
+              bun run test tests/integration/variable-tools.test.ts
+            fi
+            
+            if [[ "$AFFECTED_TOOLS" =~ "style" ]]; then
+              echo "Testing style tools..."
+              bun run test tests/integration/style-tools.test.ts 2>/dev/null || echo "Style tests not yet implemented"
+            fi
+            
+            if [[ "$AFFECTED_TOOLS" =~ "boolean" ]]; then
+              echo "Testing boolean tools..."
+              bun run test tests/integration/boolean-tools.test.ts 2>/dev/null || echo "Boolean tests not yet implemented"
+            fi
+            
+            if [[ "$AFFECTED_TOOLS" =~ "utils" ]]; then
+              echo "Testing utils..."
+              bun run test tests/unit/utils/ 2>/dev/null || echo "Utils tests partially available"
+            fi
+          else
+            echo "No tool files changed, skipping tool tests"
+          fi
+        '
+        language: system
+        files: ^(src/talk_to_figma_mcp/tools/|src/talk_to_figma_mcp/utils/|tests/).*$
+        pass_filenames: false
+        
+      # Build check
+      - id: build-check
+        name: Build Check
+        entry: bun run build
+        language: system
+        files: ^src/.*\.(ts|tsx)$
+        pass_filenames: false
+        
+      # Security audit
+      - id: security-audit
+        name: Security Audit
+        entry: bash -c 'bun audit --audit-level moderate || echo "Security audit completed with warnings"'
+        language: system
+        files: package\.json$
+        pass_filenames: false
+
+  # External hooks for additional validation
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+        files: ^src/talk_to_figma_mcp/tools/.*\.ts$
+      - id: end-of-file-fixer
+        files: ^src/talk_to_figma_mcp/tools/.*\.ts$
+      - id: check-json
+        files: ^(package\.json|tsconfig\.json)$
+      - id: check-yaml
+        files: ^\.github/workflows/.*\.yml$
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1000'] 

@@ -1,0 +1,31 @@
+{
+  "semi": true,
+  "trailingComma": "es5",
+  "singleQuote": true,
+  "printWidth": 100,
+  "tabWidth": 2,
+  "useTabs": false,
+  "bracketSpacing": true,
+  "bracketSameLine": false,
+  "arrowParens": "avoid",
+  "endOfLine": "lf",
+  "quoteProps": "as-needed",
+  "jsxSingleQuote": true,
+  "overrides": [
+    {
+      "files": "src/talk_to_figma_mcp/tools/**/*.ts",
+      "options": {
+        "printWidth": 80,
+        "singleQuote": true,
+        "semi": true,
+        "trailingComma": "all"
+      }
+    },
+    {
+      "files": "tests/**/*.ts",
+      "options": {
+        "printWidth": 120
+      }
+    }
+  ]
+} 

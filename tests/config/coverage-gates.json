@@ -1,0 +1,182 @@
+{
+  "version": "1.0.0",
+  "description": "Coverage gates configuration for Figma MCP tools validation",
+  "globalThresholds": {
+    "statements": 90,
+    "branches": 90,
+    "functions": 95,
+    "lines": 95
+  },
+  "toolCategories": {
+    "variable-tools": {
+      "description": "Variables API tools - Phase 1",
+      "thresholds": {
+        "statements": 100,
+        "branches": 100,
+        "functions": 100,
+        "lines": 100
+      },
+      "files": [
+        "src/talk_to_figma_mcp/tools/variable-tools.ts"
+      ],
+      "requiredTests": [
+        "tests/integration/variable-tools.test.ts"
+      ]
+    },
+    "style-tools": {
+      "description": "Styles API tools - Phase 1",
+      "thresholds": {
+        "statements": 100,
+        "branches": 100,
+        "functions": 100,
+        "lines": 100
+      },
+      "files": [
+        "src/talk_to_figma_mcp/tools/style-tools.ts"
+      ],
+      "requiredTests": [
+        "tests/integration/style-tools.test.ts"
+      ]
+    },
+    "boolean-tools": {
+      "description": "Boolean operations tools - Phase 1",
+      "thresholds": {
+        "statements": 100,
+        "branches": 100,
+        "functions": 100,
+        "lines": 100
+      },
+      "files": [
+        "src/talk_to_figma_mcp/tools/boolean-tools.ts"
+      ],
+      "requiredTests": [
+        "tests/integration/boolean-tools.test.ts"
+      ]
+    },
+    "layout-tools": {
+      "description": "Layout and positioning tools - Phase 2",
+      "thresholds": {
+        "statements": 95,
+        "branches": 95,
+        "functions": 100,
+        "lines": 95
+      },
+      "files": [
+        "src/talk_to_figma_mcp/tools/layout-tools.ts"
+      ],
+      "requiredTests": [
+        "tests/integration/layout-tools.test.ts"
+      ]
+    },
+    "effect-tools": {
+      "description": "Effects and filters tools - Phase 2",
+      "thresholds": {
+        "statements": 95,
+        "branches": 95,
+        "functions": 100,
+        "lines": 95
+      },
+      "files": [
+        "src/talk_to_figma_mcp/tools/effect-tools.ts"
+      ],
+      "requiredTests": [
+        "tests/integration/effect-tools.test.ts"
+      ]
+    },
+    "prototype-tools": {
+      "description": "Prototyping and interaction tools - Phase 3",
+      "thresholds": {
+        "statements": 90,
+        "branches": 90,
+        "functions": 95,
+        "lines": 90
+      },
+      "files": [
+        "src/talk_to_figma_mcp/tools/prototype-tools.ts"
+      ],
+      "requiredTests": [
+        "tests/integration/prototype-tools.test.ts"
+      ]
+    }
+  },
+  "utilityModules": {
+    "core-utils": {
+      "description": "Core utility functions",
+      "thresholds": {
+        "statements": 85,
+        "branches": 85,
+        "functions": 90,
+        "lines": 85
+      },
+      "files": [
+        "src/talk_to_figma_mcp/utils/figma-helpers.ts",
+        "src/talk_to_figma_mcp/utils/error-handling.ts",
+        "src/talk_to_figma_mcp/utils/logger.ts"
+      ]
+    },
+    "validation-utils": {
+      "description": "Validation and schema utilities",
+      "thresholds": {
+        "statements": 95,
+        "branches": 95,
+        "functions": 100,
+        "lines": 95
+      },
+      "files": [
+        "src/talk_to_figma_mcp/utils/zod-schemas.ts",
+        "src/talk_to_figma_mcp/utils/tool-templates.ts"
+      ]
+    },
+    "websocket-utils": {
+      "description": "WebSocket communication utilities",
+      "thresholds": {
+        "statements": 80,
+        "branches": 80,
+        "functions": 85,
+        "lines": 80
+      },
+      "files": [
+        "src/talk_to_figma_mcp/utils/websocket.ts",
+        "src/talk_to_figma_mcp/utils/timeout-config.ts"
+      ]
+    }
+  },
+  "exemptions": {
+    "files": [
+      "src/talk_to_figma_mcp/tools/index.ts",
+      "src/talk_to_figma_mcp/utils/defaults.ts"
+    ],
+    "reason": "Configuration and registration files don't require full coverage"
+  },
+  "phases": {
+    "phase-0": {
+      "description": "Foundation and infrastructure",
+      "status": "completed",
+      "coverageTarget": 95
+    },
+    "phase-1": {
+      "description": "Core tools implementation",
+      "status": "in-progress",
+      "coverageTarget": 100,
+      "tools": ["variable-tools", "style-tools", "boolean-tools"]
+    },
+    "phase-2": {
+      "description": "Advanced features",
+      "status": "planned",
+      "coverageTarget": 95,
+      "tools": ["layout-tools", "effect-tools"]
+    },
+    "phase-3": {
+      "description": "Prototyping and interactions",
+      "status": "planned",
+      "coverageTarget": 90,
+      "tools": ["prototype-tools"]
+    }
+  },
+  "reportingConfig": {
+    "outputFormats": ["lcov", "html", "json-summary", "cobertura"],
+    "outputDirectory": "coverage/tools",
+    "failOnBelowThreshold": true,
+    "includeUncoveredFiles": true
+  }
+} 

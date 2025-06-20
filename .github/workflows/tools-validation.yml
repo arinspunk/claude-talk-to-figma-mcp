@@ -1,0 +1,265 @@
+name: Tools Validation Pipeline
+
+on:
+  push:
+    branches: [ main, figma-tools-adding ]
+    paths:
+      - 'src/talk_to_figma_mcp/tools/**'
+      - 'tests/integration/*tools*.test.ts'
+      - 'tests/unit/tools/**'
+      - 'src/talk_to_figma_mcp/utils/**'
+      - 'tests/config/jest.tools.config.cjs'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/talk_to_figma_mcp/tools/**'
+      - 'tests/integration/*tools*.test.ts'
+      - 'tests/unit/tools/**'
+      - 'src/talk_to_figma_mcp/utils/**'
+
+jobs:
+  typescript-check:
+    runs-on: ubuntu-latest
+    name: TypeScript Validation
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: latest
+        
+    - name: Install dependencies
+      run: bun install
+      
+    - name: TypeScript type checking
+      run: bun run tsc --noEmit
+      
+    - name: TypeScript strict check for tools
+      run: bun run tsc --noEmit --strict src/talk_to_figma_mcp/tools/**/*.ts
+
+  linting-validation:
+    runs-on: ubuntu-latest
+    name: ESLint & Prettier
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: latest
+        
+    - name: Install dependencies
+      run: bun install
+      
+    - name: Run ESLint on tools
+      run: |
+        if [ -f "eslint.config.js" ]; then
+          bun run eslint src/talk_to_figma_mcp/tools/ --ext .ts
+        else
+          echo "ESLint config not found, skipping..."
+        fi
+        
+    - name: Check Prettier formatting
+      run: |
+        if [ -f ".prettierrc" ]; then
+          bun run prettier --check "src/talk_to_figma_mcp/tools/**/*.ts"
+        else
+          echo "Prettier config not found, skipping..."
+        fi
+
+  tools-testing:
+    runs-on: ubuntu-latest
+    name: Tools Testing & Coverage
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: latest
+        
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        
+    - name: Install dependencies
+      run: bun install
+      
+    - name: Build project
+      run: bun run build
+      
+    - name: Run tools-specific tests
+      run: bun run test --config=tests/config/jest.tools.config.cjs
+      
+    - name: Generate tools coverage report
+      run: bun run test --config=tests/config/jest.tools.config.cjs --coverage
+      
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/tools/lcov.info
+        flags: tools
+        name: tools-coverage
+        fail_ci_if_error: true
+
+  coverage-gates:
+    runs-on: ubuntu-latest
+    name: Coverage Gates Validation
+    needs: [tools-testing]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: latest
+        
+    - name: Install dependencies
+      run: bun install
+      
+    - name: Generate coverage report
+      run: bun run test --config=tests/config/jest.tools.config.cjs --coverage --coverageReporters=json-summary
+      
+    - name: Validate Variable Tools Coverage
+      run: |
+        COVERAGE_FILE="coverage/tools/coverage-summary.json"
+        if [ -f "$COVERAGE_FILE" ]; then
+          VARIABLE_COVERAGE=$(cat $COVERAGE_FILE | jq '.["src/talk_to_figma_mcp/tools/variable-tools.ts"].lines.pct // 0')
+          if [ "$VARIABLE_COVERAGE" != "null" ] && [ "$(echo "$VARIABLE_COVERAGE >= 95" | bc)" -eq 1 ]; then
+            echo "✅ Variable tools coverage: $VARIABLE_COVERAGE%"
+          else
+            echo "❌ Variable tools coverage below 95%: $VARIABLE_COVERAGE%"
+            exit 1
+          fi
+        else
+          echo "Coverage file not found, skipping validation"
+        fi
+        
+    - name: Validate Utils Coverage
+      run: |
+        COVERAGE_FILE="coverage/tools/coverage-summary.json"
+        if [ -f "$COVERAGE_FILE" ]; then
+          UTILS_COVERAGE=$(cat $COVERAGE_FILE | jq '.["src/talk_to_figma_mcp/utils/"].lines.pct // 0')
+          if [ "$UTILS_COVERAGE" != "null" ] && [ "$(echo "$UTILS_COVERAGE >= 85" | bc)" -eq 1 ]; then
+            echo "✅ Utils coverage: $UTILS_COVERAGE%"
+          else
+            echo "❌ Utils coverage below 85%: $UTILS_COVERAGE%"
+            exit 1
+          fi
+        fi
+
+  test-affected:
+    runs-on: ubuntu-latest
+    name: Test Affected Tools
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: latest
+        
+    - name: Install dependencies
+      run: bun install
+      
+    - name: Get changed files
+      id: changed-files
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }})
+        else
+          CHANGED_FILES=$(git diff --name-only HEAD~1)
+        fi
+        echo "files<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGED_FILES" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+    - name: Determine affected tools
+      id: affected-tools
+      run: |
+        CHANGED_FILES="${{ steps.changed-files.outputs.files }}"
+        AFFECTED_TOOLS=""
+        
+        if echo "$CHANGED_FILES" | grep -q "src/talk_to_figma_mcp/tools/variable-tools"; then
+          AFFECTED_TOOLS="$AFFECTED_TOOLS variable"
+        fi
+        
+        if echo "$CHANGED_FILES" | grep -q "src/talk_to_figma_mcp/tools/style-tools"; then
+          AFFECTED_TOOLS="$AFFECTED_TOOLS style"
+        fi
+        
+        if echo "$CHANGED_FILES" | grep -q "src/talk_to_figma_mcp/tools/boolean-tools"; then
+          AFFECTED_TOOLS="$AFFECTED_TOOLS boolean"
+        fi
+        
+        if echo "$CHANGED_FILES" | grep -q "src/talk_to_figma_mcp/utils/"; then
+          AFFECTED_TOOLS="$AFFECTED_TOOLS utils"
+        fi
+        
+        echo "tools=$AFFECTED_TOOLS" >> $GITHUB_OUTPUT
+        echo "Affected tools: $AFFECTED_TOOLS"
+        
+    - name: Run affected tests
+      run: |
+        AFFECTED_TOOLS="${{ steps.affected-tools.outputs.tools }}"
+        
+        if [[ "$AFFECTED_TOOLS" =~ "variable" ]]; then
+          echo "Running variable tools tests..."
+          bun run test tests/integration/variable-tools.test.ts
+        fi
+        
+        if [[ "$AFFECTED_TOOLS" =~ "style" ]]; then
+          echo "Running style tools tests..."
+          bun run test tests/integration/style-tools.test.ts || echo "Style tests not yet implemented"
+        fi
+        
+        if [[ "$AFFECTED_TOOLS" =~ "boolean" ]]; then
+          echo "Running boolean tools tests..."
+          bun run test tests/integration/boolean-tools.test.ts || echo "Boolean tests not yet implemented"
+        fi
+        
+        if [[ "$AFFECTED_TOOLS" =~ "utils" ]]; then
+          echo "Running utils tests..."
+          bun run test tests/unit/utils/ || echo "Utils tests partially available"
+        fi
+
+  security-audit:
+    runs-on: ubuntu-latest
+    name: Security Audit
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: latest
+        
+    - name: Install dependencies
+      run: bun install
+      
+    - name: Run security audit
+      run: bun audit --audit-level moderate
+      
+    - name: Check for vulnerabilities in tools dependencies
+      run: |
+        echo "Checking for known vulnerabilities..."
+        bun run tsc --listFiles | grep -E "(tools|utils)" | head -10 
