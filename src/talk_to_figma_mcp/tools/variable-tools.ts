@@ -235,6 +235,93 @@ const DeleteVariableCollectionInputSchema = z.object({
   }).optional().describe("Optional replacement collection and variable mappings"),
 });
 
+// Schemas for Task 1.6 - Advanced Variable Management Tools
+const GetVariableReferencesInputSchema = z.object({
+  variableId: VariableIdSchema,
+  includeMetadata: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Include metadata about each reference (node type, property, etc.)"),
+  includeNodeDetails: z.boolean()
+    .optional()
+    .default(false)
+    .describe("Include detailed node information for each reference"),
+  groupByProperty: z.boolean()
+    .optional()
+    .default(false)
+    .describe("Group references by property type"),
+  includeIndirect: z.boolean()
+    .optional()
+    .default(false)
+    .describe("Include indirect references (e.g., through component instances)"),
+});
+
+const ModeIdSchema = z.string()
+  .min(1, "Mode ID cannot be empty")
+  .regex(/^[a-zA-Z0-9_\-:]+$/, "Invalid mode ID format");
+
+const SetVariableModeValueInputSchema = z.object({
+  variableId: VariableIdSchema,
+  modeId: ModeIdSchema,
+  value: VariableValueSchema,
+  validateType: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Whether to validate that the value matches the variable's type"),
+  overwriteExisting: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Whether to overwrite existing value for this mode"),
+});
+
+const CreateVariableModeInputSchema = z.object({
+  collectionId: VariableCollectionIdSchema,
+  modeName: z.string()
+    .min(1, "Mode name cannot be empty")
+    .max(255, "Mode name too long")
+    .regex(/^[a-zA-Z][a-zA-Z0-9_\-\s]*$/, "Mode name must start with a letter and contain only letters, numbers, spaces, hyphens, and underscores"),
+  copyFromModeId: ModeIdSchema.optional()
+    .describe("Copy values from existing mode (optional)"),
+  setAsDefault: z.boolean()
+    .optional()
+    .default(false)
+    .describe("Set this mode as the collection's default mode"),
+  description: z.string()
+    .max(1000, "Description too long")
+    .optional()
+    .describe("Optional description for the mode"),
+});
+
+const DeleteVariableModeInputSchema = z.object({
+  collectionId: VariableCollectionIdSchema,
+  modeId: ModeIdSchema,
+  force: z.boolean()
+    .optional()
+    .default(false)
+    .describe("Force delete even if mode is referenced"),
+  replacementModeId: ModeIdSchema.optional()
+    .describe("Mode to use as replacement for existing references"),
+  cleanupReferences: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Clean up references to this mode before deletion"),
+});
+
+const ReorderVariableModesInputSchema = z.object({
+  collectionId: VariableCollectionIdSchema,
+  orderedModeIds: z.array(ModeIdSchema)
+    .min(1, "Must provide at least one mode ID")
+    .describe("Array of mode IDs in the desired order"),
+  preserveValues: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Preserve all existing values during reordering"),
+  validateIntegrity: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Validate collection integrity after reordering"),
+});
+
 /**
  * Property-Variable Type Compatibility Map
  * Defines which variable types are compatible with which node properties
@@ -1801,6 +1888,650 @@ export function registerVariableTools(server: McpServer): void {
           enhancedMessage += '. Variable mappings can only be used with a replacement collection ID.';
         } else if (errorMessage.includes('cascade') || errorMessage.includes('cleanup')) {
           enhancedMessage += '. There may be issues with the cascade delete or reference cleanup process.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+             }
+     }
+   );
+
+  /**
+   * Get comprehensive references analysis for a variable
+   * 
+   * Analyzes where a variable is used throughout the document, providing detailed
+   * reference information including node types, properties, and usage context.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity High
+   * @figmaApi figma.variables.getVariableReferences()
+   * 
+   * @param variableId - The unique variable ID to analyze (format validated)
+   * @param includeMetadata - Include metadata about each reference (optional, default true)
+   * @param includeNodeDetails - Include detailed node information (optional, default false)
+   * @param groupByProperty - Group references by property type (optional, default false)
+   * @param includeIndirect - Include indirect references through components (optional, default false)
+   * 
+   * @returns Comprehensive reference analysis or error message
+   * 
+   * @example
+   * ```typescript
+   * // Basic reference analysis
+   * const result = await get_variable_references({
+   *   variableId: "var-123"
+   * });
+   * 
+   * // Detailed analysis with node information
+   * const detailed = await get_variable_references({
+   *   variableId: "var-123",
+   *   includeMetadata: true,
+   *   includeNodeDetails: true,
+   *   groupByProperty: true
+   * });
+   * 
+   * // Complete analysis including indirect references
+   * const complete = await get_variable_references({
+   *   variableId: "var-123",
+   *   includeMetadata: true,
+   *   includeNodeDetails: true,
+   *   groupByProperty: true,
+   *   includeIndirect: true
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {NotFoundError} When variable ID does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "get_variable_references",
+    "Get comprehensive references analysis for a variable with detailed usage information",
+    {
+      variableId: VariableIdSchema.describe("Unique variable ID to analyze (format validated)"),
+      includeMetadata: z.boolean().optional().describe("Include metadata about each reference (default: true)"),
+      includeNodeDetails: z.boolean().optional().describe("Include detailed node information (default: false)"),
+      groupByProperty: z.boolean().optional().describe("Group references by property type (default: false)"),
+      includeIndirect: z.boolean().optional().describe("Include indirect references through components (default: false)"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = GetVariableReferencesInputSchema.parse(args);
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("get_variable_references", {
+          variableId: validatedArgs.variableId,
+          includeMetadata: validatedArgs.includeMetadata,
+          includeNodeDetails: validatedArgs.includeNodeDetails,
+          groupByProperty: validatedArgs.groupByProperty,
+          includeIndirect: validatedArgs.includeIndirect,
+        });
+
+        // Build success message with reference statistics
+        const referenceCount = (result as any).totalReferences || 0;
+        const directCount = (result as any).directReferences || 0;
+        const indirectCount = (result as any).indirectReferences || 0;
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Variable "${validatedArgs.variableId}" references analyzed successfully. Total: ${referenceCount} (Direct: ${directCount}, Indirect: ${indirectCount}). Details: ${JSON.stringify(result, null, 2)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error analyzing variable references - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error analyzing variable references: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('VARIABLE_NOT_FOUND') || errorMessage.includes('not found')) {
+          enhancedMessage += '. The variable ID may not exist or may have been deleted.';
+        } else if (errorMessage.includes('timeout') || errorMessage.includes('large document')) {
+          enhancedMessage += '. The document may be too large for comprehensive analysis. Try reducing scope.';
+        } else if (errorMessage.includes('permission') || errorMessage.includes('access')) {
+          enhancedMessage += '. You may not have permission to analyze references in this document.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Set variable value for a specific mode with comprehensive validation
+   * 
+   * Sets the value of a variable for a specific mode with type validation and
+   * existing value handling. Supports all variable types and mode-specific configurations.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity Medium
+   * @figmaApi figma.variables.setValueForVariableInMode()
+   * 
+   * @param variableId - The unique variable ID (format validated)
+   * @param modeId - The mode ID to set the value for (format validated)
+   * @param value - The value to set for this mode (type validated)
+   * @param validateType - Whether to validate value type compatibility (optional, default true)
+   * @param overwriteExisting - Whether to overwrite existing value (optional, default true)
+   * 
+   * @returns Success message with mode value details or error message
+   * 
+   * @example
+   * ```typescript
+   * // Set string value for specific mode
+   * const result = await set_variable_mode_value({
+   *   variableId: "var-123",
+   *   modeId: "dark-mode",
+   *   value: "Dark theme text"
+   * });
+   * 
+   * // Set color value with validation disabled
+   * const colorResult = await set_variable_mode_value({
+   *   variableId: "color-var-456",
+   *   modeId: "high-contrast",
+   *   value: { r: 1.0, g: 1.0, b: 1.0, a: 1.0 },
+   *   validateType: false
+   * });
+   * 
+   * // Set value without overwriting existing
+   * const preserveResult = await set_variable_mode_value({
+   *   variableId: "var-789",
+   *   modeId: "new-mode",
+   *   value: 42.5,
+   *   overwriteExisting: false
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {TypeError} When value type doesn't match variable type
+   * @throws {ConflictError} When value exists and overwriteExisting is false
+   * @throws {NotFoundError} When variable or mode ID does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "set_variable_mode_value",
+    "Set variable value for a specific mode with comprehensive validation",
+    {
+      variableId: VariableIdSchema.describe("Unique variable ID (format validated)"),
+      modeId: ModeIdSchema.describe("Mode ID to set the value for (format validated)"),
+      value: VariableValueSchema.describe("Value to set for this mode (type validated)"),
+      validateType: z.boolean().optional().describe("Validate value type compatibility (default: true)"),
+      overwriteExisting: z.boolean().optional().describe("Overwrite existing value (default: true)"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = SetVariableModeValueInputSchema.parse(args);
+        
+        // Additional business logic validation for value types
+        if (validatedArgs.validateType !== false) {
+          // Validate COLOR values have required properties
+          if (typeof validatedArgs.value === 'object' && validatedArgs.value !== null && 'r' in validatedArgs.value) {
+            const colorValue = validatedArgs.value as any;
+            if (typeof colorValue.r !== 'number' || typeof colorValue.g !== 'number' || typeof colorValue.b !== 'number') {
+              throw new Error('COLOR values must have numeric r, g, b properties');
+            }
+            if (colorValue.r < 0 || colorValue.r > 1 || colorValue.g < 0 || colorValue.g > 1 || colorValue.b < 0 || colorValue.b > 1) {
+              throw new Error('COLOR values must be in range 0-1 for r, g, b components');
+            }
+          }
+        }
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("set_variable_mode_value", {
+          variableId: validatedArgs.variableId,
+          modeId: validatedArgs.modeId,
+          value: validatedArgs.value,
+          validateType: validatedArgs.validateType,
+          overwriteExisting: validatedArgs.overwriteExisting,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Variable "${validatedArgs.variableId}" value set successfully for mode "${validatedArgs.modeId}": ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error setting variable mode value - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error setting variable mode value: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('VALUE_EXISTS') || errorMessage.includes('already has a value')) {
+          enhancedMessage += '. The mode already has a value. Set overwriteExisting to true to replace it.';
+        } else if (errorMessage.includes('MODE_NOT_FOUND') || errorMessage.includes('mode')) {
+          enhancedMessage += '. The specified mode ID may not exist in this variable\'s collection.';
+        } else if (errorMessage.includes('VARIABLE_NOT_FOUND') || errorMessage.includes('variable not found')) {
+          enhancedMessage += '. The variable ID may not exist or may have been deleted.';
+        } else if (errorMessage.includes('type mismatch') || errorMessage.includes('incompatible type')) {
+          enhancedMessage += '. The value type may not match the variable\'s expected type.';
+        } else if (errorMessage.includes('COLOR values')) {
+          enhancedMessage += '. Please ensure COLOR values use proper format: {r: 0-1, g: 0-1, b: 0-1, a?: 0-1}.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Create a new mode in a variable collection with value copying
+   * 
+   * Creates a new mode in the specified variable collection with optional value
+   * copying from existing modes and comprehensive validation of collection integrity.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity Medium
+   * @figmaApi figma.variables.createVariableMode()
+   * 
+   * @param collectionId - The unique collection ID (format validated)
+   * @param modeName - Name for the new mode (naming conventions validated)
+   * @param copyFromModeId - Mode ID to copy values from (optional)
+   * @param setAsDefault - Set this mode as the collection's default (optional, default false)
+   * @param description - Optional description for the mode
+   * 
+   * @returns Success message with new mode details or error message
+   * 
+   * @example
+   * ```typescript
+   * // Create basic mode
+   * const result = await create_variable_mode({
+   *   collectionId: "collection-123",
+   *   modeName: "Dark Mode"
+   * });
+   * 
+   * // Create mode by copying from existing
+   * const copyResult = await create_variable_mode({
+   *   collectionId: "collection-123",
+   *   modeName: "High Contrast",
+   *   copyFromModeId: "dark-mode-id",
+   *   description: "High contrast theme for accessibility"
+   * });
+   * 
+   * // Create mode and set as default
+   * const defaultResult = await create_variable_mode({
+   *   collectionId: "collection-123",
+   *   modeName: "New Default",
+   *   setAsDefault: true
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {DuplicateNameError} When mode name already exists in collection
+   * @throws {NotFoundError} When collection or source mode ID does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "create_variable_mode",
+    "Create a new mode in a variable collection with value copying and validation",
+    {
+      collectionId: VariableCollectionIdSchema.describe("Unique collection ID (format validated)"),
+      modeName: z.string().min(1).describe("Name for the new mode (naming conventions validated)"),
+      copyFromModeId: ModeIdSchema.optional().describe("Mode ID to copy values from (optional)"),
+      setAsDefault: z.boolean().optional().describe("Set this mode as collection's default (default: false)"),
+      description: z.string().optional().describe("Optional description for the mode"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = CreateVariableModeInputSchema.parse(args);
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("create_variable_mode", {
+          collectionId: validatedArgs.collectionId,
+          modeName: validatedArgs.modeName,
+          copyFromModeId: validatedArgs.copyFromModeId,
+          setAsDefault: validatedArgs.setAsDefault,
+          description: validatedArgs.description || "",
+        });
+
+        // Build success message with mode details
+        const copyInfo = validatedArgs.copyFromModeId ? ` (copied from mode "${validatedArgs.copyFromModeId}")` : '';
+        const defaultInfo = validatedArgs.setAsDefault ? ' and set as default' : '';
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Mode "${validatedArgs.modeName}" created successfully in collection "${validatedArgs.collectionId}"${copyInfo}${defaultInfo}: ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error creating variable mode - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error creating variable mode: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('DUPLICATE_MODE_NAME') || errorMessage.includes('already exists')) {
+          enhancedMessage += '. A mode with this name already exists in the collection.';
+        } else if (errorMessage.includes('COLLECTION_NOT_FOUND') || errorMessage.includes('collection not found')) {
+          enhancedMessage += '. The collection ID may not exist or may have been deleted.';
+        } else if (errorMessage.includes('SOURCE_MODE_NOT_FOUND') || errorMessage.includes('copy from')) {
+          enhancedMessage += '. The source mode ID to copy from may not exist in this collection.';
+        } else if (errorMessage.includes('INVALID_MODE_NAME') || errorMessage.includes('name format')) {
+          enhancedMessage += '. The mode name must start with a letter and contain only letters, numbers, spaces, hyphens, and underscores.';
+        } else if (errorMessage.includes('MODE_LIMIT') || errorMessage.includes('too many modes')) {
+          enhancedMessage += '. The collection may have reached the maximum number of modes allowed.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Delete a mode from a variable collection with reference management
+   * 
+   * Deletes a mode from the variable collection with comprehensive reference cleanup,
+   * replacement strategies, and integrity validation to maintain collection consistency.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity High
+   * @figmaApi figma.variables.deleteVariableMode()
+   * 
+   * @param collectionId - The unique collection ID (format validated)
+   * @param modeId - The mode ID to delete (format validated)
+   * @param force - Force deletion even if mode is referenced (optional, default false)
+   * @param replacementModeId - Mode to use as replacement for references (optional)
+   * @param cleanupReferences - Clean up references to this mode (optional, default true)
+   * 
+   * @returns Success message with deletion details and cleanup info or error message
+   * 
+   * @example
+   * ```typescript
+   * // Safe mode deletion
+   * const result = await delete_variable_mode({
+   *   collectionId: "collection-123",
+   *   modeId: "old-mode"
+   * });
+   * 
+   * // Force delete with replacement
+   * const forceResult = await delete_variable_mode({
+   *   collectionId: "collection-123",
+   *   modeId: "deprecated-mode",
+   *   force: true,
+   *   replacementModeId: "new-mode",
+   *   cleanupReferences: true
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {ReferenceError} When mode is referenced and force is false
+   * @throws {IntegrityError} When deletion would leave collection in invalid state
+   * @throws {NotFoundError} When collection or mode ID does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "delete_variable_mode",
+    "Delete a mode from variable collection with reference management and cleanup",
+    {
+      collectionId: VariableCollectionIdSchema.describe("Unique collection ID (format validated)"),
+      modeId: ModeIdSchema.describe("Mode ID to delete (format validated)"),
+      force: z.boolean().optional().describe("Force deletion even if referenced (default: false)"),
+      replacementModeId: ModeIdSchema.optional().describe("Mode to use as replacement for references"),
+      cleanupReferences: z.boolean().optional().describe("Clean up references to this mode (default: true)"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = DeleteVariableModeInputSchema.parse(args);
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("delete_variable_mode", {
+          collectionId: validatedArgs.collectionId,
+          modeId: validatedArgs.modeId,
+          force: validatedArgs.force,
+          replacementModeId: validatedArgs.replacementModeId,
+          cleanupReferences: validatedArgs.cleanupReferences,
+        });
+
+        // Build success message with cleanup details
+        const referencesCleanedUp = (result as any).referencesCleanedUp || 0;
+        const variablesAffected = (result as any).variablesAffected || 0;
+        const replacementInfo = validatedArgs.replacementModeId ? ` (replaced with mode "${validatedArgs.replacementModeId}")` : '';
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Mode "${validatedArgs.modeId}" deleted successfully from collection "${validatedArgs.collectionId}"${replacementInfo}. Variables affected: ${variablesAffected}, References cleaned: ${referencesCleanedUp}. Details: ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error deleting variable mode - Validation failed: ${validationErrors}`,
+              },
+            ],
+          ];
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error deleting variable mode: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('MODE_IN_USE') || errorMessage.includes('referenced')) {
+          enhancedMessage += '. The mode is still referenced. Use force=true to delete anyway or provide a replacement mode.';
+        } else if (errorMessage.includes('LAST_MODE') || errorMessage.includes('cannot delete last mode')) {
+          enhancedMessage += '. Cannot delete the last mode in a collection. Create another mode first.';
+        } else if (errorMessage.includes('DEFAULT_MODE') || errorMessage.includes('default mode')) {
+          enhancedMessage += '. Cannot delete the default mode. Set another mode as default first.';
+        } else if (errorMessage.includes('MODE_NOT_FOUND') || errorMessage.includes('mode not found')) {
+          enhancedMessage += '. The mode ID may not exist in this collection.';
+        } else if (errorMessage.includes('COLLECTION_NOT_FOUND') || errorMessage.includes('collection not found')) {
+          enhancedMessage += '. The collection ID may not exist or may have been deleted.';
+        } else if (errorMessage.includes('REPLACEMENT_NOT_FOUND') || errorMessage.includes('replacement mode')) {
+          enhancedMessage += '. The replacement mode ID may not exist in this collection.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Reorder modes in a variable collection with value preservation
+   * 
+   * Reorders the modes in a variable collection while preserving all variable values
+   * and maintaining collection integrity. Validates the complete mode list.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity Medium
+   * @figmaApi figma.variables.reorderVariableModes()
+   * 
+   * @param collectionId - The unique collection ID (format validated)
+   * @param orderedModeIds - Array of mode IDs in the desired order (validated)
+   * @param preserveValues - Preserve all existing values during reordering (optional, default true)
+   * @param validateIntegrity - Validate collection integrity after reordering (optional, default true)
+   * 
+   * @returns Success message with reordering details or error message
+   * 
+   * @example
+   * ```typescript
+   * // Basic mode reordering
+   * const result = await reorder_variable_modes({
+   *   collectionId: "collection-123",
+   *   orderedModeIds: ["light-mode", "dark-mode", "high-contrast"]
+   * });
+   * 
+   * // Reorder without integrity validation (faster)
+   * const fastResult = await reorder_variable_modes({
+   *   collectionId: "collection-123",
+   *   orderedModeIds: ["mode-1", "mode-2", "mode-3", "mode-4"],
+   *   validateIntegrity: false
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {IntegrityError} When mode list is incomplete or contains duplicates
+   * @throws {NotFoundError} When collection or mode IDs do not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "reorder_variable_modes",
+    "Reorder modes in a variable collection with value preservation and validation",
+    {
+      collectionId: VariableCollectionIdSchema.describe("Unique collection ID (format validated)"),
+      orderedModeIds: z.array(ModeIdSchema).min(1).describe("Array of mode IDs in desired order (validated)"),
+      preserveValues: z.boolean().optional().describe("Preserve all existing values (default: true)"),
+      validateIntegrity: z.boolean().optional().describe("Validate collection integrity (default: true)"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = ReorderVariableModesInputSchema.parse(args);
+        
+        // Additional validation for duplicate mode IDs
+        const uniqueModeIds = new Set(validatedArgs.orderedModeIds);
+        if (uniqueModeIds.size !== validatedArgs.orderedModeIds.length) {
+          throw new Error('Duplicate mode IDs found in the ordered list. Each mode ID must be unique.');
+        }
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("reorder_variable_modes", {
+          collectionId: validatedArgs.collectionId,
+          orderedModeIds: validatedArgs.orderedModeIds,
+          preserveValues: validatedArgs.preserveValues,
+          validateIntegrity: validatedArgs.validateIntegrity,
+        });
+
+        // Build success message with reordering details
+        const modeCount = validatedArgs.orderedModeIds.length;
+        const preservedInfo = validatedArgs.preserveValues ? ' with values preserved' : '';
+        const validatedInfo = validatedArgs.validateIntegrity ? ' and integrity validated' : '';
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `${modeCount} modes reordered successfully in collection "${validatedArgs.collectionId}"${preservedInfo}${validatedInfo}. New order: [${validatedArgs.orderedModeIds.join(', ')}]. Details: ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error reordering variable modes - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error reordering variable modes: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('INCOMPLETE_MODE_LIST') || errorMessage.includes('missing modes')) {
+          enhancedMessage += '. The ordered list must include all existing modes in the collection.';
+        } else if (errorMessage.includes('INVALID_MODE_ID') || errorMessage.includes('mode does not exist')) {
+          enhancedMessage += '. One or more mode IDs in the list do not exist in this collection.';
+        } else if (errorMessage.includes('COLLECTION_NOT_FOUND') || errorMessage.includes('collection not found')) {
+          enhancedMessage += '. The collection ID may not exist or may have been deleted.';
+        } else if (errorMessage.includes('Duplicate mode IDs') || errorMessage.includes('duplicate')) {
+          enhancedMessage += '. Each mode ID must appear only once in the ordered list.';
+        } else if (errorMessage.includes('INTEGRITY_VIOLATION') || errorMessage.includes('integrity')) {
+          enhancedMessage += '. The reordering would violate collection integrity. Check mode dependencies.';
         }
         
         return {

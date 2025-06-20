@@ -193,6 +193,12 @@ export type FigmaCommand =
   | "update_variable_name"
   | "delete_variable"
   | "delete_variable_collection"
+  // Task 1.6 - Advanced Variable Management Tools
+  | "get_variable_references"
+  | "set_variable_mode_value"
+  | "create_variable_mode"
+  | "delete_variable_mode"
+  | "reorder_variable_modes"
   | "get_variable_references"
   | "set_variable_mode_value"
   | "create_variable_mode"
