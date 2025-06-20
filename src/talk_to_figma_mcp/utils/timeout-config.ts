@@ -458,4 +458,97 @@ export function withTimeout<T extends (...args: any[]) => Promise<any>>(
       })
     ]);
   }) as T;
+}
+
+/**
+ * Specialized timeout configurations for Variable operations
+ * Optimized for complex variable operations in Task 1.9
+ */
+export const VARIABLE_OPERATION_TIMEOUTS = {
+  // Basic operations
+  CREATE_VARIABLE: 4000,
+  CREATE_COLLECTION: 3000, 
+  GET_VARIABLES: 2500,
+  GET_COLLECTIONS: 2000,
+  GET_BY_ID: 1500,
+
+  // Binding operations (more complex due to node interactions)
+  SET_BOUND_VARIABLE: 5000,
+  SET_BOUND_PAINT: 4500,
+  REMOVE_BOUND_VARIABLE: 3500,
+
+  // Modification operations
+  UPDATE_VALUE: 3000,
+  UPDATE_NAME: 2500,
+  DELETE_VARIABLE: 4000,
+  DELETE_COLLECTION: 8000, // Cascade operations
+
+  // Advanced operations (most complex)
+  GET_REFERENCES: 12000, // Can be very expensive
+  SET_MODE_VALUE: 3500,
+  CREATE_MODE: 4000,
+  DELETE_MODE: 6000, // Cleanup operations
+  REORDER_MODES: 3000,
+
+  // Publishing operations (network dependent)
+  PUBLISH_COLLECTION: 15000,
+  GET_PUBLISHED: 8000,
+
+  // Batch operation multipliers
+  BATCH_MULTIPLIER: 2.5,
+  PER_VARIABLE_MS: 300,
+  PER_MODE_MS: 500,
+  PER_REFERENCE_MS: 100,
+};
+
+/**
+ * Calculate optimized timeout for variable operations
+ * Enhanced for Task 1.9 with specific variable operation handling
+ */
+export function getVariableOperationTimeout(
+  operation: keyof typeof VARIABLE_OPERATION_TIMEOUTS,
+  options: {
+    variableCount?: number;
+    modeCount?: number;
+    referenceCount?: number;
+    isBatch?: boolean;
+    isComplex?: boolean;
+  } = {}
+): number {
+  const {
+    variableCount = 1,
+    modeCount = 1,
+    referenceCount = 0,
+    isBatch = false,
+    isComplex = false
+  } = options;
+
+  let baseTimeout = VARIABLE_OPERATION_TIMEOUTS[operation];
+  
+  // Apply complexity multiplier
+  if (isComplex) {
+    baseTimeout *= 1.8;
+  }
+
+  // Apply batch multiplier
+  if (isBatch || variableCount > 1) {
+    baseTimeout *= VARIABLE_OPERATION_TIMEOUTS.BATCH_MULTIPLIER;
+    baseTimeout += (variableCount - 1) * VARIABLE_OPERATION_TIMEOUTS.PER_VARIABLE_MS;
+  }
+
+  // Add time for modes
+  if (modeCount > 1) {
+    baseTimeout += (modeCount - 1) * VARIABLE_OPERATION_TIMEOUTS.PER_MODE_MS;
+  }
+
+  // Add time for references (expensive operations)
+  if (referenceCount > 0) {
+    baseTimeout += referenceCount * VARIABLE_OPERATION_TIMEOUTS.PER_REFERENCE_MS;
+  }
+
+  // Ensure within reasonable bounds
+  const maxTimeout = 45000; // 45 seconds max
+  const minTimeout = 1000;  // 1 second min
+
+  return Math.max(minTimeout, Math.min(maxTimeout, baseTimeout));
 } 
