@@ -10,6 +10,7 @@ module.exports = {
   // Test patterns specifically for tools
   testMatch: [
     '**/tests/integration/*-tools.test.ts',
+    '**/tests/integration/variables-*.test.ts',
     '**/tests/unit/tools/**/*.test.ts',
     '**/src/talk_to_figma_mcp/tools/**/*.test.ts'
   ],

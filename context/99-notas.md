@@ -43,6 +43,6 @@ Al terminar, espera instrucciones adicionales.
 
 ## Commit 
 
-Commit con los cambios de la tarea 1.5.
+Commit con los cambios de la tarea 1.8.
 
 Mensaje descriptivo en inglés
