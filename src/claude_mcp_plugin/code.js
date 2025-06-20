@@ -189,6 +189,49 @@ async function handleCommand(command, params) {
       return await createVector(params);
     case "create_line":
       return await createLine(params);
+    
+    // Variable Tools - Task 1.11 Synchronization
+    case "create_variable":
+      return await createVariable(params);
+    case "create_variable_collection":
+      return await createVariableCollection(params);
+    case "get_local_variables":
+      return await getLocalVariables(params);
+    case "get_local_variable_collections":
+      return await getLocalVariableCollections(params);
+    case "get_variable_by_id":
+      return await getVariableById(params);
+    case "get_variable_collection_by_id":
+      return await getVariableCollectionById(params);
+    case "set_bound_variable":
+      return await setBoundVariable(params);
+    case "set_bound_variable_for_paint":
+      return await setBoundVariableForPaint(params);
+    case "remove_bound_variable":
+      return await removeBoundVariable(params);
+    case "update_variable_value":
+      return await updateVariableValue(params);
+    case "update_variable_name":
+      return await updateVariableName(params);
+    case "delete_variable":
+      return await deleteVariable(params);
+    case "delete_variable_collection":
+      return await deleteVariableCollection(params);
+    case "get_variable_references":
+      return await getVariableReferences(params);
+    case "set_variable_mode_value":
+      return await setVariableModeValue(params);
+    case "create_variable_mode":
+      return await createVariableMode(params);
+    case "delete_variable_mode":
+      return await deleteVariableMode(params);
+    case "reorder_variable_modes":
+      return await reorderVariableModes(params);
+    case "publish_variable_collection":
+      return await publishVariableCollection(params);
+    case "get_published_variables":
+      return await getPublishedVariables(params);
+    
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3292,4 +3335,1019 @@ async function createLine(params) {
     vectorPaths: line.vectorPaths,
     parentId: line.parent ? line.parent.id : undefined
   };
+}
+
+// =============================================================================
+// VARIABLE TOOLS IMPLEMENTATION - Task 1.11 Synchronization
+// =============================================================================
+
+/**
+ * Create a new variable in a variable collection
+ * Implements Figma Variables API for variable creation
+ */
+async function createVariable(params) {
+  try {
+    const { name, variableCollectionId, resolvedType, initialValue, description = "" } = params;
+    
+    // Validate required parameters
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      throw new Error('Variable name is required and cannot be empty');
+    }
+    
+    if (!variableCollectionId || typeof variableCollectionId !== 'string') {
+      throw new Error('Variable collection ID is required');
+    }
+    
+    if (!resolvedType || !['BOOLEAN', 'FLOAT', 'STRING', 'COLOR'].includes(resolvedType)) {
+      throw new Error('Invalid resolvedType. Must be BOOLEAN, FLOAT, STRING, or COLOR');
+    }
+    
+    // Get the variable collection
+    const collection = await figma.variables.getVariableCollectionByIdAsync(variableCollectionId);
+    if (!collection) {
+      throw new Error(`Variable collection not found: ${variableCollectionId}`);
+    }
+    
+    // Create the variable
+    const variable = figma.variables.createVariable(name, collection, resolvedType);
+    
+    // Set description if provided
+    if (description) {
+      variable.description = description;
+    }
+    
+    // Set initial value if provided
+    if (initialValue !== undefined && initialValue !== null) {
+      // Validate value based on type
+      if (resolvedType === 'COLOR' && typeof initialValue === 'object') {
+        if (!initialValue.r || !initialValue.g || !initialValue.b) {
+          throw new Error('COLOR variables require r, g, b values');
+        }
+        variable.setValueForMode(collection.defaultModeId, {
+          r: initialValue.r,
+          g: initialValue.g,
+          b: initialValue.b,
+          a: initialValue.a || 1.0
+        });
+      } else if (resolvedType === 'BOOLEAN' && typeof initialValue === 'boolean') {
+        variable.setValueForMode(collection.defaultModeId, initialValue);
+      } else if (resolvedType === 'FLOAT' && typeof initialValue === 'number') {
+        variable.setValueForMode(collection.defaultModeId, initialValue);
+      } else if (resolvedType === 'STRING' && typeof initialValue === 'string') {
+        variable.setValueForMode(collection.defaultModeId, initialValue);
+      }
+    }
+    
+    return {
+      success: true,
+      message: `Variable "${name}" created successfully`,
+      variable: {
+        id: variable.id,
+        name: variable.name,
+        resolvedType: variable.resolvedType,
+        description: variable.description,
+        variableCollectionId: variable.variableCollectionId,
+        remote: variable.remote
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to create variable: ${error.message}`);
+  }
+}
+
+/**
+ * Create a new variable collection with mode support
+ */
+async function createVariableCollection(params) {
+  try {
+    const { name, initialModeNames = ["Mode 1"] } = params;
+    
+    // Validate required parameters
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      throw new Error('Collection name is required and cannot be empty');
+    }
+    
+    // Create the variable collection
+    const collection = figma.variables.createVariableCollection(name);
+    
+    // Add additional modes if specified
+    if (initialModeNames.length > 1) {
+      for (let i = 1; i < initialModeNames.length; i++) {
+        collection.addMode(initialModeNames[i]);
+      }
+      
+      // Rename the default mode to the first specified name
+      const modes = collection.modes;
+      if (modes.length > 0) {
+        modes[0].name = initialModeNames[0];
+      }
+    }
+    
+    return {
+      success: true,
+      message: `Variable collection "${name}" created successfully`,
+      collection: {
+        id: collection.id,
+        name: collection.name,
+        modes: collection.modes.map(mode => ({
+          modeId: mode.modeId,
+          name: mode.name
+        })),
+        defaultModeId: collection.defaultModeId,
+        remote: collection.remote
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to create variable collection: ${error.message}`);
+  }
+}
+
+/**
+ * Get local variables with filtering and pagination
+ */
+async function getLocalVariables(params = {}) {
+  try {
+    const { collectionId, type, namePattern, limit = 1000, offset = 0 } = params;
+    
+    // Get all local variables
+    let variables = figma.variables.getLocalVariables();
+    
+    // Apply filters
+    if (collectionId) {
+      variables = variables.filter(variable => variable.variableCollectionId === collectionId);
+    }
+    
+    if (type) {
+      variables = variables.filter(variable => variable.resolvedType === type);
+    }
+    
+    if (namePattern) {
+      const pattern = new RegExp(namePattern, 'i');
+      variables = variables.filter(variable => pattern.test(variable.name));
+    }
+    
+    // Apply pagination
+    const totalCount = variables.length;
+    const paginatedVariables = variables.slice(offset, offset + limit);
+    
+    // Format response
+    const formattedVariables = paginatedVariables.map(variable => ({
+      id: variable.id,
+      name: variable.name,
+      resolvedType: variable.resolvedType,
+      description: variable.description,
+      variableCollectionId: variable.variableCollectionId,
+      remote: variable.remote,
+      valuesByMode: variable.valuesByMode
+    }));
+    
+    return {
+      success: true,
+      variables: formattedVariables,
+      pagination: {
+        total: totalCount,
+        offset: offset,
+        limit: limit,
+        hasMore: offset + limit < totalCount
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to get local variables: ${error.message}`);
+  }
+}
+
+/**
+ * Get local variable collections with metadata
+ */
+async function getLocalVariableCollections(params = {}) {
+  try {
+    const { 
+      includeVariableCount = false, 
+      includeModes = true, 
+      namePattern, 
+      sortBy = "name", 
+      sortOrder = "asc" 
+    } = params;
+    
+    // Get all local variable collections
+    let collections = figma.variables.getLocalVariableCollections();
+    
+    // Apply name pattern filter
+    if (namePattern) {
+      const pattern = new RegExp(namePattern, 'i');
+      collections = collections.filter(collection => pattern.test(collection.name));
+    }
+    
+    // Format collections
+    let formattedCollections = collections.map(collection => {
+      const result = {
+        id: collection.id,
+        name: collection.name,
+        defaultModeId: collection.defaultModeId,
+        remote: collection.remote
+      };
+      
+      if (includeModes) {
+        result.modes = collection.modes.map(mode => ({
+          modeId: mode.modeId,
+          name: mode.name
+        }));
+      }
+      
+      if (includeVariableCount) {
+        const variables = figma.variables.getLocalVariables();
+        result.variableCount = variables.filter(v => v.variableCollectionId === collection.id).length;
+      }
+      
+      return result;
+    });
+    
+    // Apply sorting
+    formattedCollections.sort((a, b) => {
+      let aValue, bValue;
+      
+      switch (sortBy) {
+        case "name":
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+          break;
+        case "variableCount":
+          aValue = a.variableCount || 0;
+          bValue = b.variableCount || 0;
+          break;
+        default:
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+      }
+      
+      if (sortOrder === "desc") {
+        return aValue < bValue ? 1 : aValue > bValue ? -1 : 0;
+      } else {
+        return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
+      }
+    });
+    
+    return {
+      success: true,
+      collections: formattedCollections,
+      total: formattedCollections.length
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to get local variable collections: ${error.message}`);
+  }
+}
+
+/**
+ * Get a specific variable by ID
+ */
+async function getVariableById(params) {
+  try {
+    const { variableId } = params;
+    
+    if (!variableId) {
+      throw new Error('Variable ID is required');
+    }
+    
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    
+    return {
+      success: true,
+      variable: {
+        id: variable.id,
+        name: variable.name,
+        resolvedType: variable.resolvedType,
+        description: variable.description,
+        variableCollectionId: variable.variableCollectionId,
+        remote: variable.remote,
+        valuesByMode: variable.valuesByMode
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to get variable: ${error.message}`);
+  }
+}
+
+/**
+ * Get a specific variable collection by ID
+ */
+async function getVariableCollectionById(params) {
+  try {
+    const { collectionId } = params;
+    
+    if (!collectionId) {
+      throw new Error('Collection ID is required');
+    }
+    
+    const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+    
+    if (!collection) {
+      throw new Error(`Variable collection not found: ${collectionId}`);
+    }
+    
+    return {
+      success: true,
+      collection: {
+        id: collection.id,
+        name: collection.name,
+        modes: collection.modes.map(mode => ({
+          modeId: mode.modeId,
+          name: mode.name
+        })),
+        defaultModeId: collection.defaultModeId,
+        remote: collection.remote
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to get variable collection: ${error.message}`);
+  }
+}
+
+/**
+ * Bind a variable to a node property
+ */
+async function setBoundVariable(params) {
+  try {
+    const { nodeId, property, variableId, modeId } = params;
+    
+    // Validate required parameters
+    if (!nodeId) {
+      throw new Error('Node ID is required');
+    }
+    
+    if (!property) {
+      throw new Error('Property is required');
+    }
+    
+    if (!variableId) {
+      throw new Error('Variable ID is required');
+    }
+    
+    // Get the node
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found: ${nodeId}`);
+    }
+    
+    // Get the variable
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    
+    // Validate property compatibility
+    const supportedProperties = {
+      'width': ['FLOAT'],
+      'height': ['FLOAT'],
+      'x': ['FLOAT'],
+      'y': ['FLOAT'],
+      'rotation': ['FLOAT'],
+      'opacity': ['FLOAT'],
+      'cornerRadius': ['FLOAT'],
+      'strokeWeight': ['FLOAT'],
+      'visible': ['BOOLEAN'],
+      'locked': ['BOOLEAN'],
+      'characters': ['STRING']
+    };
+    
+    if (!supportedProperties[property] || !supportedProperties[property].includes(variable.resolvedType)) {
+      throw new Error(`Property "${property}" is not compatible with variable type "${variable.resolvedType}"`);
+    }
+    
+    // Set the bound variable
+    if (modeId) {
+      node.setBoundVariable(property, variable, modeId);
+    } else {
+      node.setBoundVariable(property, variable);
+    }
+    
+    return {
+      success: true,
+      message: `Variable "${variable.name}" bound to property "${property}" on node "${node.name}"`,
+      binding: {
+        nodeId: node.id,
+        nodeName: node.name,
+        property: property,
+        variableId: variable.id,
+        variableName: variable.name,
+        modeId: modeId || null
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to bind variable: ${error.message}`);
+  }
+}
+
+/**
+ * Bind a variable to a paint property (fill or stroke)
+ */
+async function setBoundVariableForPaint(params) {
+  try {
+    const { nodeId, property, variableId, paintIndex = 0 } = params;
+    
+    // Validate required parameters
+    if (!nodeId) {
+      throw new Error('Node ID is required');
+    }
+    
+    if (!property || !['fills', 'strokes'].includes(property)) {
+      throw new Error('Property must be "fills" or "strokes"');
+    }
+    
+    if (!variableId) {
+      throw new Error('Variable ID is required');
+    }
+    
+    // Get the node
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found: ${nodeId}`);
+    }
+    
+    // Get the variable
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    
+    // Validate variable type for paint
+    if (variable.resolvedType !== 'COLOR') {
+      throw new Error(`Variable must be of type COLOR for paint properties, got: ${variable.resolvedType}`);
+    }
+    
+    // Set the bound variable for paint
+    node.setBoundVariable(property, variable, paintIndex);
+    
+    return {
+      success: true,
+      message: `Color variable "${variable.name}" bound to ${property}[${paintIndex}] on node "${node.name}"`,
+      binding: {
+        nodeId: node.id,
+        nodeName: node.name,
+        property: property,
+        paintIndex: paintIndex,
+        variableId: variable.id,
+        variableName: variable.name
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to bind variable for paint: ${error.message}`);
+  }
+}
+
+/**
+ * Remove a bound variable from a node property
+ */
+async function removeBoundVariable(params) {
+  try {
+    const { nodeId, property } = params;
+    
+    // Validate required parameters
+    if (!nodeId) {
+      throw new Error('Node ID is required');
+    }
+    
+    if (!property) {
+      throw new Error('Property is required');
+    }
+    
+    // Get the node
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found: ${nodeId}`);
+    }
+    
+    // Remove the bound variable
+    node.removeBoundVariable(property);
+    
+    return {
+      success: true,
+      message: `Bound variable removed from property "${property}" on node "${node.name}"`,
+      nodeId: node.id,
+      nodeName: node.name,
+      property: property
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to remove bound variable: ${error.message}`);
+  }
+}
+
+/**
+ * Update a variable's value for a specific mode
+ */
+async function updateVariableValue(params) {
+  try {
+    const { variableId, modeId, value } = params;
+    
+    // Validate required parameters
+    if (!variableId) {
+      throw new Error('Variable ID is required');
+    }
+    
+    if (!modeId) {
+      throw new Error('Mode ID is required');
+    }
+    
+    if (value === undefined || value === null) {
+      throw new Error('Value is required');
+    }
+    
+    // Get the variable
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    
+    // Validate value based on variable type
+    if (variable.resolvedType === 'COLOR' && typeof value === 'object') {
+      if (!value.r || !value.g || !value.b) {
+        throw new Error('COLOR variables require r, g, b values');
+      }
+      variable.setValueForMode(modeId, {
+        r: value.r,
+        g: value.g,
+        b: value.b,
+        a: value.a || 1.0
+      });
+    } else if (variable.resolvedType === 'BOOLEAN' && typeof value === 'boolean') {
+      variable.setValueForMode(modeId, value);
+    } else if (variable.resolvedType === 'FLOAT' && typeof value === 'number') {
+      variable.setValueForMode(modeId, value);
+    } else if (variable.resolvedType === 'STRING' && typeof value === 'string') {
+      variable.setValueForMode(modeId, value);
+    } else {
+      throw new Error(`Invalid value type for variable type "${variable.resolvedType}"`);
+    }
+    
+    return {
+      success: true,
+      message: `Variable "${variable.name}" updated successfully`,
+      variable: {
+        id: variable.id,
+        name: variable.name,
+        resolvedType: variable.resolvedType,
+        modeId: modeId,
+        newValue: value
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to update variable value: ${error.message}`);
+  }
+}
+
+/**
+ * Update a variable's name
+ */
+async function updateVariableName(params) {
+  try {
+    const { variableId, newName } = params;
+    
+    // Validate required parameters
+    if (!variableId) {
+      throw new Error('Variable ID is required');
+    }
+    
+    if (!newName || typeof newName !== 'string' || newName.trim().length === 0) {
+      throw new Error('New name is required and cannot be empty');
+    }
+    
+    // Get the variable
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    
+    const oldName = variable.name;
+    variable.name = newName.trim();
+    
+    return {
+      success: true,
+      message: `Variable renamed from "${oldName}" to "${newName}"`,
+      variable: {
+        id: variable.id,
+        oldName: oldName,
+        newName: variable.name,
+        resolvedType: variable.resolvedType
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to update variable name: ${error.message}`);
+  }
+}
+
+/**
+ * Delete a variable
+ */
+async function deleteVariable(params) {
+  try {
+    const { variableId } = params;
+    
+    // Validate required parameters
+    if (!variableId) {
+      throw new Error('Variable ID is required');
+    }
+    
+    // Get the variable
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    
+    const variableName = variable.name;
+    
+    // Delete the variable
+    variable.remove();
+    
+    return {
+      success: true,
+      message: `Variable "${variableName}" deleted successfully`,
+      deletedVariable: {
+        id: variableId,
+        name: variableName
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to delete variable: ${error.message}`);
+  }
+}
+
+/**
+ * Delete a variable collection
+ */
+async function deleteVariableCollection(params) {
+  try {
+    const { collectionId } = params;
+    
+    // Validate required parameters
+    if (!collectionId) {
+      throw new Error('Collection ID is required');
+    }
+    
+    // Get the collection
+    const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+    if (!collection) {
+      throw new Error(`Variable collection not found: ${collectionId}`);
+    }
+    
+    const collectionName = collection.name;
+    
+    // Delete the collection
+    collection.remove();
+    
+    return {
+      success: true,
+      message: `Variable collection "${collectionName}" deleted successfully`,
+      deletedCollection: {
+        id: collectionId,
+        name: collectionName
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to delete variable collection: ${error.message}`);
+  }
+}
+
+/**
+ * Get references to where a variable is used
+ */
+async function getVariableReferences(params) {
+  try {
+    const { variableId } = params;
+    
+    // Validate required parameters
+    if (!variableId) {
+      throw new Error('Variable ID is required');
+    }
+    
+    // Get the variable
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    
+    // Get references
+    const references = variable.getReferences();
+    
+    // Format references
+    const formattedReferences = references.map(ref => ({
+      nodeId: ref.node.id,
+      nodeName: ref.node.name,
+      nodeType: ref.node.type,
+      property: ref.property,
+      modeId: ref.modeId || null
+    }));
+    
+    return {
+      success: true,
+      variable: {
+        id: variable.id,
+        name: variable.name
+      },
+      references: formattedReferences,
+      referenceCount: formattedReferences.length
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to get variable references: ${error.message}`);
+  }
+}
+
+/**
+ * Set a variable's value for a specific mode
+ */
+async function setVariableModeValue(params) {
+  try {
+    const { variableId, modeId, value } = params;
+    
+    // Validate required parameters
+    if (!variableId) {
+      throw new Error('Variable ID is required');
+    }
+    
+    if (!modeId) {
+      throw new Error('Mode ID is required');
+    }
+    
+    if (value === undefined || value === null) {
+      throw new Error('Value is required');
+    }
+    
+    // Get the variable
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    
+    // Set the value for the specific mode
+    variable.setValueForMode(modeId, value);
+    
+    return {
+      success: true,
+      message: `Variable "${variable.name}" value set for mode "${modeId}"`,
+      variable: {
+        id: variable.id,
+        name: variable.name,
+        modeId: modeId,
+        value: value
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to set variable mode value: ${error.message}`);
+  }
+}
+
+/**
+ * Create a new mode in a variable collection
+ */
+async function createVariableMode(params) {
+  try {
+    const { collectionId, modeName } = params;
+    
+    // Validate required parameters
+    if (!collectionId) {
+      throw new Error('Collection ID is required');
+    }
+    
+    if (!modeName || typeof modeName !== 'string' || modeName.trim().length === 0) {
+      throw new Error('Mode name is required and cannot be empty');
+    }
+    
+    // Get the collection
+    const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+    if (!collection) {
+      throw new Error(`Variable collection not found: ${collectionId}`);
+    }
+    
+    // Create the new mode
+    const newMode = collection.addMode(modeName.trim());
+    
+    return {
+      success: true,
+      message: `Mode "${modeName}" created in collection "${collection.name}"`,
+      mode: {
+        modeId: newMode.modeId,
+        name: newMode.name
+      },
+      collection: {
+        id: collection.id,
+        name: collection.name,
+        totalModes: collection.modes.length
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to create variable mode: ${error.message}`);
+  }
+}
+
+/**
+ * Delete a mode from a variable collection
+ */
+async function deleteVariableMode(params) {
+  try {
+    const { collectionId, modeId } = params;
+    
+    // Validate required parameters
+    if (!collectionId) {
+      throw new Error('Collection ID is required');
+    }
+    
+    if (!modeId) {
+      throw new Error('Mode ID is required');
+    }
+    
+    // Get the collection
+    const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+    if (!collection) {
+      throw new Error(`Variable collection not found: ${collectionId}`);
+    }
+    
+    // Find the mode to delete
+    const modeToDelete = collection.modes.find(mode => mode.modeId === modeId);
+    if (!modeToDelete) {
+      throw new Error(`Mode not found: ${modeId}`);
+    }
+    
+    // Cannot delete the last mode
+    if (collection.modes.length === 1) {
+      throw new Error('Cannot delete the last mode in a collection');
+    }
+    
+    const modeName = modeToDelete.name;
+    
+    // Delete the mode
+    collection.removeMode(modeId);
+    
+    return {
+      success: true,
+      message: `Mode "${modeName}" deleted from collection "${collection.name}"`,
+      deletedMode: {
+        modeId: modeId,
+        name: modeName
+      },
+      collection: {
+        id: collection.id,
+        name: collection.name,
+        remainingModes: collection.modes.length
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to delete variable mode: ${error.message}`);
+  }
+}
+
+/**
+ * Reorder modes in a variable collection
+ */
+async function reorderVariableModes(params) {
+  try {
+    const { collectionId, modeIds } = params;
+    
+    // Validate required parameters
+    if (!collectionId) {
+      throw new Error('Collection ID is required');
+    }
+    
+    if (!modeIds || !Array.isArray(modeIds) || modeIds.length === 0) {
+      throw new Error('Mode IDs array is required and cannot be empty');
+    }
+    
+    // Get the collection
+    const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+    if (!collection) {
+      throw new Error(`Variable collection not found: ${collectionId}`);
+    }
+    
+    // Validate that all mode IDs exist in the collection
+    const existingModeIds = collection.modes.map(mode => mode.modeId);
+    const invalidModeIds = modeIds.filter(id => !existingModeIds.includes(id));
+    
+    if (invalidModeIds.length > 0) {
+      throw new Error(`Invalid mode IDs: ${invalidModeIds.join(', ')}`);
+    }
+    
+    if (modeIds.length !== existingModeIds.length) {
+      throw new Error('All modes must be included in the reorder operation');
+    }
+    
+    // Reorder the modes
+    collection.reorderModes(modeIds);
+    
+    return {
+      success: true,
+      message: `Modes reordered in collection "${collection.name}"`,
+      collection: {
+        id: collection.id,
+        name: collection.name,
+        reorderedModes: collection.modes.map(mode => ({
+          modeId: mode.modeId,
+          name: mode.name
+        }))
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to reorder variable modes: ${error.message}`);
+  }
+}
+
+/**
+ * Publish a variable collection to make it available to other files
+ */
+async function publishVariableCollection(params) {
+  try {
+    const { collectionId } = params;
+    
+    // Validate required parameters
+    if (!collectionId) {
+      throw new Error('Collection ID is required');
+    }
+    
+    // Get the collection
+    const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+    if (!collection) {
+      throw new Error(`Variable collection not found: ${collectionId}`);
+    }
+    
+    // Publish the collection
+    await collection.publishAsync();
+    
+    return {
+      success: true,
+      message: `Variable collection "${collection.name}" published successfully`,
+      collection: {
+        id: collection.id,
+        name: collection.name,
+        remote: collection.remote
+      }
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to publish variable collection: ${error.message}`);
+  }
+}
+
+/**
+ * Get published variables from team library
+ */
+async function getPublishedVariables(params = {}) {
+  try {
+    const { collectionId, type, limit = 100 } = params;
+    
+    // Get published variables
+    let publishedVariables = figma.variables.getPublishedVariables();
+    
+    // Apply filters
+    if (collectionId) {
+      publishedVariables = publishedVariables.filter(variable => 
+        variable.variableCollectionId === collectionId
+      );
+    }
+    
+    if (type) {
+      publishedVariables = publishedVariables.filter(variable => 
+        variable.resolvedType === type
+      );
+    }
+    
+    // Apply limit
+    publishedVariables = publishedVariables.slice(0, limit);
+    
+    // Format response
+    const formattedVariables = publishedVariables.map(variable => ({
+      id: variable.id,
+      name: variable.name,
+      resolvedType: variable.resolvedType,
+      description: variable.description,
+      variableCollectionId: variable.variableCollectionId,
+      remote: variable.remote
+    }));
+    
+    return {
+      success: true,
+      publishedVariables: formattedVariables,
+      total: formattedVariables.length
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to get published variables: ${error.message}`);
+  }
 }
