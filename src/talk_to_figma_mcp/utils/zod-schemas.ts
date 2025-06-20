@@ -282,16 +282,26 @@ export const VariableTypeSchema = z
 export const VariableScopeSchema = z
   .enum([
     "ALL_SCOPES",
-    "TEXT_CONTENT",
-    "CORNER_RADIUS",
-    "WIDTH_HEIGHT",
-    "GAP",
     "ALL_FILLS",
     "FRAME_FILL",
     "SHAPE_FILL",
     "TEXT_FILL",
     "STROKE_COLOR",
     "EFFECT_COLOR",
+    "WIDTH_HEIGHT",
+    "GAP",
+    "CORNER_RADIUS",
+    "TEXT_CONTENT",
+    "FONT_FAMILY",
+    "FONT_SIZE",
+    "FONT_WEIGHT",
+    "LINE_HEIGHT",
+    "LETTER_SPACING",
+    "PARAGRAPH_SPACING",
+    "PARAGRAPH_INDENT",
+    "OPACITY",
+    "GRID_LAYOUT_COLUMNS",
+    "GRID_LAYOUT_ROWS",
   ])
   .describe("Variable scope");
 
@@ -514,6 +524,105 @@ export class SchemaValidator {
 }
 
 /**
+ * Variable schemas
+ */
+
+// Variable data types
+export const VariableDataTypeSchema = z
+  .enum(['BOOLEAN', 'FLOAT', 'STRING', 'COLOR'])
+  .describe("Variable data type");
+
+// Variable value
+export const VariableValueSchema = z
+  .union([
+    z.boolean(),
+    z.number(),
+    z.string(),
+    ColorSchema
+  ])
+  .describe("Variable value");
+
+// Variable ID
+export const VariableIdSchema = z
+  .string()
+  .min(1, "Variable ID cannot be empty")
+  .describe("Variable ID");
+
+// Variable collection ID
+export const VariableCollectionIdSchema = z
+  .string()
+  .min(1, "Variable collection ID cannot be empty")
+  .describe("Variable collection ID");
+
+// Mode ID
+export const ModeIdSchema = z
+  .string()
+  .min(1, "Mode ID cannot be empty")
+  .describe("Mode ID");
+
+// Variable name
+export const VariableNameSchema = z
+  .string()
+  .min(1, "Variable name cannot be empty")
+  .max(255, "Variable name too long")
+  .describe("Variable name");
+
+// Variable collection name
+export const VariableCollectionNameSchema = z
+  .string()
+  .min(1, "Variable collection name cannot be empty")
+  .max(255, "Variable collection name too long")
+  .describe("Variable collection name");
+
+// Create variable schema
+export const CreateVariableSchema = z
+  .object({
+    name: VariableNameSchema,
+    variableCollectionId: VariableCollectionIdSchema,
+    resolvedType: VariableDataTypeSchema,
+    initialValue: VariableValueSchema.optional(),
+    description: z.string().optional(),
+    scopes: z.array(VariableScopeSchema).optional(),
+  })
+  .describe("Create variable parameters");
+
+// Create variable collection schema
+export const CreateVariableCollectionSchema = z
+  .object({
+    name: VariableCollectionNameSchema,
+    initialModeNames: z.array(z.string()).optional().default([]),
+  })
+  .describe("Create variable collection parameters");
+
+// Set bound variable schema
+export const SetBoundVariableSchema = z
+  .object({
+    nodeId: NodeIdSchema,
+    property: z.string().min(1, "Property name required"),
+    variableId: VariableIdSchema,
+  })
+  .describe("Set bound variable parameters");
+
+// Update variable value schema
+export const UpdateVariableValueSchema = z
+  .object({
+    variableId: VariableIdSchema,
+    modeId: ModeIdSchema,
+    value: VariableValueSchema,
+  })
+  .describe("Update variable value parameters");
+
+// Filter variables schema
+export const FilterVariablesSchema = z
+  .object({
+    collectionId: VariableCollectionIdSchema.optional(),
+    type: VariableDataTypeSchema.optional(),
+    name: z.string().optional(),
+    remote: z.boolean().optional(),
+  })
+  .describe("Filter variables parameters");
+
+/**
  * Export commonly used schema combinations
  */
 export const CommonSchemas = {
@@ -548,5 +657,23 @@ export const CommonSchemas = {
     cornerRadius: z.number().min(0).optional(),
     padding: z.number().min(0).optional(),
     autoLayout: z.boolean().optional(),
+  }),
+
+  // Variable schemas
+  Variable: z.object({
+    id: VariableIdSchema,
+    name: VariableNameSchema,
+    collectionId: VariableCollectionIdSchema,
+    type: VariableDataTypeSchema,
+    value: VariableValueSchema.optional(),
+  }),
+
+  VariableCollection: z.object({
+    id: VariableCollectionIdSchema,
+    name: VariableCollectionNameSchema,
+    modes: z.array(z.object({
+      modeId: ModeIdSchema,
+      name: z.string(),
+    })),
   }),
 } as const; 

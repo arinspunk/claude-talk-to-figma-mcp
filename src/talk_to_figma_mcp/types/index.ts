@@ -38,6 +38,100 @@ export interface ProgressMessage {
   [key: string]: any; // Allow any other properties
 }
 
+/**
+ * Variable API Types
+ * TypeScript interfaces for Figma Variables API
+ */
+
+// Variable data types
+export type VariableDataType = 'BOOLEAN' | 'FLOAT' | 'STRING' | 'COLOR';
+
+// Variable scope types  
+export type VariableScope = 
+  | 'ALL_SCOPES'
+  | 'ALL_FILLS'
+  | 'FRAME_FILL'
+  | 'SHAPE_FILL'
+  | 'TEXT_FILL'
+  | 'STROKE_COLOR'
+  | 'EFFECT_COLOR'
+  | 'WIDTH_HEIGHT'
+  | 'GAP'
+  | 'CORNER_RADIUS'
+  | 'TEXT_CONTENT'
+  | 'FONT_FAMILY'
+  | 'FONT_SIZE'
+  | 'FONT_WEIGHT'
+  | 'LINE_HEIGHT'
+  | 'LETTER_SPACING'
+  | 'PARAGRAPH_SPACING'
+  | 'PARAGRAPH_INDENT'
+  | 'OPACITY'
+  | 'GRID_LAYOUT_COLUMNS'
+  | 'GRID_LAYOUT_ROWS';
+
+// Variable value types
+export type VariableValue = boolean | number | string | { r: number; g: number; b: number; a: number };
+
+// Variable interface
+export interface FigmaVariable {
+  id: string;
+  name: string;
+  key: string;
+  variableCollectionId: string;
+  resolvedType: VariableDataType;
+  valuesByMode: Record<string, VariableValue>;
+  remote: boolean;
+  description: string;
+  hiddenFromPublishing: boolean;
+  scopes: VariableScope[];
+  codeSyntax: Record<string, string>;
+}
+
+// Variable collection interface
+export interface FigmaVariableCollection {
+  id: string;
+  name: string;
+  key: string;
+  modes: Array<{
+    modeId: string;
+    name: string;
+  }>;
+  defaultModeId: string;
+  remote: boolean;
+  hiddenFromPublishing: boolean;
+  variableIds: string[];
+}
+
+// Variable reference interface
+export interface VariableReference {
+  type: 'VARIABLE_ALIAS';
+  id: string;
+}
+
+// Variable binding interfaces
+export interface VariableBinding {
+  nodeId: string;
+  property: string;
+  variableId: string;
+}
+
+// Variable creation parameters
+export interface CreateVariableParams {
+  name: string;
+  variableCollectionId: string;
+  resolvedType: VariableDataType;
+  initialValue?: VariableValue;
+  description?: string;
+  scopes?: VariableScope[];
+}
+
+// Variable collection creation parameters
+export interface CreateVariableCollectionParams {
+  name: string;
+  initialModeNames?: string[];
+}
+
 // Define possible command types for Figma
 export type FigmaCommand =
   | "get_document_info"
@@ -84,4 +178,25 @@ export type FigmaCommand =
   | "group_nodes"
   | "ungroup_nodes"
   | "flatten_node"
-  | "insert_child";
+  | "insert_child"
+  // Variable commands
+  | "create_variable"
+  | "create_variable_collection"
+  | "get_local_variables"
+  | "get_local_variable_collections"
+  | "get_variable_by_id"
+  | "get_variable_collection_by_id"
+  | "set_bound_variable"
+  | "set_bound_variable_for_paint"
+  | "remove_bound_variable"
+  | "update_variable_value"
+  | "update_variable_name"
+  | "delete_variable"
+  | "delete_variable_collection"
+  | "get_variable_references"
+  | "set_variable_mode_value"
+  | "create_variable_mode"
+  | "delete_variable_mode"
+  | "reorder_variable_modes"
+  | "publish_variable_collection"
+  | "get_published_variables";
