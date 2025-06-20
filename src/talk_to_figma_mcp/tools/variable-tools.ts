@@ -13,7 +13,7 @@
 
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { sendCommandToFigma } from "../utils/websocket";
+import { sendCommandToFigma } from "../utils/websocket.js";
 
 // Zod Schemas for Variable Tools
 const VariableDataTypeSchema = z.enum(["BOOLEAN", "FLOAT", "STRING", "COLOR"], {
@@ -164,6 +164,76 @@ const RemoveBoundVariableInputSchema = z.object({
     path: ["property"]
   }
 );
+
+// Schemas for Task 1.5 - Variable Modification Tools
+const UpdateVariableValueInputSchema = z.object({
+  variableId: VariableIdSchema,
+  value: VariableValueSchema,
+  modeId: z.string()
+    .min(1, "Mode ID cannot be empty")
+    .regex(/^[a-zA-Z0-9_\-:]+$/, "Invalid mode ID format")
+    .optional(),
+  validateType: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Whether to validate that the value matches the variable's type"),
+  description: z.string()
+    .max(1000, "Description too long")
+    .optional()
+    .describe("Optional description for the value update"),
+});
+
+const UpdateVariableNameInputSchema = z.object({
+  variableId: VariableIdSchema,
+  newName: z.string()
+    .min(1, "Variable name cannot be empty")
+    .max(255, "Variable name too long")
+    .regex(/^[a-zA-Z][a-zA-Z0-9_\-\s]*$/, "Variable name must start with a letter and contain only letters, numbers, spaces, hyphens, and underscores"),
+  checkDuplicates: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Whether to check for duplicate names within the collection"),
+  collectionId: z.string()
+    .regex(/^[a-zA-Z0-9_\-:]+$/, "Invalid collection ID format")
+    .optional()
+    .describe("Collection ID to check for duplicates (optional, auto-detected if not provided)"),
+});
+
+const DeleteVariableInputSchema = z.object({
+  variableId: VariableIdSchema,
+  force: z.boolean()
+    .optional()
+    .default(false)
+    .describe("Force delete even if variable is referenced by other elements"),
+  cleanupReferences: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Clean up references to this variable before deletion"),
+  replacement: z.object({
+    variableId: VariableIdSchema.optional(),
+    staticValue: VariableValueSchema.optional(),
+  }).optional().describe("Optional replacement for variable references"),
+});
+
+const DeleteVariableCollectionInputSchema = z.object({
+  collectionId: VariableCollectionIdSchema,
+  force: z.boolean()
+    .optional()
+    .default(false)
+    .describe("Force delete even if collection contains referenced variables"),
+  cascadeDelete: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Delete all variables in the collection (cascade delete)"),
+  cleanupReferences: z.boolean()
+    .optional()
+    .default(true)
+    .describe("Clean up all variable references before deletion"),
+  replacement: z.object({
+    collectionId: VariableCollectionIdSchema.optional(),
+    variableMappings: z.record(z.string(), VariableIdSchema).optional(),
+  }).optional().describe("Optional replacement collection and variable mappings"),
+});
 
 /**
  * Property-Variable Type Compatibility Map
@@ -1185,6 +1255,552 @@ export function registerVariableTools(server: McpServer): void {
           enhancedMessage += '. There may be issues with cleaning up variable references.';
         } else if (errorMessage.includes('permission') || errorMessage.includes('access')) {
           enhancedMessage += '. You may not have permission to modify bindings on this node.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Update the value of an existing variable with type validation
+   * 
+   * Updates the value of a variable in the specified mode with comprehensive type validation.
+   * Supports all variable types (BOOLEAN, FLOAT, STRING, COLOR) and ensures type compatibility.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity Medium
+   * @figmaApi figma.variables.setValueForVariable()
+   * 
+   * @param variableId - The unique variable ID (format validated)
+   * @param value - New value for the variable (type validated)
+   * @param modeId - Mode ID for the value (optional, defaults to default mode)
+   * @param validateType - Whether to validate value type compatibility (optional, default true)
+   * @param description - Optional description for the update operation
+   * 
+   * @returns Success message with update details or error message
+   * 
+   * @example
+   * ```typescript
+   * // Update a string variable
+   * const result = await update_variable_value({
+   *   variableId: "var-123",
+   *   value: "New text content"
+   * });
+   * 
+   * // Update a color variable
+   * const colorResult = await update_variable_value({
+   *   variableId: "color-var-456",
+   *   value: { r: 0.8, g: 0.2, b: 0.4, a: 1.0 }
+   * });
+   * 
+   * // Update with specific mode and validation
+   * const modeResult = await update_variable_value({
+   *   variableId: "theme-var-789",
+   *   value: true,
+   *   modeId: "dark-mode",
+   *   validateType: true,
+   *   description: "Updated for dark theme"
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {TypeError} When value type doesn't match variable type
+   * @throws {NotFoundError} When variable or mode ID does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "update_variable_value",
+    "Update variable value with comprehensive type validation",
+    {
+      variableId: VariableIdSchema.describe("Unique variable ID (format validated)"),
+      value: VariableValueSchema.describe("New value for the variable (type validated)"),
+      modeId: z.string().optional().describe("Mode ID for the value (optional)"),
+      validateType: z.boolean().optional().describe("Validate value type compatibility (default: true)"),
+      description: z.string().optional().describe("Optional description for the update"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = UpdateVariableValueInputSchema.parse(args);
+        
+        // Additional business logic validation for value types
+        if (validatedArgs.validateType !== false) {
+          // Validate COLOR values have required properties
+          if (typeof validatedArgs.value === 'object' && validatedArgs.value !== null && 'r' in validatedArgs.value) {
+            const colorValue = validatedArgs.value as any;
+            if (typeof colorValue.r !== 'number' || typeof colorValue.g !== 'number' || typeof colorValue.b !== 'number') {
+              throw new Error('COLOR values must have numeric r, g, b properties');
+            }
+            if (colorValue.r < 0 || colorValue.r > 1 || colorValue.g < 0 || colorValue.g > 1 || colorValue.b < 0 || colorValue.b > 1) {
+              throw new Error('COLOR values must be in range 0-1 for r, g, b components');
+            }
+          }
+        }
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("update_variable_value", {
+          variableId: validatedArgs.variableId,
+          value: validatedArgs.value,
+          modeId: validatedArgs.modeId,
+          validateType: validatedArgs.validateType,
+          description: validatedArgs.description || "",
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Variable "${validatedArgs.variableId}" value updated successfully: ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error updating variable value - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error updating variable value: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('type mismatch') || errorMessage.includes('incompatible type')) {
+          enhancedMessage += '. The value type may not match the variable\'s expected type.';
+        } else if (errorMessage.includes('MODE_NOT_FOUND') || errorMessage.includes('mode')) {
+          enhancedMessage += '. The specified mode ID may not exist in this variable\'s collection.';
+        } else if (errorMessage.includes('VARIABLE_NOT_FOUND') || errorMessage.includes('not found')) {
+          enhancedMessage += '. The variable ID may not exist or may have been deleted.';
+        } else if (errorMessage.includes('COLOR values')) {
+          enhancedMessage += '. Please ensure COLOR values use proper format: {r: 0-1, g: 0-1, b: 0-1, a?: 0-1}.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Update the name of an existing variable with duplicate checking
+   * 
+   * Updates the name of a variable with optional duplicate checking within the collection.
+   * Ensures name uniqueness and follows Figma naming conventions.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity Medium
+   * @figmaApi figma.variables.setNameForVariable()
+   * 
+   * @param variableId - The unique variable ID (format validated)
+   * @param newName - New name for the variable (1-255 chars, naming conventions validated)
+   * @param checkDuplicates - Whether to check for duplicate names (optional, default true)
+   * @param collectionId - Collection ID for duplicate checking (optional, auto-detected)
+   * 
+   * @returns Success message with rename details or error message
+   * 
+   * @example
+   * ```typescript
+   * // Simple rename
+   * const result = await update_variable_name({
+   *   variableId: "var-123",
+   *   newName: "updated-variable-name"
+   * });
+   * 
+   * // Rename with duplicate checking disabled
+   * const noCheckResult = await update_variable_name({
+   *   variableId: "var-456",
+   *   newName: "new-name",
+   *   checkDuplicates: false
+   * });
+   * 
+   * // Rename with explicit collection
+   * const explicitResult = await update_variable_name({
+   *   variableId: "var-789",
+   *   newName: "collection-specific-name",
+   *   checkDuplicates: true,
+   *   collectionId: "collection-123"
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {DuplicateNameError} When name already exists in collection
+   * @throws {NotFoundError} When variable or collection ID does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "update_variable_name",
+    "Update variable name with duplicate checking and validation",
+    {
+      variableId: VariableIdSchema.describe("Unique variable ID (format validated)"),
+      newName: z.string().min(1).describe("New variable name (1-255 chars, naming conventions)"),
+      checkDuplicates: z.boolean().optional().describe("Check for duplicate names (default: true)"),
+      collectionId: z.string().optional().describe("Collection ID for duplicate checking (auto-detected)"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = UpdateVariableNameInputSchema.parse(args);
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("update_variable_name", {
+          variableId: validatedArgs.variableId,
+          newName: validatedArgs.newName,
+          checkDuplicates: validatedArgs.checkDuplicates,
+          collectionId: validatedArgs.collectionId,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Variable "${validatedArgs.variableId}" renamed to "${validatedArgs.newName}" successfully: ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error updating variable name - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error updating variable name: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('DUPLICATE_NAME') || errorMessage.includes('already exists')) {
+          enhancedMessage += '. A variable with this name already exists in the collection.';
+        } else if (errorMessage.includes('INVALID_NAME') || errorMessage.includes('name format')) {
+          enhancedMessage += '. The name must start with a letter and contain only letters, numbers, spaces, hyphens, and underscores.';
+        } else if (errorMessage.includes('VARIABLE_NOT_FOUND') || errorMessage.includes('not found')) {
+          enhancedMessage += '. The variable ID may not exist or may have been deleted.';
+        } else if (errorMessage.includes('COLLECTION_NOT_FOUND')) {
+          enhancedMessage += '. The specified collection ID may not exist.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Delete a variable with reference management and cleanup
+   * 
+   * Deletes a variable with comprehensive reference management, cleanup options,
+   * and optional replacement strategies to maintain design system integrity.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity High
+   * @figmaApi figma.variables.deleteVariable()
+   * 
+   * @param variableId - The unique variable ID to delete (format validated)
+   * @param force - Force deletion even if variable is referenced (optional, default false)
+   * @param cleanupReferences - Clean up references before deletion (optional, default true)
+   * @param replacement - Optional replacement variable or static value for references
+   * 
+   * @returns Success message with deletion details and cleanup info or error message
+   * 
+   * @example
+   * ```typescript
+   * // Safe deletion with reference cleanup
+   * const result = await delete_variable({
+   *   variableId: "var-123"
+   * });
+   * 
+   * // Force deletion of referenced variable
+   * const forceResult = await delete_variable({
+   *   variableId: "var-456",
+   *   force: true,
+   *   cleanupReferences: true
+   * });
+   * 
+   * // Delete with replacement variable
+   * const replaceResult = await delete_variable({
+   *   variableId: "old-var-789",
+   *   replacement: {
+   *     variableId: "new-var-101"
+   *   }
+   * });
+   * 
+   * // Delete with static value replacement
+   * const staticResult = await delete_variable({
+   *   variableId: "temp-var-111",
+   *   replacement: {
+   *     staticValue: "#FF0000"
+   *   }
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {ReferenceError} When variable is referenced and force is false
+   * @throws {NotFoundError} When variable ID does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "delete_variable",
+    "Delete variable with comprehensive reference management and cleanup",
+    {
+      variableId: VariableIdSchema.describe("Unique variable ID to delete (format validated)"),
+      force: z.boolean().optional().describe("Force deletion even if referenced (default: false)"),
+      cleanupReferences: z.boolean().optional().describe("Clean up references before deletion (default: true)"),
+      replacement: z.object({
+        variableId: VariableIdSchema.optional(),
+        staticValue: VariableValueSchema.optional(),
+      }).optional().describe("Optional replacement for variable references"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = DeleteVariableInputSchema.parse(args);
+        
+        // Validate replacement if provided
+        if (validatedArgs.replacement) {
+          const hasVariableId = validatedArgs.replacement.variableId !== undefined;
+          const hasStaticValue = validatedArgs.replacement.staticValue !== undefined;
+          
+          if (hasVariableId && hasStaticValue) {
+            throw new Error('Cannot specify both replacement variableId and staticValue. Choose one.');
+          }
+          
+          if (!hasVariableId && !hasStaticValue) {
+            throw new Error('Replacement must specify either variableId or staticValue.');
+          }
+        }
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("delete_variable", {
+          variableId: validatedArgs.variableId,
+          force: validatedArgs.force,
+          cleanupReferences: validatedArgs.cleanupReferences,
+          replacement: validatedArgs.replacement,
+        });
+
+        // Build success message with cleanup details
+        const cleanupInfo = (result as any).referencesCleanedUp ? ` (${(result as any).referencesCleanedUp} references cleaned up)` : '';
+        const replacementInfo = validatedArgs.replacement ? ' with replacement applied' : '';
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Variable "${validatedArgs.variableId}" deleted successfully${replacementInfo}${cleanupInfo}: ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error deleting variable - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error deleting variable: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('VARIABLE_IN_USE') || errorMessage.includes('referenced')) {
+          enhancedMessage += '. The variable is still referenced by other elements. Use force=true to delete anyway or provide a replacement.';
+        } else if (errorMessage.includes('VARIABLE_NOT_FOUND') || errorMessage.includes('not found')) {
+          enhancedMessage += '. The variable ID may not exist or may have already been deleted.';
+        } else if (errorMessage.includes('replacement') || errorMessage.includes('both replacement')) {
+          enhancedMessage += '. Check replacement configuration - use either variableId OR staticValue, not both.';
+        } else if (errorMessage.includes('cleanup') || errorMessage.includes('references')) {
+          enhancedMessage += '. There may be issues with cleaning up variable references.';
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Delete a variable collection with cascade delete and reference management
+   * 
+   * Deletes an entire variable collection with all its variables, comprehensive
+   * reference cleanup, and optional replacement strategies for maintaining design integrity.
+   * 
+   * @category Variables
+   * @phase 1
+   * @complexity High
+   * @figmaApi figma.variables.deleteVariableCollection()
+   * 
+   * @param collectionId - The unique collection ID to delete (format validated)
+   * @param force - Force deletion even if variables are referenced (optional, default false)
+   * @param cascadeDelete - Delete all variables in collection (optional, default true)
+   * @param cleanupReferences - Clean up all variable references (optional, default true)
+   * @param replacement - Optional replacement collection and variable mappings
+   * 
+   * @returns Success message with deletion details and cleanup statistics or error message
+   * 
+   * @example
+   * ```typescript
+   * // Safe collection deletion
+   * const result = await delete_variable_collection({
+   *   collectionId: "collection-123"
+   * });
+   * 
+   * // Force deletion of collection with referenced variables
+   * const forceResult = await delete_variable_collection({
+   *   collectionId: "collection-456",
+   *   force: true,
+   *   cascadeDelete: true,
+   *   cleanupReferences: true
+   * });
+   * 
+   * // Delete with replacement collection
+   * const replaceResult = await delete_variable_collection({
+   *   collectionId: "old-collection-789",
+   *   replacement: {
+   *     collectionId: "new-collection-101",
+   *     variableMappings: {
+   *       "old-var-1": "new-var-1",
+   *       "old-var-2": "new-var-2"
+   *     }
+   *   }
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When input parameters are invalid
+   * @throws {ReferenceError} When collection variables are referenced and force is false
+   * @throws {NotFoundError} When collection ID does not exist
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "delete_variable_collection",
+    "Delete variable collection with cascade delete and comprehensive reference management",
+    {
+      collectionId: VariableCollectionIdSchema.describe("Unique collection ID to delete (format validated)"),
+      force: z.boolean().optional().describe("Force deletion even if variables are referenced (default: false)"),
+      cascadeDelete: z.boolean().optional().describe("Delete all variables in collection (default: true)"),
+      cleanupReferences: z.boolean().optional().describe("Clean up all variable references (default: true)"),
+      replacement: z.object({
+        collectionId: VariableCollectionIdSchema.optional(),
+        variableMappings: z.record(z.string(), VariableIdSchema).optional(),
+      }).optional().describe("Optional replacement collection and variable mappings"),
+    },
+    async (args) => {
+      try {
+        // Validate input with enhanced Zod schema
+        const validatedArgs = DeleteVariableCollectionInputSchema.parse(args);
+        
+        // Validate replacement if provided
+        if (validatedArgs.replacement) {
+          const hasCollectionId = validatedArgs.replacement.collectionId !== undefined;
+          const hasMappings = validatedArgs.replacement.variableMappings !== undefined;
+          
+          if (hasMappings && !hasCollectionId) {
+            throw new Error('Variable mappings require a replacement collection ID.');
+          }
+        }
+        
+        // Execute Figma command
+        const result = await sendCommandToFigma("delete_variable_collection", {
+          collectionId: validatedArgs.collectionId,
+          force: validatedArgs.force,
+          cascadeDelete: validatedArgs.cascadeDelete,
+          cleanupReferences: validatedArgs.cleanupReferences,
+          replacement: validatedArgs.replacement,
+        });
+
+        // Build success message with statistics
+        const variableCount = (result as any).variablesDeleted || 0;
+        const referencesCount = (result as any).referencesCleanedUp || 0;
+        const replacementInfo = validatedArgs.replacement ? ' with replacement applied' : '';
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Variable collection "${validatedArgs.collectionId}" deleted successfully${replacementInfo}. Variables deleted: ${variableCount}, References cleaned: ${referencesCount}. Details: ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        // Handle Zod validation errors
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error deleting variable collection - Validation failed: ${validationErrors}`,
+              },
+            ],
+          };
+        }
+        
+        // Handle other errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let enhancedMessage = `Error deleting variable collection: ${errorMessage}`;
+        
+        // Provide more helpful messages for common errors
+        if (errorMessage.includes('VARIABLES_IN_USE') || errorMessage.includes('referenced')) {
+          enhancedMessage += '. Some variables in the collection are still referenced. Use force=true to delete anyway or provide replacement mappings.';
+        } else if (errorMessage.includes('COLLECTION_NOT_FOUND') || errorMessage.includes('not found')) {
+          enhancedMessage += '. The collection ID may not exist or may have already been deleted.';
+        } else if (errorMessage.includes('Variable mappings require') || errorMessage.includes('replacement collection')) {
+          enhancedMessage += '. Variable mappings can only be used with a replacement collection ID.';
+        } else if (errorMessage.includes('cascade') || errorMessage.includes('cleanup')) {
+          enhancedMessage += '. There may be issues with the cascade delete or reference cleanup process.';
         }
         
         return {

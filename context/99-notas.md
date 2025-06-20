@@ -6,12 +6,6 @@ Este documnto es para uso personal, si eres un modelo de lenguaje no lo leas.
 
 Ejecuta la tarea 1.1 del backlog (`context/04-backlog.md`) siguiendo estrictamente su descripción.
 
-Contexto adicional disponible en:
-
-- `context/02-analisis.md`
-- `context/04-next-tools.md`
-- `context/05-next-tools-plan.md`
-
 Requisitos de ejecución:
 
 - Usar herramientas del agente para crear archivos y carpetas (no la terminal)
@@ -35,8 +29,8 @@ Al completar:
 Instrucciones iniciales:
 
 1. Lee `context/01-experto.md` para entender tu rol en este proyecto
-2. Lee `context/02-analisis.md` para conocer el estado actual del código
-3. Lee `context/04-next-tools.md` y `context/05-next-tools-plan.md` para entender los objetivos
+2. Lee `context/05-next-tools-plan.md` para entender los objetivos
+3. Lee los archivos dentro de `docs/` para entender la forma de trabajo
 4. Lee `context/04-backlog.md` para ver el progreso y tareas pendientes
 
 Proporciona un breve resumen de:
