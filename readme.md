@@ -42,9 +42,19 @@ A Model Context Protocol (MCP) plugin that allows Claude Desktop and other AI to
    ```
 
 3. Build the project:
-   ```bash
+
+   Run the appropriate command based on your operating system:
+   - **macOs / Linux**
+   
+    ```bash
    bun run build
    ```
+
+   - **Windows**
+   ```bash
+   bun run build:win
+   ```
+
 
 4. Configure the MCP in Claude Desktop:
    ```bash

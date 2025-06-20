@@ -21,6 +21,7 @@
     "socket": "bun run dist/socket.js",
     "setup": "./scripts/setup.sh",
     "build": "tsup && chmod +x dist/talk_to_figma_mcp/server.js dist/socket.js",
+    "build:win": "tsup",
     "build:watch": "tsup --watch",
     "dev": "bun run build:watch",
     "pub:release": "bun run build && npm publish",
