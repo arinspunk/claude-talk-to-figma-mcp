@@ -243,6 +243,12 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
     - Limitaciones y consideraciones técnicas
   - ✅ **Validación final**: Sistema completamente integrado sin conflictos, 20/20 herramientas accesibles 
 
+- **1.11** ⏳ Sincronizar variable-tools con plugin de Figma
+- **Descripción técnica**: Actualizar `src/claude_mcp_plugin/code.js` para implementar handlers de las 20 herramientas de variables, modificar sistema WebSocket para manejar comandos de variables, crear funciones Figma API correspondientes (createVariable, getLocalVariables, setBoundVariable, etc.), implementar validación y manejo de errores en el plugin, y establecer tests de comunicación MCP-Plugin.
+- **Dependencias**: Tarea 1.10
+- **Fecha**: Semana 3 - Día 2-3
+- **Trabajo realizado**: 
+
 ### FASE 2: STYLES MANAGEMENT
 
 - **2.1** ⏳ Crear estructura base para style-tools.ts con arquitectura de estilos
@@ -287,6 +293,12 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 - **Fecha**: Semana 5 - Día 4-5
 - **Trabajo realizado**: 
 
+- **2.8** ⏳ Sincronizar style-tools con plugin de Figma
+- **Descripción técnica**: Actualizar `src/claude_mcp_plugin/code.js` para implementar handlers de herramientas de estilos, crear funciones Figma API para gestión de PaintStyle, TextStyle, EffectStyle y GridStyle, implementar aplicación de estilos a nodos en el plugin, establecer validación de compatibilidad nodo-estilo, y crear tests de sincronización MCP-Plugin para estilos.
+- **Dependencias**: Tarea 2.7
+- **Fecha**: Semana 5 - Día 5
+- **Trabajo realizado**: 
+
 ### FASE 3: BOOLEAN OPERATIONS
 
 - **3.1** ⏳ Crear estructura base para boolean-tools.ts con geometría
@@ -317,6 +329,12 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 - **Descripción técnica**: Actualizar registro de herramientas, verificar compatibilidad con tools existentes, implementar logging específico para debug de operaciones, crear documentación técnica, y realizar tests de integración del sistema.
 - **Dependencias**: Tareas 3.1 a 3.4
 - **Fecha**: Semana 6 - Día 5
+- **Trabajo realizado**: 
+
+- **3.6** ⏳ Sincronizar boolean-tools con plugin de Figma
+- **Descripción técnica**: Actualizar `src/claude_mcp_plugin/code.js` para implementar operaciones booleanas (union, subtract, intersect, exclude), crear funciones de validación geométrica en el plugin, implementar herramientas auxiliares (flatten, outline_stroke, preview), establecer manejo de nodos vectoriales y preservación de propiedades, y crear tests de operaciones booleanas end-to-end.
+- **Dependencias**: Tarea 3.5
+- **Fecha**: Semana 7 - Día 1
 - **Trabajo realizado**: 
 
 ### FASE 4: LAYOUT ADVANCED
@@ -369,6 +387,12 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 - **Fecha**: Semana 8 - Día 3-4
 - **Trabajo realizado**: 
 
+- **4.9** ⏳ Sincronizar layout-tools con plugin de Figma
+- **Descripción técnica**: Actualizar `src/claude_mcp_plugin/code.js` para implementar herramientas de layout (group_nodes, constraints, auto-layout), crear funciones de cálculo espacial en el plugin, implementar herramientas de distribución y alineación, establecer validación de jerarquías y compatibilidad padre-hijo, crear manejo de componentes y variantes, y establecer tests de layout complejos end-to-end.
+- **Dependencias**: Tarea 4.8
+- **Fecha**: Semana 8 - Día 4-5
+- **Trabajo realizado**: 
+
 ### FASE 5: NAVIGATION & VIEWPORT
 
 - **5.1** ⏳ Crear estructura base para navigation-tools.ts con control de viewport
@@ -401,6 +425,12 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 - **Fecha**: Semana 9 - Día 5
 - **Trabajo realizado**: 
 
+- **5.6** ⏳ Sincronizar navigation-tools con plugin de Figma
+- **Descripción técnica**: Actualizar `src/claude_mcp_plugin/code.js` para implementar control de viewport (scroll, zoom, focus), crear funciones de navegación y posicionamiento en el plugin, implementar herramientas de zoom avanzado con límites y validaciones, establecer manejo de coordenadas y bounds de viewport, y crear tests de navegación y viewport end-to-end.
+- **Dependencias**: Tarea 5.5
+- **Fecha**: Semana 10 - Día 1
+- **Trabajo realizado**: 
+
 ### FASE 6: PLUGIN DATA & STORAGE
 
 - **6.1** ⏳ Crear estructura base para storage-tools.ts con persistencia
@@ -425,6 +455,12 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 - **Descripción técnica**: Actualizar registro de herramientas, implementar logging para operaciones de storage, crear documentación de mejores prácticas, establecer métricas de uso de storage, y realizar tests de integración.
 - **Dependencias**: Tareas 6.1 a 6.3
 - **Fecha**: Semana 10 - Día 4-5
+- **Trabajo realizado**: 
+
+- **6.5** ⏳ Sincronizar storage-tools con plugin de Figma
+- **Descripción técnica**: Actualizar `src/claude_mcp_plugin/code.js` para implementar plugin data management (set, get, remove), crear funciones de serialización y persistencia en el plugin, implementar shared plugin data con manejo de permisos, establecer validaciones de tamaño y formato de datos, crear sistema de cleanup y gestión de keys, y establecer tests de persistencia end-to-end.
+- **Dependencias**: Tarea 6.4
+- **Fecha**: Semana 11 - Día 1
 - **Trabajo realizado**: 
 
 ### FASE 7: ADVANCED MEDIA
@@ -465,6 +501,12 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 - **Fecha**: Semana 12 - Día 1-2
 - **Trabajo realizado**: 
 
+- **7.7** ⏳ Sincronizar media-tools con plugin de Figma
+- **Descripción técnica**: Actualizar `src/claude_mcp_plugin/code.js` para implementar creación de nodos de medios (image, video, gif), crear funciones de importación y procesamiento de medios en el plugin, implementar herramientas de exportación batch con progress reporting, establecer validación de formatos y optimización de tamaño, crear sistema de cache para URLs y manejo de memoria, y establecer tests de medios end-to-end.
+- **Dependencias**: Tarea 7.6
+- **Fecha**: Semana 12 - Día 2-3
+- **Trabajo realizado**: 
+
 ### FASE 8: FIGJAM TOOLS
 
 - **8.1** ⏳ Crear estructura base para figjam-tools.ts con elementos específicos
@@ -501,6 +543,12 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 - **Descripción técnica**: Actualizar registro de herramientas con detección de tipo de documento, implementar logging específico para FigJam, crear documentación de diferencias con herramientas estándar, y realizar tests de integración.
 - **Dependencias**: Tareas 8.1 a 8.5
 - **Fecha**: Semana 13 - Día 2-3
+- **Trabajo realizado**: 
+
+- **8.7** ⏳ Sincronizar figjam-tools con plugin de Figma
+- **Descripción técnica**: Actualizar `src/claude_mcp_plugin/code.js` para implementar elementos específicos de FigJam (sticky, connector, shapes), crear funciones de detección de tipo de documento en el plugin, implementar herramientas avanzadas (code_block, table, flowchart, mind_map), establecer herramientas de organización y elementos especiales (stamp, drawing), crear validación de compatibilidad FigJam vs Figma, y establecer tests de FigJam end-to-end.
+- **Dependencias**: Tarea 8.6
+- **Fecha**: Semana 13 - Día 3
 - **Trabajo realizado**: 
 
 ### FASE 9: DEV MODE TOOLS
@@ -541,12 +589,24 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 - **Fecha**: Semana 14 - Día 2-3
 - **Trabajo realizado**: 
 
+- **9.7** ⏳ Sincronizar dev-tools con plugin de Figma
+- **Descripción técnica**: Actualizar `src/claude_mcp_plugin/code.js` para implementar extracción de información de diseño (colors, tokens, specs), crear funciones de generación de código en el plugin (CSS, React, Flutter), implementar herramientas de recursos de desarrollo y templates, establecer validación de código generado y optimizaciones, crear sistema de exportación de dev specs, y establecer tests de generación de código end-to-end.
+- **Dependencias**: Tarea 9.6
+- **Fecha**: Semana 14 - Día 3
+- **Trabajo realizado**: 
+
 ### FASE 10: INTEGRACIÓN FINAL Y DOCUMENTACIÓN
 
 - **10.1** ⏳ Realizar testing de integración completo del sistema
 - **Descripción técnica**: Ejecutar suite completa de tests de todas las herramientas, verificar compatibilidad entre diferentes categorías de tools, realizar tests de performance del sistema completo, establecer tests de regresión para funcionalidades existentes, y validar coverage del 100%.
 - **Dependencias**: Todas las fases anteriores (1-9)
 - **Fecha**: Semana 14 - Día 3-4
+- **Trabajo realizado**: 
+
+- **10.1.1** ⏳ Validación final de sincronización MCP-Plugin completa
+- **Descripción técnica**: Ejecutar tests end-to-end de todas las herramientas sincronizadas entre MCP Server y Plugin de Figma, validar comunicación WebSocket para todas las 84 herramientas, verificar consistencia de respuestas entre MCP y Plugin, realizar tests de performance de comunicación completa, establecer tests de compatibilidad de todas las fases sincronizadas, y crear documentación de troubleshooting para sincronización.
+- **Dependencias**: Tareas 1.11, 2.8, 3.6, 4.9, 5.6, 6.5, 7.7, 8.7, 9.7
+- **Fecha**: Semana 14 - Día 4
 - **Trabajo realizado**: 
 
 - **10.2** ⏳ Optimizar performance y resolver issues finales
@@ -593,6 +653,9 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 - Tests deben ejecutarse en paralelo para optimizar tiempo de desarrollo
 - Timeouts deben configurarse según complejidad de cada categoría de operación
 - Logging debe ser consistente across todas las herramientas para debugging eficiente
+- **Sincronización MCP-Plugin**: Cada fase incluye tarea de sincronización para implementar herramientas en `src/claude_mcp_plugin/code.js`
+- **Comunicación End-to-End**: WebSocket debe manejar todos los comandos de las 84 herramientas
+- **Validación Dual**: Tests deben verificar funcionamiento tanto en MCP Server como en Plugin de Figma
 
 ### Riesgos Identificados
 - **Complejidad de Variables API**: Puede requerir tiempo adicional para casos edge
@@ -600,21 +663,29 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 - **Compatibilidad FigJam**: Requiere testing específico en ambos tipos de documento
 
 ## Seguimiento de Progreso
-- **Total de tareas**: 59
+- **Total de tareas**: 69 (59 originales + 10 sincronización plugin)
 - **Tareas completadas**: 13
-- **Progreso**: 22.0%
+- **Progreso**: 18.8%
 - **Duración estimada**: 16 semanas
-- **Herramientas a desarrollar**: 84
+- **Herramientas a desarrollar**: 84 (MCP Server + Plugin Figma sincronizado)
 - **Herramientas completadas**: 27 (6 básicas + 4 consulta + 6 binding + 4 modificación + 5 avanzadas + 2 publicación)
-- **Cobertura objetivo**: 95% de Figma API
+- **Cobertura objetivo**: 95% de Figma API (MCP + Plugin)
 
 ### Estado por Fase
 - **Fase 0 (Configuración)**: 4/4 completadas (100%) ✅
-- **Fase 1 (Variables)**: 10/10 completadas (100%) ✅
-- **Fases 2-9**: 0% (pendientes)
-- **Fase 10 (Final)**: 0% (pendiente)
+- **Fase 1 (Variables)**: 10/11 completadas (91%) - Pendiente: 1.11 (Sincronización Plugin)
+- **Fase 2 (Styles)**: 0/8 completadas (0%) - Incluye sincronización plugin
+- **Fase 3 (Boolean)**: 0/6 completadas (0%) - Incluye sincronización plugin  
+- **Fase 4 (Layout)**: 0/9 completadas (0%) - Incluye sincronización plugin
+- **Fase 5 (Navigation)**: 0/6 completadas (0%) - Incluye sincronización plugin
+- **Fase 6 (Storage)**: 0/5 completadas (0%) - Incluye sincronización plugin
+- **Fase 7 (Media)**: 0/7 completadas (0%) - Incluye sincronización plugin
+- **Fase 8 (FigJam)**: 0/7 completadas (0%) - Incluye sincronización plugin
+- **Fase 9 (Dev Tools)**: 0/7 completadas (0%) - Incluye sincronización plugin
+- **Fase 10 (Final)**: 0/6 completadas (0%) - Incluye validación sincronización
 
 ### Última Actualización
 - **Fecha**: 2025-01-20
 - **Tarea completada**: 1.10 - Integrar variable-tools en el sistema principal
-- **Próxima tarea**: 2.1 - Crear estructura base para style-tools.ts con arquitectura de estilos 
+- **Próxima tarea**: 1.11 - Sincronizar variable-tools con plugin de Figma
+- **Nota**: Se agregaron 10 tareas de sincronización MCP-Plugin para completar la arquitectura end-to-end 
