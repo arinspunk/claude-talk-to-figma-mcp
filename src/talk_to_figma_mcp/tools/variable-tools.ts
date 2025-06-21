@@ -16,6 +16,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket.js";
 import { createVariableWithRetry, validateVariablePostCreation } from "../utils/variable-value-validation.js";
 import { createEnhancedPaintErrorMessage } from "../utils/paint-binding-validation.js";
+import { executeOptimizedVariableReferencesAnalysis } from "../utils/variable-references-optimization.js";
 import type { VariableValue } from "../types/index.js";
 import {
   executeOptimizedUpdateVariableValue,
@@ -2086,17 +2087,16 @@ export function registerVariableTools(server: McpServer): void {
         // Validate input with enhanced Zod schema
         const validatedArgs = GetVariableReferencesInputSchema.parse(args);
         
-        // Execute Figma command with extended timeout for Task 1.13
-        // Reference analysis is the most expensive operation
-        const adaptiveTimeout = 30000; // Extended timeout for reference analysis
-        
-        const result = await sendCommandToFigma("get_variable_references", {
-          variableId: validatedArgs.variableId,
-          includeMetadata: validatedArgs.includeMetadata,
-          includeNodeDetails: validatedArgs.includeNodeDetails,
-          groupByProperty: validatedArgs.groupByProperty,
-          includeIndirect: validatedArgs.includeIndirect,
-        }, adaptiveTimeout);
+        // TASK 1.17 OPTIMIZATION: Use optimized references analysis with incremental processing
+        const result = await executeOptimizedVariableReferencesAnalysis(validatedArgs.variableId, {
+          incrementalAnalysis: true,
+          maxReferences: 1000,
+          progressiveResponse: true,
+          extendedTimeout: true,
+          memoryOptimization: true,
+          gracefulErrorHandling: true,
+          includeMetrics: true
+        });
 
         // Build success message with reference statistics
         const referenceCount = (result as any).totalReferences || 0;

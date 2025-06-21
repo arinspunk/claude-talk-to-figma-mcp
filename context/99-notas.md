@@ -4,26 +4,24 @@ Este documnto es para uso personal, si eres un modelo de lenguaje no lo leas.
 
 ## Ejecución de tarea
 
-Ejecuta la tarea 1.1 del backlog (`context/04-backlog.md`) siguiendo estrictamente su descripción.
+Ejecuta la tarea 1.17 del backlog (`context/04-backlog.md`) siguiendo estrictamente su descripción.
 
 Requisitos de ejecución:
 
 - TDD
-- Seguir convenciones establecidas en el prompt inicial
-- Documentar código según estándares definidos
 - No realizar acciones fuera del ámbito de la tarea
 - Comentarios y mensajes en el código en inglés
 
 Al completar:
 
 1. Describe el trabajo en un nuevo archivo dentro `context/claude-tests/` siguiendo el ejemplo del resto de arhivos de la carpeta.
-2. Actualizar estado de la tarea en context/04-backlog.md:
+2. Actualiza estado de la tarea en context/04-backlog.md:
    - Cambiar estado a ✅
    - Añadir fecha de finalización
    - Describir trabajo realizado
    - Actualizar Seguimiento del Progreso
 3. Commit con mensaje descriptivo y en inglés.
-4. Esperar instrucciones adicionales sin ejecutar más tareas
+4. Espera instrucciones adicionales sin ejecutar más tareas
 
 ## Nuevo Chat
 
