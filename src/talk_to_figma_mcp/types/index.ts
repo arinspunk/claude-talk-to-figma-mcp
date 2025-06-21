@@ -124,12 +124,30 @@ export interface CreateVariableParams {
   initialValue?: VariableValue;
   description?: string;
   scopes?: VariableScope[];
+  enableRetry?: boolean;
+  maxRetries?: number;
 }
 
 // Variable collection creation parameters
 export interface CreateVariableCollectionParams {
   name: string;
   initialModeNames?: string[];
+}
+
+// Variable creation response
+export interface CreateVariableResponse {
+  success: boolean;
+  variable: FigmaVariable;
+  error?: string;
+  retryAttempts?: number;
+  validationPassed?: boolean;
+}
+
+// Variable query response
+export interface GetVariableResponse {
+  success: boolean;
+  variable: FigmaVariable;
+  error?: string;
 }
 
 // Define possible command types for Figma

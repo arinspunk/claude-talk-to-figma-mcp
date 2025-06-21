@@ -199,7 +199,7 @@ export function getCurrentChannel(): string | null {
 export function sendCommandToFigma(
   command: FigmaCommand,
   params: unknown = {},
-  timeoutMs: number = 30000
+  timeoutMs: number = 45000  // Increased default timeout for Task 1.13
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     // If not connected, try to connect first
