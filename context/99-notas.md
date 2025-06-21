@@ -8,21 +8,22 @@ Ejecuta la tarea 1.1 del backlog (`context/04-backlog.md`) siguiendo estrictamen
 
 Requisitos de ejecución:
 
-- Usar herramientas del agente para crear archivos y carpetas (no la terminal)
+- TDD
 - Seguir convenciones establecidas en el prompt inicial
 - Documentar código según estándares definidos
 - No realizar acciones fuera del ámbito de la tarea
 - Comentarios y mensajes en el código en inglés
-- Documentación en `context/` en castellano 
 
 Al completar:
 
-1. Actualizar estado de la tarea en context/04-backlog.md:
+1. Describe el trabajo en un nuevo archivo dentro `context/claude-tests/` siguiendo el ejemplo del resto de arhivos de la carpeta.
+2. Actualizar estado de la tarea en context/04-backlog.md:
    - Cambiar estado a ✅
    - Añadir fecha de finalización
    - Describir trabajo realizado
    - Actualizar Seguimiento del Progreso
-2. Esperar instrucciones adicionales sin ejecutar más tareas
+3. Commit con mensaje descriptivo y en inglés.
+4. Esperar instrucciones adicionales sin ejecutar más tareas
 
 ## Nuevo Chat
 

@@ -209,6 +209,8 @@ async function handleCommand(command, params) {
       return await setBoundVariableForPaint(params);
     case "remove_bound_variable":
       return await removeBoundVariable(params);
+    case "remove_bound_variable_batch":
+      return await removeBoundVariableBatch(params);
     case "update_variable_value":
       return await updateVariableValue(params);
     case "update_variable_name":
@@ -4054,6 +4056,111 @@ async function removeBoundVariable(params) {
     
   } catch (error) {
     throw new Error(`Failed to remove bound variable: ${error.message}`);
+  }
+}
+
+/**
+ * Remove bound variables from multiple nodes in batch operation - TASK 1.16 OPTIMIZATION
+ */
+async function removeBoundVariableBatch(params) {
+  try {
+    const { operations } = params;
+    
+    // Validate required parameters
+    if (!operations || !Array.isArray(operations)) {
+      throw new Error('Operations array is required');
+    }
+    
+    if (operations.length === 0) {
+      throw new Error('At least one operation is required');
+    }
+    
+    if (operations.length > 50) {
+      throw new Error('Maximum 50 operations per batch');
+    }
+    
+    const results = [];
+    let successfulOperations = 0;
+    let failedOperations = 0;
+    const errors = [];
+    
+    // Process each operation
+    for (let i = 0; i < operations.length; i++) {
+      const operation = operations[i];
+      
+      try {
+        const { nodeId, property, paintType, paintIndex, forceCleanup } = operation;
+        
+        // Validate operation parameters
+        if (!nodeId) {
+          throw new Error(`Operation ${i}: Node ID is required`);
+        }
+        
+        // Get the node
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node) {
+          throw new Error(`Operation ${i}: Node not found: ${nodeId}`);
+        }
+        
+        // Determine what to remove
+        if (property) {
+          // Remove property binding
+          node.removeBoundVariable(property);
+          results.push({
+            nodeId: node.id,
+            property: property,
+            success: true,
+            index: i
+          });
+        } else if (paintType && paintIndex !== undefined) {
+          // Remove paint binding
+          const paintProperty = paintType; // 'fills' or 'strokes'
+          node.removeBoundVariable(paintProperty, paintIndex);
+          results.push({
+            nodeId: node.id,
+            paintType: paintType,
+            paintIndex: paintIndex,
+            success: true,
+            index: i
+          });
+        } else {
+          throw new Error(`Operation ${i}: Must specify either property or paintType/paintIndex`);
+        }
+        
+        successfulOperations++;
+        
+      } catch (error) {
+        // Handle individual operation failure
+        failedOperations++;
+        errors.push(`Operation ${i}: ${error.message}`);
+        
+        results.push({
+          nodeId: operation.nodeId,
+          property: operation.property,
+          paintType: operation.paintType,
+          paintIndex: operation.paintIndex,
+          success: false,
+          error: error.message,
+          index: i
+        });
+      }
+    }
+    
+    return {
+      success: failedOperations === 0,
+      message: `Batch operation completed: ${successfulOperations}/${operations.length} successful`,
+      results: results,
+      performance: {
+        totalOperations: operations.length,
+        successfulOperations: successfulOperations,
+        failedOperations: failedOperations,
+        batchOptimized: true
+      },
+      errors: errors.length > 0 ? errors : undefined
+    };
+    
+  } catch (error) {
+    throw new Error(`Failed to execute batch remove operation: ${error.message}`);
   }
 }
 

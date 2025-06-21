@@ -17,6 +17,14 @@ import { sendCommandToFigma } from "../utils/websocket.js";
 import { createVariableWithRetry, validateVariablePostCreation } from "../utils/variable-value-validation.js";
 import { createEnhancedPaintErrorMessage } from "../utils/paint-binding-validation.js";
 import type { VariableValue } from "../types/index.js";
+import {
+  executeOptimizedUpdateVariableValue,
+  executeOptimizedSetVariableModeValue,
+  executeOptimizedRemoveBoundVariable,
+  executeBatchRemoveBoundVariable,
+  executeMultipleBatchRemoveOperations,
+  type BatchRemoveOperation
+} from "../utils/variable-modification-optimization.js";
 
 // Zod Schemas for Variable Tools
 const VariableDataTypeSchema = z.enum(["BOOLEAN", "FLOAT", "STRING", "COLOR"], {
@@ -1420,8 +1428,8 @@ export function registerVariableTools(server: McpServer): void {
         // Validate input with enhanced Zod schema
         const validatedArgs = RemoveBoundVariableInputSchema.parse(args);
         
-        // Execute Figma command
-        const result = await sendCommandToFigma("remove_bound_variable", validatedArgs);
+        // TASK 1.16 OPTIMIZATION: Use optimized execution with enhanced timeout and error handling
+        const result = await executeOptimizedRemoveBoundVariable(validatedArgs);
 
         // Build success message based on operation type
         let successMessage = '';
@@ -1531,7 +1539,7 @@ export function registerVariableTools(server: McpServer): void {
    */
   server.tool(
     "update_variable_value",
-    "Update variable value with comprehensive type validation",
+    "Update variable value with comprehensive type validation and optimized performance",
     {
       variableId: VariableIdSchema.describe("Unique variable ID (format validated)"),
       value: VariableValueSchema.describe("New value for the variable (type validated)"),
@@ -1558,8 +1566,8 @@ export function registerVariableTools(server: McpServer): void {
           }
         }
         
-        // Execute Figma command
-        const result = await sendCommandToFigma("update_variable_value", {
+        // TASK 1.16 OPTIMIZATION: Use optimized execution with enhanced timeout and error handling
+        const result = await executeOptimizedUpdateVariableValue({
           variableId: validatedArgs.variableId,
           value: validatedArgs.value,
           modeId: validatedArgs.modeId,
@@ -1589,26 +1597,14 @@ export function registerVariableTools(server: McpServer): void {
           };
         }
         
-        // Handle other errors
+        // TASK 1.16 OPTIMIZATION: Enhanced error messages are now handled in executeOptimizedUpdateVariableValue
         const errorMessage = error instanceof Error ? error.message : String(error);
-        let enhancedMessage = `Error updating variable value: ${errorMessage}`;
-        
-        // Provide more helpful messages for common errors
-        if (errorMessage.includes('type mismatch') || errorMessage.includes('incompatible type')) {
-          enhancedMessage += '. The value type may not match the variable\'s expected type.';
-        } else if (errorMessage.includes('MODE_NOT_FOUND') || errorMessage.includes('mode')) {
-          enhancedMessage += '. The specified mode ID may not exist in this variable\'s collection.';
-        } else if (errorMessage.includes('VARIABLE_NOT_FOUND') || errorMessage.includes('not found')) {
-          enhancedMessage += '. The variable ID may not exist or may have been deleted.';
-        } else if (errorMessage.includes('COLOR values')) {
-          enhancedMessage += '. Please ensure COLOR values use proper format: {r: 0-1, g: 0-1, b: 0-1, a?: 0-1}.';
-        }
         
         return {
           content: [
             {
               type: "text",
-              text: enhancedMessage,
+              text: errorMessage,
             },
           ],
         };
@@ -2208,7 +2204,7 @@ export function registerVariableTools(server: McpServer): void {
    */
   server.tool(
     "set_variable_mode_value",
-    "Set variable value for a specific mode with comprehensive validation",
+    "Set variable value for a specific mode with comprehensive validation and optimized performance",
     {
       variableId: VariableIdSchema.describe("Unique variable ID (format validated)"),
       modeId: ModeIdSchema.describe("Mode ID to set the value for (format validated)"),
@@ -2235,8 +2231,8 @@ export function registerVariableTools(server: McpServer): void {
           }
         }
         
-        // Execute Figma command
-        const result = await sendCommandToFigma("set_variable_mode_value", {
+        // TASK 1.16 OPTIMIZATION: Use optimized execution with mode-specific timeout and error handling
+        const result = await executeOptimizedSetVariableModeValue({
           variableId: validatedArgs.variableId,
           modeId: validatedArgs.modeId,
           value: validatedArgs.value,
@@ -2266,28 +2262,14 @@ export function registerVariableTools(server: McpServer): void {
           };
         }
         
-        // Handle other errors
+        // TASK 1.16 OPTIMIZATION: Enhanced error messages are now handled in executeOptimizedSetVariableModeValue
         const errorMessage = error instanceof Error ? error.message : String(error);
-        let enhancedMessage = `Error setting variable mode value: ${errorMessage}`;
-        
-        // Provide more helpful messages for common errors
-        if (errorMessage.includes('VALUE_EXISTS') || errorMessage.includes('already has a value')) {
-          enhancedMessage += '. The mode already has a value. Set overwriteExisting to true to replace it.';
-        } else if (errorMessage.includes('MODE_NOT_FOUND') || errorMessage.includes('mode')) {
-          enhancedMessage += '. The specified mode ID may not exist in this variable\'s collection.';
-        } else if (errorMessage.includes('VARIABLE_NOT_FOUND') || errorMessage.includes('variable not found')) {
-          enhancedMessage += '. The variable ID may not exist or may have been deleted.';
-        } else if (errorMessage.includes('type mismatch') || errorMessage.includes('incompatible type')) {
-          enhancedMessage += '. The value type may not match the variable\'s expected type.';
-        } else if (errorMessage.includes('COLOR values')) {
-          enhancedMessage += '. Please ensure COLOR values use proper format: {r: 0-1, g: 0-1, b: 0-1, a?: 0-1}.';
-        }
         
         return {
           content: [
             {
               type: "text",
-              text: enhancedMessage,
+              text: errorMessage,
             },
           ],
         };
@@ -2974,6 +2956,89 @@ export function registerVariableTools(server: McpServer): void {
             {
               type: "text",
               text: enhancedMessage,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  /**
+   * Remove variable bindings from multiple nodes in batch operation - TASK 1.16 OPTIMIZATION
+   * 
+   * Efficiently removes variable bindings from multiple nodes or properties in a single optimized operation.
+   * Supports batch processing with performance monitoring and detailed error reporting.
+   * 
+   * @category Variables
+   * @phase 1.16
+   * @complexity High
+   * @figmaApi Custom batch implementation
+   * 
+   * @param operations - Array of remove operations to execute in batch
+   * 
+   * @returns Batch operation results with performance metrics or error message
+   * 
+   * @example
+   * ```typescript
+   * // Remove multiple property bindings
+   * const result = await remove_bound_variable_batch({
+   *   operations: [
+   *     { nodeId: "node:1", property: "width" },
+   *     { nodeId: "node:2", property: "height" },
+   *     { nodeId: "node:3", property: "opacity" }
+   *   ]
+   * });
+   * 
+   * // Remove paint bindings in batch
+   * const paintResult = await remove_bound_variable_batch({
+   *   operations: [
+   *     { nodeId: "card:1", paintType: "fills", paintIndex: 0 },
+   *     { nodeId: "card:2", paintType: "strokes", paintIndex: 0 }
+   *   ]
+   * });
+   * ```
+   * 
+   * @throws {ValidationError} When operations array is invalid
+   * @throws {BatchSizeError} When batch size exceeds maximum allowed
+   * @throws {WebSocketError} When communication with Figma fails
+   * @throws {FigmaAPIError} When Figma API returns an error
+   */
+  server.tool(
+    "remove_bound_variable_batch",
+    "Remove variable bindings from multiple nodes in optimized batch operation",
+    {
+      operations: z.array(z.object({
+        nodeId: NodeIdSchema,
+        property: NodePropertySchema.optional(),
+        paintType: PaintTypeSchema.optional(),
+        paintIndex: z.number().min(0).optional(),
+        forceCleanup: z.boolean().optional()
+      })).min(1, "At least one operation is required").max(50, "Maximum 50 operations per batch"),
+    },
+    async (args) => {
+      try {
+        // Validate input
+        const validatedArgs = args as { operations: BatchRemoveOperation[] };
+        
+        // TASK 1.16 OPTIMIZATION: Use batch execution with optimized performance
+        const result = await executeMultipleBatchRemoveOperations(validatedArgs.operations);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Batch remove operation completed: ${result.performance.successfulOperations}/${result.performance.totalOperations} successful. Performance: ${result.performance.executionTimeMs}ms total, ${result.performance.averageTimePerOperation.toFixed(1)}ms per operation. Details: ${JSON.stringify(result)}`,
+            },
+          ],
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error in batch remove operation: ${errorMessage}`,
             },
           ],
         };
