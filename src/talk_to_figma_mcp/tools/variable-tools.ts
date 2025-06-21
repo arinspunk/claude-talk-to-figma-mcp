@@ -14,6 +14,9 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket.js";
+import { createVariableWithRetry, validateVariablePostCreation } from "../utils/variable-value-validation.js";
+import { createEnhancedPaintErrorMessage } from "../utils/paint-binding-validation.js";
+import type { VariableValue } from "../types/index.js";
 
 // Zod Schemas for Variable Tools
 const VariableDataTypeSchema = z.enum(["BOOLEAN", "FLOAT", "STRING", "COLOR"], {
@@ -45,6 +48,8 @@ const CreateVariableInputSchema = z.object({
   resolvedType: VariableDataTypeSchema,
   initialValue: VariableValueSchema.optional(),
   description: z.string().max(1000, "Description too long").optional(),
+  enableRetry: z.boolean().optional().default(false),
+  maxRetries: z.number().min(0).max(10).optional().default(3),
 });
 
 const CreateVariableCollectionInputSchema = z.object({
@@ -482,13 +487,15 @@ export function registerVariableTools(server: McpServer): void {
    */
   server.tool(
     "create_variable",
-    "Create a new variable in a variable collection with comprehensive validation",
+    "Create a new variable in a variable collection with comprehensive validation and retry logic",
     {
       name: z.string().min(1).describe("Variable name (1-255 chars, must start with letter)"),
       variableCollectionId: z.string().min(1).describe("Variable collection ID"),
       resolvedType: VariableDataTypeSchema.describe("Variable data type"),
       initialValue: VariableValueSchema.optional().describe("Initial value for the variable"),
       description: z.string().optional().describe("Variable description (max 1000 chars)"),
+      enableRetry: z.boolean().optional().describe("Enable retry logic for initial value persistence (default: false)"),
+      maxRetries: z.number().optional().describe("Maximum retry attempts (default: 3, max: 10)"),
     },
     async (args) => {
       try {
@@ -505,14 +512,36 @@ export function registerVariableTools(server: McpServer): void {
           }
         }
         
-        // Execute Figma command
-        const result = await sendCommandToFigma("create_variable", {
-          name: validatedArgs.name,
-          variableCollectionId: validatedArgs.variableCollectionId,
-          resolvedType: validatedArgs.resolvedType,
-          initialValue: validatedArgs.initialValue,
-          description: validatedArgs.description || "",
-        });
+        // Prepare initial value with proper color type handling
+        let processedInitialValue = validatedArgs.initialValue;
+        if (validatedArgs.resolvedType === 'COLOR' && processedInitialValue && typeof processedInitialValue === 'object') {
+          const colorValue = processedInitialValue as any;
+          processedInitialValue = {
+            r: colorValue.r,
+            g: colorValue.g,
+            b: colorValue.b,
+            a: colorValue.a || 1.0
+          } as VariableValue;
+        }
+
+        // Use enhanced creation with retry logic if enabled
+        const result = validatedArgs.enableRetry 
+          ? await createVariableWithRetry({
+              name: validatedArgs.name,
+              variableCollectionId: validatedArgs.variableCollectionId,
+              resolvedType: validatedArgs.resolvedType,
+              initialValue: processedInitialValue as any,
+              description: validatedArgs.description || "",
+              enableRetry: validatedArgs.enableRetry,
+              maxRetries: validatedArgs.maxRetries
+            })
+          : await sendCommandToFigma("create_variable", {
+              name: validatedArgs.name,
+              variableCollectionId: validatedArgs.variableCollectionId,
+              resolvedType: validatedArgs.resolvedType,
+              initialValue: processedInitialValue as any,
+              description: validatedArgs.description || "",
+            });
 
         return {
           content: [
@@ -709,8 +738,22 @@ export function registerVariableTools(server: McpServer): void {
         if (validatedArgs.limit) queryParams.limit = validatedArgs.limit;
         if (validatedArgs.offset) queryParams.offset = validatedArgs.offset;
         
-        // Execute Figma command
-        const result = await sendCommandToFigma("get_local_variables", queryParams);
+        // Execute Figma command with adaptive timeout for Task 1.13
+        // Calculate timeout based on query complexity
+        let adaptiveTimeout = 15000; // Base timeout for simple queries
+        
+        // Increase timeout for complex operations
+        if (validatedArgs.limit && validatedArgs.limit > 100) {
+          adaptiveTimeout = 25000; // Larger datasets need more time
+        }
+        if (!validatedArgs.collectionId && !validatedArgs.type) {
+          adaptiveTimeout = 35000; // Unfiltered queries are most expensive
+        }
+        if (validatedArgs.namePattern) {
+          adaptiveTimeout += 5000; // Pattern matching adds overhead
+        }
+        
+        const result = await sendCommandToFigma("get_local_variables", queryParams, adaptiveTimeout);
 
         return {
           content: [
@@ -819,8 +862,19 @@ export function registerVariableTools(server: McpServer): void {
         if (validatedArgs.sortBy) queryParams.sortBy = validatedArgs.sortBy;
         if (validatedArgs.sortOrder) queryParams.sortOrder = validatedArgs.sortOrder;
         
-        // Execute Figma command
-        const result = await sendCommandToFigma("get_local_variable_collections", queryParams);
+        // Execute Figma command with adaptive timeout for Task 1.13
+        // Calculate timeout based on query complexity
+        let adaptiveTimeout = 12000; // Base timeout for collections
+        
+        // Increase timeout for expensive operations
+        if (validatedArgs.includeVariableCount) {
+          adaptiveTimeout = 25000; // Variable counting is expensive
+        }
+        if (validatedArgs.namePattern) {
+          adaptiveTimeout += 3000; // Pattern matching overhead
+        }
+        
+        const result = await sendCommandToFigma("get_local_variable_collections", queryParams, adaptiveTimeout);
 
         return {
           content: [
@@ -1242,8 +1296,12 @@ export function registerVariableTools(server: McpServer): void {
           );
         }
         
-        // Execute Figma command
-        const result = await sendCommandToFigma("set_bound_variable_for_paint", validatedArgs);
+        // Execute Figma command with optimized timeout for paint operations
+        const startTime = Date.now();
+        const result = await sendCommandToFigma("set_bound_variable_for_paint", {
+          ...validatedArgs,
+          _startTime: startTime
+        }, 4500); // CRITICAL FIX: Use optimized timeout from VARIABLE_OPERATION_TIMEOUTS.SET_BOUND_PAINT
 
         return {
           content: [
@@ -1267,18 +1325,17 @@ export function registerVariableTools(server: McpServer): void {
           };
         }
         
-        // Handle other errors
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        let enhancedMessage = `Error binding variable to paint: ${errorMessage}`;
-        
-        // Provide more helpful messages for common errors
-        if (errorMessage.includes('out of range') || errorMessage.includes('index')) {
-          enhancedMessage += '. The paint index may be out of range for this node.';
-        } else if (errorMessage.includes('not support') || errorMessage.includes('incompatible')) {
-          enhancedMessage += '. This node type may not support paint binding.';
-        } else if (errorMessage.includes('COLOR variable required')) {
-          enhancedMessage += '. Only COLOR variables can be bound to paint properties.';
-        }
+        // Handle other errors with enhanced messaging
+        const enhancedMessage = createEnhancedPaintErrorMessage(
+          error instanceof Error ? error : new Error(String(error)), 
+          {
+            nodeId: args.nodeId,
+            paintType: args.paintType,
+            paintIndex: args.paintIndex,
+            variableId: args.variableId,
+            variableType: args.variableType
+          }
+        );
         
         return {
           content: [
@@ -2033,14 +2090,17 @@ export function registerVariableTools(server: McpServer): void {
         // Validate input with enhanced Zod schema
         const validatedArgs = GetVariableReferencesInputSchema.parse(args);
         
-        // Execute Figma command
+        // Execute Figma command with extended timeout for Task 1.13
+        // Reference analysis is the most expensive operation
+        const adaptiveTimeout = 30000; // Extended timeout for reference analysis
+        
         const result = await sendCommandToFigma("get_variable_references", {
           variableId: validatedArgs.variableId,
           includeMetadata: validatedArgs.includeMetadata,
           includeNodeDetails: validatedArgs.includeNodeDetails,
           groupByProperty: validatedArgs.groupByProperty,
           includeIndirect: validatedArgs.includeIndirect,
-        });
+        }, adaptiveTimeout);
 
         // Build success message with reference statistics
         const referenceCount = (result as any).totalReferences || 0;

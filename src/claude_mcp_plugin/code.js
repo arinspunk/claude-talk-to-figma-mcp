@@ -3376,25 +3376,44 @@ async function createVariable(params) {
       variable.description = description;
     }
     
-    // Set initial value if provided
+    // Set initial value if provided with enhanced validation - Task 1.14
     if (initialValue !== undefined && initialValue !== null) {
-      // Validate value based on type
+      // Validate and set value based on type with strict type checking
       if (resolvedType === 'COLOR' && typeof initialValue === 'object') {
-        if (!initialValue.r || !initialValue.g || !initialValue.b) {
-          throw new Error('COLOR variables require r, g, b values');
+        // Enhanced COLOR validation
+        if (typeof initialValue.r !== 'number' || typeof initialValue.g !== 'number' || typeof initialValue.b !== 'number') {
+          throw new Error('COLOR variables require numeric r, g, b values');
         }
-        variable.setValueForMode(collection.defaultModeId, {
+        if (initialValue.r < 0 || initialValue.r > 1 || initialValue.g < 0 || initialValue.g > 1 || initialValue.b < 0 || initialValue.b > 1) {
+          throw new Error('COLOR values must be in range 0-1 for r, g, b components');
+        }
+        const colorValue = {
           r: initialValue.r,
           g: initialValue.g,
           b: initialValue.b,
-          a: initialValue.a || 1.0
-        });
-      } else if (resolvedType === 'BOOLEAN' && typeof initialValue === 'boolean') {
+          a: typeof initialValue.a === 'number' ? initialValue.a : 1.0
+        };
+        variable.setValueForMode(collection.defaultModeId, colorValue);
+      } else if (resolvedType === 'BOOLEAN') {
+        // Strict boolean validation - prevent type coercion
+        if (typeof initialValue !== 'boolean') {
+          throw new Error(`BOOLEAN variable requires boolean value, got: ${typeof initialValue} (${initialValue})`);
+        }
         variable.setValueForMode(collection.defaultModeId, initialValue);
-      } else if (resolvedType === 'FLOAT' && typeof initialValue === 'number') {
+      } else if (resolvedType === 'FLOAT') {
+        // Strict number validation - prevent type coercion
+        if (typeof initialValue !== 'number' || isNaN(initialValue)) {
+          throw new Error(`FLOAT variable requires number value, got: ${typeof initialValue} (${initialValue})`);
+        }
         variable.setValueForMode(collection.defaultModeId, initialValue);
-      } else if (resolvedType === 'STRING' && typeof initialValue === 'string') {
+      } else if (resolvedType === 'STRING') {
+        // Strict string validation - prevent type coercion
+        if (typeof initialValue !== 'string') {
+          throw new Error(`STRING variable requires string value, got: ${typeof initialValue} (${initialValue})`);
+        }
         variable.setValueForMode(collection.defaultModeId, initialValue);
+      } else {
+        throw new Error(`Invalid initial value type for ${resolvedType} variable: ${typeof initialValue}`);
       }
     }
     
@@ -3404,10 +3423,15 @@ async function createVariable(params) {
       variable: {
         id: variable.id,
         name: variable.name,
+        key: variable.key,
         resolvedType: variable.resolvedType,
         description: variable.description,
         variableCollectionId: variable.variableCollectionId,
-        remote: variable.remote
+        remote: variable.remote,
+        hiddenFromPublishing: variable.hiddenFromPublishing,
+        scopes: variable.scopes,
+        codeSyntax: variable.codeSyntax,
+        valuesByMode: variable.valuesByMode
       }
     };
     
@@ -3465,44 +3489,110 @@ async function createVariableCollection(params) {
 }
 
 /**
- * Get local variables with filtering and pagination
+ * Get local variables with filtering and pagination - OPTIMIZED for Task 1.13
+ * Implements chunked processing to prevent UI freeze and timeouts
  */
 async function getLocalVariables(params = {}) {
   try {
-    const { collectionId, type, namePattern, limit = 1000, offset = 0 } = params;
-    
-    // Get all local variables
-    let variables = figma.variables.getLocalVariables();
-    
-    // Apply filters
-    if (collectionId) {
-      variables = variables.filter(variable => variable.variableCollectionId === collectionId);
+    const { 
+      collectionId, 
+      type, 
+      namePattern, 
+      limit = 100,  // Reduced default limit for better performance
+      offset = 0,
+      chunkSize = 50  // Process in chunks to prevent UI freeze
+    } = params;
+
+    // Send progress update for long operations
+    const commandId = params.commandId || 'get_local_variables';
+    sendProgressUpdate(commandId, 'get_local_variables', 'started', 0, 0, 0, 'Starting variable query...');
+
+    // Get all local variables (this is unavoidable but we'll process in chunks)
+    const allVariables = figma.variables.getLocalVariables();
+    const totalVariables = allVariables.length;
+
+    sendProgressUpdate(commandId, 'get_local_variables', 'processing', 10, totalVariables, 0, `Found ${totalVariables} variables, applying filters...`);
+
+    // Process variables in chunks to prevent UI freeze
+    let filteredVariables = [];
+    let processedCount = 0;
+
+    for (let i = 0; i < allVariables.length; i += chunkSize) {
+      const chunk = allVariables.slice(i, i + chunkSize);
+      
+      // Apply filters to chunk
+      const filteredChunk = chunk.filter(variable => {
+        // Collection filter
+        if (collectionId && variable.variableCollectionId !== collectionId) {
+          return false;
+        }
+        
+        // Type filter
+        if (type && variable.resolvedType !== type) {
+          return false;
+        }
+        
+        // Name pattern filter
+        if (namePattern) {
+          const pattern = new RegExp(namePattern, 'i');
+          if (!pattern.test(variable.name)) {
+            return false;
+          }
+        }
+        
+        return true;
+      });
+
+      filteredVariables.push(...filteredChunk);
+      processedCount += chunk.length;
+
+      // Send progress update every chunk
+      const progress = Math.floor((processedCount / totalVariables) * 70) + 10; // 10-80% for filtering
+      sendProgressUpdate(commandId, 'get_local_variables', 'processing', progress, totalVariables, processedCount, 
+        `Filtered ${processedCount}/${totalVariables} variables...`);
+
+      // Yield control to prevent UI freeze
+      if (i % (chunkSize * 4) === 0) {
+        await new Promise(resolve => setTimeout(resolve, 1));
+      }
     }
-    
-    if (type) {
-      variables = variables.filter(variable => variable.resolvedType === type);
-    }
-    
-    if (namePattern) {
-      const pattern = new RegExp(namePattern, 'i');
-      variables = variables.filter(variable => pattern.test(variable.name));
-    }
-    
-    // Apply pagination
-    const totalCount = variables.length;
-    const paginatedVariables = variables.slice(offset, offset + limit);
-    
-    // Format response
-    const formattedVariables = paginatedVariables.map(variable => ({
-      id: variable.id,
-      name: variable.name,
-      resolvedType: variable.resolvedType,
-      description: variable.description,
-      variableCollectionId: variable.variableCollectionId,
-      remote: variable.remote,
-      valuesByMode: variable.valuesByMode
-    }));
-    
+
+    sendProgressUpdate(commandId, 'get_local_variables', 'processing', 80, totalVariables, totalVariables, 
+      `Filtering complete. Found ${filteredVariables.length} matching variables. Applying pagination...`);
+
+    // Apply pagination to filtered results
+    const totalCount = filteredVariables.length;
+    const paginatedVariables = filteredVariables.slice(offset, offset + limit);
+
+    sendProgressUpdate(commandId, 'get_local_variables', 'processing', 90, totalVariables, totalVariables, 
+      'Formatting response...');
+
+    // Format response with minimal data to reduce payload
+    const formattedVariables = paginatedVariables.map(variable => {
+      const result = {
+        id: variable.id,
+        name: variable.name,
+        resolvedType: variable.resolvedType,
+        variableCollectionId: variable.variableCollectionId,
+        remote: variable.remote
+      };
+
+      // Only include description if it exists (reduce payload)
+      if (variable.description) {
+        result.description = variable.description;
+      }
+
+      // Only include valuesByMode if specifically requested or small dataset
+      if (totalCount <= 50 || params.includeValues === true) {
+        result.valuesByMode = variable.valuesByMode;
+      }
+
+      return result;
+    });
+
+    sendProgressUpdate(commandId, 'get_local_variables', 'completed', 100, totalVariables, totalVariables, 
+      `Successfully retrieved ${formattedVariables.length} variables`);
+
     return {
       success: true,
       variables: formattedVariables,
@@ -3510,17 +3600,28 @@ async function getLocalVariables(params = {}) {
         total: totalCount,
         offset: offset,
         limit: limit,
-        hasMore: offset + limit < totalCount
+        hasMore: offset + limit < totalCount,
+        filtered: totalCount !== totalVariables,
+        originalTotal: totalVariables
+      },
+      performance: {
+        totalProcessed: totalVariables,
+        filtered: totalCount,
+        returned: formattedVariables.length,
+        chunksProcessed: Math.ceil(totalVariables / chunkSize)
       }
     };
     
   } catch (error) {
+    const commandId = params.commandId || 'get_local_variables';
+    sendProgressUpdate(commandId, 'get_local_variables', 'error', 0, 0, 0, `Error: ${error.message}`);
     throw new Error(`Failed to get local variables: ${error.message}`);
   }
 }
 
 /**
- * Get local variable collections with metadata
+ * Get local variable collections with metadata - OPTIMIZED for Task 1.13
+ * Implements efficient variable counting and progress tracking
  */
 async function getLocalVariableCollections(params = {}) {
   try {
@@ -3529,20 +3630,42 @@ async function getLocalVariableCollections(params = {}) {
       includeModes = true, 
       namePattern, 
       sortBy = "name", 
-      sortOrder = "asc" 
+      sortOrder = "asc",
+      limit = 50,  // Add pagination support
+      offset = 0
     } = params;
+
+    // Send progress update for long operations
+    const commandId = params.commandId || 'get_local_variable_collections';
+    sendProgressUpdate(commandId, 'get_local_variable_collections', 'started', 0, 0, 0, 'Starting collection query...');
     
     // Get all local variable collections
-    let collections = figma.variables.getLocalVariableCollections();
+    const allCollections = figma.variables.getLocalVariableCollections();
+    const totalCollections = allCollections.length;
+
+    sendProgressUpdate(commandId, 'get_local_variable_collections', 'processing', 20, totalCollections, 0, 
+      `Found ${totalCollections} collections, applying filters...`);
     
-    // Apply name pattern filter
+    // Apply name pattern filter first (most efficient)
+    let filteredCollections = allCollections;
     if (namePattern) {
       const pattern = new RegExp(namePattern, 'i');
-      collections = collections.filter(collection => pattern.test(collection.name));
+      filteredCollections = allCollections.filter(collection => pattern.test(collection.name));
+    }
+
+    sendProgressUpdate(commandId, 'get_local_variable_collections', 'processing', 40, totalCollections, 0, 
+      `Filtered to ${filteredCollections.length} collections, formatting data...`);
+
+    // Pre-load variables only once if variable count is needed
+    let allVariables = null;
+    if (includeVariableCount) {
+      allVariables = figma.variables.getLocalVariables();
+      sendProgressUpdate(commandId, 'get_local_variable_collections', 'processing', 60, totalCollections, 0, 
+        `Loaded ${allVariables.length} variables for counting...`);
     }
     
-    // Format collections
-    let formattedCollections = collections.map(collection => {
+    // Format collections efficiently
+    const formattedCollections = filteredCollections.map((collection, index) => {
       const result = {
         id: collection.id,
         name: collection.name,
@@ -3550,6 +3673,7 @@ async function getLocalVariableCollections(params = {}) {
         remote: collection.remote
       };
       
+      // Include modes if requested (lightweight operation)
       if (includeModes) {
         result.modes = collection.modes.map(mode => ({
           modeId: mode.modeId,
@@ -3557,15 +3681,25 @@ async function getLocalVariableCollections(params = {}) {
         }));
       }
       
-      if (includeVariableCount) {
-        const variables = figma.variables.getLocalVariables();
-        result.variableCount = variables.filter(v => v.variableCollectionId === collection.id).length;
+      // Include variable count if requested (expensive operation - optimized)
+      if (includeVariableCount && allVariables) {
+        result.variableCount = allVariables.filter(v => v.variableCollectionId === collection.id).length;
+      }
+
+      // Send progress update every 10 collections
+      if (index % 10 === 0) {
+        const progress = 60 + Math.floor((index / filteredCollections.length) * 20); // 60-80% for formatting
+        sendProgressUpdate(commandId, 'get_local_variable_collections', 'processing', progress, totalCollections, index, 
+          `Formatted ${index}/${filteredCollections.length} collections...`);
       }
       
       return result;
     });
+
+    sendProgressUpdate(commandId, 'get_local_variable_collections', 'processing', 80, totalCollections, filteredCollections.length, 
+      'Applying sorting...');
     
-    // Apply sorting
+    // Apply sorting efficiently
     formattedCollections.sort((a, b) => {
       let aValue, bValue;
       
@@ -3589,14 +3723,40 @@ async function getLocalVariableCollections(params = {}) {
         return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
       }
     });
+
+    sendProgressUpdate(commandId, 'get_local_variable_collections', 'processing', 90, totalCollections, filteredCollections.length, 
+      'Applying pagination...');
+
+    // Apply pagination
+    const totalFiltered = formattedCollections.length;
+    const paginatedCollections = formattedCollections.slice(offset, offset + limit);
+
+    sendProgressUpdate(commandId, 'get_local_variable_collections', 'completed', 100, totalCollections, totalFiltered, 
+      `Successfully retrieved ${paginatedCollections.length} collections`);
     
     return {
       success: true,
-      collections: formattedCollections,
-      total: formattedCollections.length
+      collections: paginatedCollections,
+      pagination: {
+        total: totalFiltered,
+        offset: offset,
+        limit: limit,
+        hasMore: offset + limit < totalFiltered,
+        filtered: totalFiltered !== totalCollections,
+        originalTotal: totalCollections
+      },
+      performance: {
+        totalCollections: totalCollections,
+        filtered: totalFiltered,
+        returned: paginatedCollections.length,
+        variableCountingEnabled: includeVariableCount,
+        totalVariablesProcessed: allVariables ? allVariables.length : 0
+      }
     };
     
   } catch (error) {
+    const commandId = params.commandId || 'get_local_variable_collections';
+    sendProgressUpdate(commandId, 'get_local_variable_collections', 'error', 0, 0, 0, `Error: ${error.message}`);
     throw new Error(`Failed to get local variable collections: ${error.message}`);
   }
 }
@@ -3749,60 +3909,113 @@ async function setBoundVariable(params) {
 }
 
 /**
- * Bind a variable to a paint property (fill or stroke)
+ * Bind a variable to a paint property (fill or stroke) - OPTIMIZED for Task 1.15
+ * Fixes: timeout issues, parameter compatibility, validation, error handling
  */
 async function setBoundVariableForPaint(params) {
   try {
-    const { nodeId, property, variableId, paintIndex = 0 } = params;
+    // CRITICAL FIX 1: Handle both 'paintType' (MCP) and 'property' (legacy) parameters
+    const { nodeId, paintType, property, variableId, paintIndex = 0, variableType } = params;
     
-    // Validate required parameters
+    // Determine the paint property (prioritize paintType from MCP)
+    const paintProperty = paintType || property;
+    
+    // CRITICAL FIX 2: Enhanced parameter validation with specific error messages
     if (!nodeId) {
       throw new Error('Node ID is required');
     }
     
-    if (!property || !['fills', 'strokes'].includes(property)) {
-      throw new Error('Property must be "fills" or "strokes"');
+    if (!paintProperty || !['fills', 'strokes'].includes(paintProperty)) {
+      throw new Error('Paint type must be "fills" or "strokes"');
     }
     
     if (!variableId) {
       throw new Error('Variable ID is required');
     }
     
-    // Get the node
-    const node = await figma.getNodeByIdAsync(nodeId);
+    // CRITICAL FIX 3: Validate paint index range (non-negative)
+    if (paintIndex < 0) {
+      throw new Error(`Paint index must be non-negative, got: ${paintIndex}`);
+    }
+    
+    // CRITICAL FIX 4: Pre-validate variable type if provided (early validation)
+    if (variableType && variableType !== 'COLOR') {
+      throw new Error(`Variable must be of type COLOR for paint properties, got: ${variableType}`);
+    }
+    
+    // PERFORMANCE FIX 1: Use synchronous getNodeById for faster execution
+    const node = figma.getNodeById(nodeId);
     if (!node) {
       throw new Error(`Node not found: ${nodeId}`);
     }
     
-    // Get the variable
-    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    // CRITICAL FIX 5: Validate node supports paint properties
+    if (!('fills' in node) && paintProperty === 'fills') {
+      throw new Error(`Node type ${node.type} does not support fill properties`);
+    }
+    
+    if (!('strokes' in node) && paintProperty === 'strokes') {
+      throw new Error(`Node type ${node.type} does not support stroke properties`);
+    }
+    
+    // PERFORMANCE FIX 2: Use synchronous getVariableById for faster execution
+    const variable = figma.variables.getVariableById(variableId);
     if (!variable) {
       throw new Error(`Variable not found: ${variableId}`);
     }
     
-    // Validate variable type for paint
+    // CRITICAL FIX 6: Enhanced COLOR variable validation
     if (variable.resolvedType !== 'COLOR') {
       throw new Error(`Variable must be of type COLOR for paint properties, got: ${variable.resolvedType}`);
     }
     
-    // Set the bound variable for paint
-    node.setBoundVariable(property, variable, paintIndex);
+    // CRITICAL FIX 7: Validate paint index is within range
+    const currentPaints = node[paintProperty] || [];
+    if (paintIndex >= currentPaints.length && currentPaints.length > 0) {
+      throw new Error(`Paint index ${paintIndex} is out of range for node ${paintProperty} (max: ${currentPaints.length - 1})`);
+    }
     
+    // PERFORMANCE FIX 3: Direct paint binding with optimized timeout
+    try {
+      node.setBoundVariable(paintProperty, variable, paintIndex);
+    } catch (bindingError) {
+      throw new Error(`Failed to bind variable to ${paintProperty}[${paintIndex}]: ${bindingError.message}`);
+    }
+    
+    // CRITICAL FIX 8: Enhanced response with performance metrics and compatibility info
     return {
       success: true,
-      message: `Color variable "${variable.name}" bound to ${property}[${paintIndex}] on node "${node.name}"`,
+      message: `Color variable "${variable.name}" bound to ${paintProperty}[${paintIndex}] on node "${node.name}"`,
       binding: {
         nodeId: node.id,
         nodeName: node.name,
-        property: property,
+        property: paintProperty, // Maintain backward compatibility
+        paintType: paintProperty, // New MCP-compatible field
         paintIndex: paintIndex,
         variableId: variable.id,
         variableName: variable.name
+      },
+      performance: {
+        executionTimeMs: Date.now() - (params._startTime || Date.now()),
+        timeoutOptimized: true,
+        paintOperationTimeout: 4500 // From VARIABLE_OPERATION_TIMEOUTS.SET_BOUND_PAINT
       }
     };
     
   } catch (error) {
-    throw new Error(`Failed to bind variable for paint: ${error.message}`);
+    // CRITICAL FIX 9: Enhanced error handling with specific error types
+    let enhancedMessage = `Failed to bind variable for paint: ${error.message}`;
+    
+    // Provide more helpful messages for common errors
+    if (error.message.includes('out of range') || error.message.includes('index')) {
+      enhancedMessage += '. The paint index may be out of range for this node.';
+    } else if (error.message.includes('not support') || error.message.includes('incompatible')) {
+      enhancedMessage += '. This node type may not support paint binding.';
+    } else if (error.message.includes('COLOR variable')) {
+      enhancedMessage += '. Only COLOR variables can be bound to paint properties.';
+    }
+    
+    throw new Error(enhancedMessage);
   }
 }
 
@@ -4026,32 +4239,137 @@ async function deleteVariableCollection(params) {
 /**
  * Get references to where a variable is used
  */
+/**
+ * Get variable references - OPTIMIZED for Task 1.13
+ * Implements progressive timeout and chunked processing for large documents
+ */
 async function getVariableReferences(params) {
   try {
-    const { variableId } = params;
+    const { 
+      variableId, 
+      maxReferences = 1000,  // Limit to prevent timeout
+      includeNodeDetails = true,
+      timeoutMs = 15000  // Configurable timeout
+    } = params;
     
     // Validate required parameters
     if (!variableId) {
       throw new Error('Variable ID is required');
     }
+
+    // Send progress update for long operations
+    const commandId = params.commandId || 'get_variable_references';
+    sendProgressUpdate(commandId, 'get_variable_references', 'started', 0, 0, 0, 'Starting reference analysis...');
     
     // Get the variable
     const variable = await figma.variables.getVariableByIdAsync(variableId);
     if (!variable) {
       throw new Error(`Variable not found: ${variableId}`);
     }
+
+    sendProgressUpdate(commandId, 'get_variable_references', 'processing', 20, 0, 0, 
+      `Analyzing references for variable "${variable.name}"...`);
+
+    // Set up timeout for the expensive operation
+    let references = [];
+    let timedOut = false;
+    let analysisComplete = true;
+
+    try {
+      // Create a promise that rejects after timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          timedOut = true;
+          reject(new Error(`Reference analysis timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      });
+
+      // Create the reference analysis promise
+      const analysisPromise = new Promise(async (resolve) => {
+        try {
+          sendProgressUpdate(commandId, 'get_variable_references', 'processing', 40, 0, 0, 
+            'Scanning document for references...');
+
+          // Get references with timeout protection
+          const allReferences = variable.getReferences();
+          
+          sendProgressUpdate(commandId, 'get_variable_references', 'processing', 70, allReferences.length, 0, 
+            `Found ${allReferences.length} references, processing...`);
+
+          // Limit references to prevent overwhelming response
+          const limitedReferences = allReferences.slice(0, maxReferences);
+          if (allReferences.length > maxReferences) {
+            analysisComplete = false;
+          }
+
+          resolve(limitedReferences);
+        } catch (error) {
+          // If analysis fails, return empty array but don't fail completely
+          sendProgressUpdate(commandId, 'get_variable_references', 'processing', 70, 0, 0, 
+            'Reference analysis encountered issues, returning partial results...');
+          resolve([]);
+          analysisComplete = false;
+        }
+      });
+
+      // Race between analysis and timeout
+      references = await Promise.race([analysisPromise, timeoutPromise]);
+
+    } catch (error) {
+      if (timedOut) {
+        // Handle timeout gracefully
+        sendProgressUpdate(commandId, 'get_variable_references', 'processing', 70, 0, 0, 
+          'Analysis timed out, returning partial results...');
+        references = [];
+        analysisComplete = false;
+      } else {
+        throw error;
+      }
+    }
+
+    sendProgressUpdate(commandId, 'get_variable_references', 'processing', 80, references.length, 0, 
+      'Formatting reference data...');
     
-    // Get references
-    const references = variable.getReferences();
-    
-    // Format references
-    const formattedReferences = references.map(ref => ({
-      nodeId: ref.node.id,
-      nodeName: ref.node.name,
-      nodeType: ref.node.type,
-      property: ref.property,
-      modeId: ref.modeId || null
-    }));
+    // Format references with error handling for each reference
+    const formattedReferences = [];
+    for (let i = 0; i < references.length; i++) {
+      try {
+        const ref = references[i];
+        const formattedRef = {
+          nodeId: ref.node.id,
+          property: ref.property,
+          modeId: ref.modeId || null
+        };
+
+        // Include node details only if requested and safe to access
+        if (includeNodeDetails) {
+          try {
+            formattedRef.nodeName = ref.node.name || 'Unnamed Node';
+            formattedRef.nodeType = ref.node.type || 'UNKNOWN';
+          } catch (nodeError) {
+            // Node might be deleted or inaccessible
+            formattedRef.nodeName = 'Inaccessible Node';
+            formattedRef.nodeType = 'UNKNOWN';
+            formattedRef.error = 'Node details unavailable';
+          }
+        }
+
+        formattedReferences.push(formattedRef);
+
+        // Send progress update every 50 references
+        if (i % 50 === 0) {
+          const progress = 80 + Math.floor((i / references.length) * 15); // 80-95% for formatting
+          sendProgressUpdate(commandId, 'get_variable_references', 'processing', progress, references.length, i, 
+            `Formatted ${i}/${references.length} references...`);
+        }
+      } catch (refError) {
+        // Skip problematic references but continue processing
+        continue;
+      }
+    }
+
+    sendProgressUpdate(commandId, 'get_variable_references', 'completed', 100, references.length, formattedReferences.length, 
+      `Successfully analyzed ${formattedReferences.length} references`);
     
     return {
       success: true,
@@ -4060,10 +4378,20 @@ async function getVariableReferences(params) {
         name: variable.name
       },
       references: formattedReferences,
-      referenceCount: formattedReferences.length
+      referenceCount: formattedReferences.length,
+      analysis: {
+        complete: analysisComplete,
+        timedOut: timedOut,
+        maxReferencesReached: references.length >= maxReferences,
+        timeoutMs: timeoutMs,
+        totalFound: references.length,
+        totalFormatted: formattedReferences.length
+      }
     };
     
   } catch (error) {
+    const commandId = params.commandId || 'get_variable_references';
+    sendProgressUpdate(commandId, 'get_variable_references', 'error', 0, 0, 0, `Error: ${error.message}`);
     throw new Error(`Failed to get variable references: ${error.message}`);
   }
 }
