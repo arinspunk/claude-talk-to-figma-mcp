@@ -3510,7 +3510,7 @@ async function getLocalVariables(params = {}) {
     sendProgressUpdate(commandId, 'get_local_variables', 'started', 0, 0, 0, 'Starting variable query...');
 
     // Get all local variables (this is unavoidable but we'll process in chunks)
-    const allVariables = figma.variables.getLocalVariables();
+    const allVariables = await figma.variables.getLocalVariablesAsync();
     const totalVariables = allVariables.length;
 
     sendProgressUpdate(commandId, 'get_local_variables', 'processing', 10, totalVariables, 0, `Found ${totalVariables} variables, applying filters...`);
@@ -3661,7 +3661,7 @@ async function getLocalVariableCollections(params = {}) {
     // Pre-load variables only once if variable count is needed
     let allVariables = null;
     if (includeVariableCount) {
-      allVariables = figma.variables.getLocalVariables();
+      allVariables = await figma.variables.getLocalVariablesAsync();
       sendProgressUpdate(commandId, 'get_local_variable_collections', 'processing', 60, totalCollections, 0, 
         `Loaded ${allVariables.length} variables for counting...`);
     }

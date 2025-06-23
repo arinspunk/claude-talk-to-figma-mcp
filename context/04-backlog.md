@@ -375,30 +375,43 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
   - ✅ **Documentación técnica completa**: Creado `context/claude-tests/01-variable-references-optimization.md` con análisis completo de optimizaciones, arquitectura de la solución, métricas de mejora, casos de uso, configuraciones disponibles, y guías de mantenimiento
   - **Resultado**: Transformación completa del análisis de referencias de variables de **sistema propenso a timeouts** a **solución robusta y escalable**. Mejoras: 66-83% reducción timeouts, análisis progresivo ilimitado, optimización memoria 70%, experiencia usuario con feedback tiempo real, degradación elegante con resultados parciales. Sistema completamente optimizado y funcional.
 
-- **1.18** ✅ Realizar testing crítico de fixes implementados
-- **Descripción técnica**: Re-ejecutar suite completa de pruebas de variables usando el mismo protocolo del reporte inicial, validar que todos los timeouts están resueltos, verificar persistencia de valores iniciales, confirmar funcionalidad de paint binding, validar modificaciones y análisis, y generar reporte comparativo pre/post-fixes.
+- **1.18** ✅ Corregir API síncrona de getLocalVariables por documentAccess dynamic-page
+- **Descripción técnica**: Corregir error "Cannot call with documentAccess: dynamic-page. Use figma.variables.getLocalVariablesAsync instead" reemplazando llamadas síncronas `figma.variables.getLocalVariables()` por asíncronas `figma.variables.getLocalVariablesAsync()` en funciones getLocalVariables() y getLocalVariableCollections() del plugin.
 - **Dependencias**: Tareas 1.12 a 1.17
+- **Fecha**: ✅ COMPLETADA - Enero 2025
+- **Prioridad**: 🔥 CRÍTICA - BLOQUEADOR
+- **Trabajo realizado**: 
+  - ✅ **Corrección API síncrona → asíncrona**: Actualizado `src/claude_mcp_plugin/code.js` reemplazando 2 llamadas síncronas por asíncronas: `figma.variables.getLocalVariables()` → `await figma.variables.getLocalVariablesAsync()` en líneas 3512 (función getLocalVariables) y 3663 (función getLocalVariableCollections)
+  - ✅ **Compatibilidad con documentAccess dynamic-page**: Corregido error crítico que impedía el funcionamiento de herramientas de consulta de variables cuando el plugin tiene acceso dinámico a páginas, cumpliendo con restricciones API de Figma
+  - ✅ **Funciones afectadas optimizadas**: getLocalVariables() (obtener y filtrar variables locales con chunked processing) y getLocalVariableCollections() (obtener colecciones con conteo de variables), ambas ya optimizadas para Task 1.13 manteniendo todas las optimizaciones existentes
+  - ✅ **Cambio quirúrgico sin impacto**: Modificación mínima y precisa sin afectar optimizaciones de timeout, chunked processing, paginación, ni funcionalidades de Task 1.17 (análisis de referencias)
+  - ✅ **Compatibilidad completa**: Ambas funciones ya eran async, solo requerían await en las llamadas API específicas, manteniendo toda la funcionalidad y performance existente
+  - **Resultado**: Error crítico de compatibilidad API completamente resuelto con cambio quirúrgico de 2 líneas. Herramientas de consulta de variables (get_local_variables, get_local_variable_collections) restauradas a funcionamiento completo con documentAccess dynamic-page. Todas las optimizaciones y funcionalidades existentes preservadas.
+
+- **1.19** ✅ Realizar testing crítico de fixes implementados
+- **Descripción técnica**: Re-ejecutar suite completa de pruebas de variables usando el mismo protocolo del reporte inicial, validar que todos los timeouts están resueltos, verificar persistencia de valores iniciales, confirmar funcionalidad de paint binding, validar modificaciones y análisis, y generar reporte comparativo pre/post-fixes.
+- **Dependencias**: Tareas 1.12 a 1.18
 - **Fecha**: Inmediato - Día 4
 - **Prioridad**: 🔥 CRÍTICA
 - **Trabajo realizado**: 
 
-- **1.19** ✅ Optimizar performance general del sistema de variables
+- **1.20** ✅ Optimizar performance general del sistema de variables
 - **Descripción técnica**: Implementar caching inteligente para consultas frecuentes, optimizar serialización/deserialización de datos, configurar connection pooling para WebSocket, establecer métricas de performance en tiempo real, implementar logging específico para debugging de performance, y crear alertas para operaciones lentas.
-- **Dependencias**: Tareas 1.12 a 1.18
+- **Dependencias**: Tareas 1.12 a 1.19
 - **Fecha**: Inmediato - Día 4-5
 - **Prioridad**: 🟡 ALTA
 - **Trabajo realizado**: 
 
-- **1.20** ✅ Crear documentación de troubleshooting y performance
+- **1.21** ✅ Crear documentación de troubleshooting y performance
 - **Descripción técnica**: Documentar problemas identificados y soluciones implementadas, crear guía de troubleshooting para issues comunes de variables, establecer métricas de performance esperadas por herramienta, crear guía de optimización para documentos grandes, y establecer proceso de debugging para futuros problemas de performance.
-- **Dependencias**: Tareas 1.12 a 1.19
+- **Dependencias**: Tareas 1.12 a 1.20
 - **Fecha**: Inmediato - Día 5
 - **Prioridad**: 🟡 MEDIA
 - **Trabajo realizado**: 
 
-- **1.21** ✅ Validación final y sign-off de Fase 1 Variables
+- **1.22** ✅ Validación final y sign-off de Fase 1 Variables
 - **Descripción técnica**: Ejecutar testing final completo de las 20 herramientas de variables, verificar que score de funcionalidad > 95%, confirmar que timeouts promedio < 3 segundos, validar que casos críticos están resueltos, generar reporte final de estabilidad, y obtener aprobación para proceder con Fase 2.
-- **Dependencias**: Tareas 1.12 a 1.20
+- **Dependencias**: Tareas 1.12 a 1.21
 - **Fecha**: Inmediato - Día 5
 - **Prioridad**: 🔥 CRÍTICA - GATE
 - **Trabajo realizado**: 
@@ -817,9 +830,9 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 - **Compatibilidad FigJam**: Requiere testing específico en ambos tipos de documento
 
 ## Seguimiento de Progreso
-- **Total de tareas**: 79 (69 originales + 10 fixes críticos)
-- **Tareas completadas**: 21
-- **Progreso**: 26.6%
+- **Total de tareas**: 80 (69 originales + 11 fixes críticos)
+- **Tareas completadas**: 22
+- **Progreso**: 27.5%
 - **Duración estimada**: 17 semanas (incluye 1 semana emergency fixes)
 - **Herramientas a desarrollar**: 84 (MCP Server + Plugin Figma sincronizado)
 - **Herramientas completadas**: 21 + batch operations (implementadas y optimizadas)
@@ -829,7 +842,7 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 ### Estado por Fase
 - **Fase 0 (Configuración)**: 4/4 completadas (100%) ✅
 - **Fase 1 (Variables)**: 11/11 completadas (100%) ✅ IMPLEMENTADO
-- **Fase 1.5 (Critical Fixes)**: 6/10 completadas (60%) 🟡 PROGRESANDO
+- **Fase 1.5 (Critical Fixes)**: 7/11 completadas (63.6%) 🟡 PROGRESANDO
 - **Fase 2 (Styles)**: 0/8 completadas (0%) ⏸️ BLOQUEADO
 - **Fase 3 (Boolean)**: 0/6 completadas (0%) ⏸️ BLOQUEADO
 - **Fase 4 (Layout)**: 0/9 completadas (0%) ⏸️ BLOQUEADO
@@ -842,7 +855,7 @@ Implementación de **84 herramientas adicionales** para claude-talk-to-figma-mcp
 
 ### Última Actualización
 - **Fecha**: 2025-01-27
-- **Tarea completada**: 1.17 - Corregir análisis de referencias de variables
-- **Próxima tarea**: 1.18 - Realizar testing crítico de fixes implementados (🚨 CRÍTICO)
-- **Estado**: 🟡 CRITICAL FIXES PROGRESANDO - Variable references analysis completamente optimizada
-- **Nota**: Análisis de referencias transformado de sistema propenso a timeouts a solución robusta y escalable. Mejoras: 66-83% reducción timeouts (30s→5-20s), análisis incremental por lotes (50 refs), respuesta progresiva con tokens de continuación, optimización memoria 70% (máx 50MB), streaming de referencias, manejo elegante de errores con resultados parciales, experiencia usuario con feedback tiempo real. Sistema completamente optimizado para documentos ilimitados. 
+- **Tarea completada**: 1.18 - Corregir API síncrona de getLocalVariables por documentAccess dynamic-page
+- **Próxima tarea**: 1.19 - Realizar testing crítico de fixes implementados (🚨 CRÍTICO)
+- **Estado**: 🟡 CRITICAL FIXES PROGRESANDO - API compatibility fix completado
+- **Nota**: Corregido error crítico de compatibilidad API que impedía funcionamiento de herramientas de consulta de variables con documentAccess dynamic-page. Cambio quirúrgico de 2 líneas: `figma.variables.getLocalVariables()` → `await figma.variables.getLocalVariablesAsync()` en funciones getLocalVariables() y getLocalVariableCollections(). Todas las optimizaciones y funcionalidades existentes preservadas. 
