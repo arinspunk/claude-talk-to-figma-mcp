@@ -148,6 +148,39 @@ describe("set_stroke_color tool integration", () => {
       const [command, payload] = mockSendCommand.mock.calls[0];
       expect(payload.strokeWeight).toBe(0.5);
     });
+
+    it("preserves strokeWeight of 0 (invisible stroke)", async () => {
+      const response = await callToolWithValidation({
+        nodeId: "nodeF2",
+        r: 1,
+        g: 0,
+        b: 0,
+        a: 1,
+        strokeWeight: 0,
+      });
+
+      expect(mockSendCommand).toHaveBeenCalledTimes(1);
+      const [command, payload] = mockSendCommand.mock.calls[0];
+      expect(payload.strokeWeight).toBe(0);
+      expect(response.content[0].text).toContain("weight 0");
+    });
+
+    it("handles zero strokeWeight with transparent color", async () => {
+      const response = await callToolWithValidation({
+        nodeId: "nodeF3",
+        r: 0.5,
+        g: 0.5,
+        b: 0.5,
+        a: 0,
+        strokeWeight: 0,
+      });
+
+      const [command, payload] = mockSendCommand.mock.calls[0];
+      expect(payload.color.a).toBe(0);
+      expect(payload.strokeWeight).toBe(0);
+      expect(response.content[0].text).toContain("RGBA(0.5, 0.5, 0.5, 0)");
+      expect(response.content[0].text).toContain("weight 0");
+    });
   });
 
   describe("RGB component handling", () => {
@@ -251,17 +284,20 @@ describe("set_stroke_color tool integration", () => {
       expect(mockSendCommand).not.toHaveBeenCalled();
     });
 
-    it("rejects zero strokeWeight (should be positive)", async () => {
-      await expect(callToolWithValidation({
+    it("accepts zero strokeWeight for invisible stroke", async () => {
+      const response = await callToolWithValidation({
         nodeId: "nodeI4",
         r: 0.5,
         g: 0.5,
         b: 0.5,
         a: 1,
-        strokeWeight: 0, // Should be positive
-      })).rejects.toThrow();
+        strokeWeight: 0,
+      });
       
-      expect(mockSendCommand).not.toHaveBeenCalled();
+      expect(mockSendCommand).toHaveBeenCalledTimes(1);
+      const [command, payload] = mockSendCommand.mock.calls[0];
+      expect(payload.strokeWeight).toBe(0);
+      expect(response.content[0].text).toContain("weight 0");
     });
 
     it("rejects negative strokeWeight", async () => {
@@ -271,7 +307,7 @@ describe("set_stroke_color tool integration", () => {
         g: 0.5,
         b: 0.5,
         a: 1,
-        strokeWeight: -1, // Should be positive
+        strokeWeight: -1,
       })).rejects.toThrow();
       
       expect(mockSendCommand).not.toHaveBeenCalled();
@@ -324,7 +360,7 @@ describe("set_stroke_color tool integration", () => {
         r: 1,
         g: 0,
         b: 0,
-        a: 0, // Transparent red stroke
+        a: 0,
         strokeWeight: 5,
       });
 
