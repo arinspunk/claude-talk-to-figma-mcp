@@ -24,6 +24,9 @@
     "build:win": "tsup",
     "build:watch": "tsup --watch",
     "dev": "bun run build:watch",
+    "pack": "dxt pack",
+    "sync-version": "VERSION=$(jq -r '.version' package.json) && jq --arg version \"$VERSION\" '.version = $version' manifest.json > manifest.tmp && mv manifest.tmp manifest.json",
+    "build:dxt": "npm run sync-version && npm run build && npm run pack",
     "pub:release": "bun run build && npm publish",
     "configure-claude": "node scripts/configure-claude.js",
     "test": "jest",
@@ -32,6 +35,7 @@
     "test:integration": "node scripts/test-integration.js"
   },
   "devDependencies": {
+    "@anthropic-ai/dxt": "^0.2.0",
     "@types/bun": "latest",
     "@types/jest": "^29.5.12",
     "bun-types": "^1.2.9",

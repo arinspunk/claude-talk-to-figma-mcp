@@ -8,6 +8,16 @@ A Model Context Protocol (MCP) plugin that allows Claude Desktop and other AI to
 
 ## ⚡ Quick Start (5 minutes)
 
+### Installation Options
+
+#### Option 1: DXT Package (Recommended)
+1. **Download**: Get the latest `claude-talk-to-figma-mcp.dxt` from [releases](https://github.com/arinspunk/claude-talk-to-figma-mcp/releases)
+2. **Install**: Double-click the `.dxt` file → Claude Desktop installs automatically
+3. **Setup WebSocket**: Clone repo, run `bun install && bun socket` for Figma communication
+4. **Setup Figma Plugin**: Import `src/claude_mcp_plugin/manifest.json` in Figma → Menu → Plugins → Development
+5. **Connect**: Open plugin in Figma → copy channel ID → tell Claude "Talk to Figma, channel {ID}"
+
+#### Option 2: Source Installation
 ### Prerequisites
 - [Claude Desktop](https://claude.ai/download) + [Figma Desktop](https://www.figma.com/downloads/) + [Bun](https://bun.sh) installed
 
@@ -144,7 +154,35 @@ Claude Desktop ↔ MCP Server ↔ WebSocket Server ↔ Figma Plugin
 
 ## 🔧 Complete Installation Guide
 
-### Detailed Setup Process
+### DXT Package Installation (Recommended)
+
+1. **Download DXT Package**:
+   - Get the latest `claude-talk-to-figma-mcp.dxt` from [releases](https://github.com/arinspunk/claude-talk-to-figma-mcp/releases)
+
+2. **Install in Claude Desktop**:
+   - Double-click the `.dxt` file, or
+   - Drag & drop onto Claude Desktop window, or  
+   - Claude → Extensions → Install from file
+   - Claude automatically handles all MCP configuration
+
+3. **Install Figma Plugin**:
+   - Download plugin files from the repository: `src/claude_mcp_plugin/`
+   - Open Figma → **Menu > Plugins > Development**
+   - Select "Import plugin from manifest"
+   - Navigate to `manifest.json` from downloaded plugin files
+   - Plugin appears in your development plugins list
+
+4. **Setup WebSocket Server**:
+   - Clone this repository for WebSocket server: `git clone https://github.com/arinspunk/claude-talk-to-figma-mcp.git`
+   - Install dependencies: `bun install`
+   - Start WebSocket server: `bun socket` (verify at `http://localhost:3055/status`)
+
+5. **Connect Everything**:
+   - Open plugin in Figma → copy channel ID
+   - In Claude: "Talk to Figma, channel {your-channel-id}"
+   - MCP server runs automatically via DXT, WebSocket handles Figma communication
+
+### Source Installation (Advanced Users)
 
 1. **Clone and Build**:
    ```bash
@@ -182,6 +220,14 @@ Claude Desktop ↔ MCP Server ↔ WebSocket Server ↔ Figma Plugin
    - Claude Desktop: Check "ClaudeTalkToFigma" appears in MCPs selector
    - Figma: Find "Claude MCP Plugin" in your plugins
    - WebSocket: `bun socket` should start without errors
+
+### Building DXT Package (Developers)
+
+To create your own DXT package:
+```bash
+npm run build:dxt    # Builds TypeScript and packages DXT
+```
+This creates `claude-talk-to-figma-mcp.dxt` ready for distribution.
 
 ---
 
