@@ -68,7 +68,7 @@ export function registerModificationTools(server: McpServer): void {
       g: z.number().min(0).max(1).describe("Green component (0-1)"),
       b: z.number().min(0).max(1).describe("Blue component (0-1)"),
       a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
-      strokeWeight: z.number().positive().optional().describe("Stroke weight"),
+      strokeWeight: z.number().min(0).optional().describe("Stroke weight >= 0)"),
     },
     async ({ nodeId, r, g, b, a, strokeWeight }) => {
       try {
