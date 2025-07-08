@@ -1,0 +1,66 @@
+name: Build and Release DXT Package
+
+on:
+  push:
+  workflow_run:
+    workflows: ["Tests"]
+    types:
+      - completed
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'release' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: latest
+        
+    - name: Install dependencies
+      run: bun install
+      
+    - name: Build TypeScript
+      run: bun run build
+      
+    - name: Update manifest version
+      run: |
+        VERSION=$(jq -r '.version' package.json)
+        jq --arg version "$VERSION" '.version = $version' manifest.json > manifest.tmp && mv manifest.tmp manifest.json
+      
+    - name: Install DXT CLI
+      run: npm install -g @anthropic-ai/dxt
+      
+    - name: Create DXT package
+      run: dxt pack
+      
+    - name: Get package info
+      id: package
+      run: |
+        echo "name=$(jq -r '.name' package.json)" >> $GITHUB_OUTPUT
+        echo "version=$(jq -r '.version' package.json)" >> $GITHUB_OUTPUT
+        
+    - name: Upload DXT artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.package.outputs.name }}-${{ steps.package.outputs.version }}.dxt
+        path: ${{ steps.package.outputs.name }}.dxt
+        retention-days: 90
+        
+    - name: Upload to release (on release only)
+      if: github.event_name == 'release'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ${{ steps.package.outputs.name }}.dxt
+        asset_name: ${{ steps.package.outputs.name }}-${{ steps.package.outputs.version }}.dxt
+        asset_content_type: application/zip

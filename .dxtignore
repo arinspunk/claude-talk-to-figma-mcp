@@ -1,0 +1,62 @@
+# Development files
+.git/
+.gitignore
+node_modules/@types/
+node_modules/@jest/
+node_modules/jest/
+node_modules/ts-jest/
+node_modules/typescript/
+node_modules/@anthropic-ai/dxt
+*.test.ts
+*.test.js
+tests/
+
+# Documentation
+*.md
+README*
+CHANGELOG*
+TESTING*
+
+# Build artifacts and configs
+*.log
+.DS_Store
+*.map
+dist/*.d.ts
+dist/*.d.cts
+bun.lock
+package-lock.json
+tsup.config.ts
+tsconfig.json
+jest.config.cjs
+
+# Source files (keep only compiled dist/ and figma plugin)
+src/talk_to_figma_mcp/
+src/socket.ts
+
+# Documentation and context
+context/
+prompts/
+smithery.yaml
+Dockerfile
+
+# Development scripts and temp files
+scripts/
+temp-dxt/
+dxt-*/
+bin/
+bundle/
+logs/
+.dxtignore
+
+# Source maps and type definitions
+*.js.map
+*.cjs.map
+*.d.ts
+*.d.cts
+
+# Large images (keep only icon)
+images/mcp-figma-plugin-configuration.png
+
+# Settings and cache
+.claude/
+.npm/
