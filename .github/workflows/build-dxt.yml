@@ -32,20 +32,122 @@ jobs:
       
     - name: Update manifest version
       run: |
+        set -e  # Exit on error
+        echo "🔄 Updating manifest.json version..."
+        
+        # Validate package.json exists
+        if [ ! -f "package.json" ]; then
+          echo "❌ Error: package.json not found"
+          exit 1
+        fi
+        
+        # Extract version with validation
         VERSION=$(jq -r '.version' package.json)
-        jq --arg version "$VERSION" '.version = $version' manifest.json > manifest.tmp && mv manifest.tmp manifest.json
+        if [ -z "$VERSION" ] || [ "$VERSION" == "null" ]; then
+          echo "❌ Error: Could not extract version from package.json"
+          exit 1
+        fi
+        echo "📦 Package version: $VERSION"
+        
+        # Validate manifest.json exists
+        if [ ! -f "manifest.json" ]; then
+          echo "❌ Error: manifest.json not found"
+          exit 1
+        fi
+        
+        # Update manifest.json with proper error handling
+        echo "🔧 Updating manifest.json..."
+        jq --arg version "$VERSION" '.version = $version' manifest.json > manifest.tmp
+        if [ $? -ne 0 ]; then
+          echo "❌ Error: Failed to update manifest.json"
+          rm -f manifest.tmp
+          exit 1
+        fi
+        
+        # Atomically replace manifest.json
+        mv manifest.tmp manifest.json
+        echo "✅ Manifest updated successfully to version $VERSION"
       
     - name: Install DXT CLI
-      run: npm install -g @anthropic-ai/dxt
+      run: |
+        set -e  # Exit on error
+        echo "⬇️ Installing DXT CLI v0.2.0..."
+        npm install -g @anthropic-ai/dxt@0.2.0
+        echo "✅ DXT CLI v0.2.0 installed successfully"
+      
+    - name: Validate build output
+      run: |
+        set -e  # Exit on error
+        echo "🔍 Validating build output..."
+        
+        # Check if dist directory exists
+        if [ ! -d "dist" ]; then
+          echo "❌ Error: dist/ directory not found"
+          echo "💡 Hint: Run 'bun run build' to generate build output"
+          exit 1
+        fi
+        
+        # Check if MCP server entry point exists
+        if [ ! -f "dist/talk_to_figma_mcp/server.cjs" ]; then
+          echo "❌ Error: Entry point not found: dist/talk_to_figma_mcp/server.cjs"
+          echo "💡 Hint: This file is required as specified in manifest.json"
+          ls -la dist/ || true
+          ls -la dist/talk_to_figma_mcp/ || true
+          exit 1
+        fi
+        
+        # Check if socket server exists (secondary entry point)
+        if [ ! -f "dist/socket.cjs" ]; then
+          echo "⚠️ Warning: Socket server not found: dist/socket.cjs"
+          echo "💡 This may affect WebSocket functionality"
+        fi
+        
+        # Display build artifacts
+        echo "📦 Build artifacts found:"
+        ls -la dist/
+        echo ""
+        ls -la dist/talk_to_figma_mcp/
+        echo "✅ Build output validation successful"
       
     - name: Create DXT package
-      run: dxt pack
+      run: |
+        set -e  # Exit on error
+        echo "📦 Creating DXT package..."
+        dxt pack
+        echo "✅ DXT package created successfully"
       
     - name: Get package info
       id: package
       run: |
-        echo "name=$(jq -r '.name' package.json)" >> $GITHUB_OUTPUT
-        echo "version=$(jq -r '.version' package.json)" >> $GITHUB_OUTPUT
+        set -e  # Exit on error
+        echo "📋 Extracting package information..."
+        
+        # Validate package.json exists
+        if [ ! -f "package.json" ]; then
+          echo "❌ Error: package.json not found"
+          exit 1
+        fi
+        
+        # Extract and validate package name
+        PACKAGE_NAME=$(jq -r '.name' package.json)
+        if [ -z "$PACKAGE_NAME" ] || [ "$PACKAGE_NAME" == "null" ]; then
+          echo "❌ Error: Could not extract package name from package.json"
+          exit 1
+        fi
+        echo "📦 Package name: $PACKAGE_NAME"
+        
+        # Extract and validate package version
+        PACKAGE_VERSION=$(jq -r '.version' package.json)
+        if [ -z "$PACKAGE_VERSION" ] || [ "$PACKAGE_VERSION" == "null" ]; then
+          echo "❌ Error: Could not extract package version from package.json"
+          exit 1
+        fi
+        echo "🏷️ Package version: $PACKAGE_VERSION"
+        
+        # Set GitHub outputs
+        echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+        echo "version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
+        echo "✅ Package info extracted successfully"
         
     - name: Upload DXT artifact
       uses: actions/upload-artifact@v4
@@ -56,11 +158,20 @@ jobs:
         
     - name: Upload to release (on release only)
       if: github.event_name == 'release'
-      uses: actions/upload-release-asset@v1
+      run: |
+        set -e  # Exit on error
+        echo "🚀 Uploading DXT package to release ${{ github.event.release.tag_name }}..."
+        
+        # Validate DXT package exists
+        if [ ! -f "${{ steps.package.outputs.name }}.dxt" ]; then
+          echo "❌ Error: DXT package not found: ${{ steps.package.outputs.name }}.dxt"
+          exit 1
+        fi
+        
+        echo "📤 Uploading ${{ steps.package.outputs.name }}.dxt..."
+        gh release upload ${{ github.event.release.tag_name }} \
+          ${{ steps.package.outputs.name }}.dxt \
+          --clobber
+        echo "✅ DXT package uploaded successfully to release"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ${{ steps.package.outputs.name }}.dxt
-        asset_name: ${{ steps.package.outputs.name }}-${{ steps.package.outputs.version }}.dxt
-        asset_content_type: application/zip
