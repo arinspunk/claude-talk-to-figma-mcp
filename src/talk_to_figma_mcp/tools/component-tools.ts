@@ -45,4 +45,76 @@ export function registerComponentTools(server: McpServer): void {
       }
     }
   );
+
+  // Create Component from Node Tool
+  server.tool(
+    "create_component_from_node",
+    "Convert an existing node (frame, group, etc.) into a reusable component in Figma",
+    {
+      nodeId: z.string().describe("The ID of the node to convert into a component"),
+      name: z.string().optional().describe("Optional new name for the component"),
+    },
+    async ({ nodeId, name }) => {
+      try {
+        const result = await sendCommandToFigma("create_component_from_node", {
+          nodeId,
+          name,
+        });
+        const typedResult = result as { id: string; name: string; key: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Created component "${typedResult.name}" with ID: ${typedResult.id} and key: ${typedResult.key}. You can now create instances of this component using the key.`,
+            }
+          ]
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error creating component from node: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Create Component Set from Components Tool
+  server.tool(
+    "create_component_set",
+    "Create a component set (variants) from multiple component nodes in Figma",
+    {
+      componentIds: z.array(z.string()).describe("Array of component node IDs to combine into a component set"),
+      name: z.string().optional().describe("Optional name for the component set"),
+    },
+    async ({ componentIds, name }) => {
+      try {
+        const result = await sendCommandToFigma("create_component_set", {
+          componentIds,
+          name,
+        });
+        const typedResult = result as { id: string; name: string; key: string; variantCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Created component set "${typedResult.name}" with ID: ${typedResult.id}, key: ${typedResult.key}, containing ${typedResult.variantCount} variants.`,
+            }
+          ]
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error creating component set: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
 }
