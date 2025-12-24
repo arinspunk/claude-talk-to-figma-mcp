@@ -84,4 +84,11 @@ export type FigmaCommand =
   | "group_nodes"
   | "ungroup_nodes"
   | "flatten_node"
-  | "insert_child";
+  | "insert_child"
+  | "create_component_from_node"
+  | "create_component_set"
+  | "create_page"
+  | "delete_page"
+  | "rename_page"
+  | "get_pages"
+  | "set_current_page";
