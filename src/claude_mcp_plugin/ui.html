@@ -460,13 +460,13 @@
             })
           );
 
-          // Set timeout to reject the promise after 30 seconds
+          // Set timeout to reject the promise after 90 seconds
           setTimeout(() => {
             if (state.pendingRequests.has(id)) {
               state.pendingRequests.delete(id);
               reject(new Error("Request timed out"));
             }
-          }, 30000);
+          }, 90000);
         });
       }
 

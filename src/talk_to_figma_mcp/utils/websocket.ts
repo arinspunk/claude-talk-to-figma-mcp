@@ -73,14 +73,14 @@ export function connectToFigma(port: number = defaultPort) {
             // Reset the timeout to prevent timeouts during long-running operations
             clearTimeout(request.timeout);
 
-            // Create a new timeout
+            // Create a new timeout with extended time for long operations
             request.timeout = setTimeout(() => {
               if (pendingRequests.has(requestId)) {
                 logger.error(`Request ${requestId} timed out after extended period of inactivity`);
                 pendingRequests.delete(requestId);
                 request.reject(new Error('Request to Figma timed out'));
               }
-            }, 60000); // 60 second timeout for inactivity
+            }, 120000); // 120 second timeout for inactivity during progress updates
 
             // Log progress
             logger.info(`Progress update for ${progressData.commandType}: ${progressData.progress}% - ${progressData.message}`);
@@ -199,7 +199,7 @@ export function getCurrentChannel(): string | null {
 export function sendCommandToFigma(
   command: FigmaCommand,
   params: unknown = {},
-  timeoutMs: number = 30000
+  timeoutMs: number = 60000
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     // If not connected, try to connect first

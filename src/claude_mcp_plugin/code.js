@@ -807,8 +807,8 @@ async function createComponentInstance(params) {
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
-        reject(new Error("Timeout while creating component instance (10s). The component may be too complex or unavailable."));
-      }, 10000); // 10 seconds timeout
+        reject(new Error("Timeout while creating component instance (30s). The component may be too complex or unavailable."));
+      }, 30000); // 30 seconds timeout
     });
     
     console.log(`Starting component import for key: ${componentKey}...`);
@@ -2456,8 +2456,8 @@ async function getRemoteComponents() {
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
-        reject(new Error("Internal timeout while retrieving remote components (15s)"));
-      }, 15000); // 15 seconds internal timeout
+        reject(new Error("Internal timeout while retrieving remote components (45s)"));
+      }, 45000); // 45 seconds internal timeout
     });
     
     // Execute the request with a manual timeout
@@ -2574,10 +2574,10 @@ async function setEffectStyleId(params) {
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
-        reject(new Error("Timeout while setting effect style ID (8s). The operation took too long to complete."));
-      }, 8000); // 8 seconds timeout
+        reject(new Error("Timeout while setting effect style ID (20s). The operation took too long to complete."));
+      }, 20000); // 20 seconds timeout
     });
-    
+
     console.log(`Starting to set effect style ID ${effectStyleId} on node ${nodeId}...`);
     
     // Get node and validate in a promise
@@ -2753,8 +2753,8 @@ async function flattenNode(params) {
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
-        reject(new Error("Flatten operation timed out after 8 seconds. The node may be too complex."));
-      }, 8000); // 8 seconds timeout
+        reject(new Error("Flatten operation timed out after 20 seconds. The node may be too complex."));
+      }, 20000); // 20 seconds timeout
     });
     
     // Execute the flatten operation in a promise
