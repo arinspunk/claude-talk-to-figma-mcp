@@ -874,10 +874,15 @@ async function exportNodeAsImage(params) {
     throw new Error("Missing nodeId parameter");
   }
 
+  console.log(`[exportNodeAsImage] Starting export for node ${nodeId}, scale: ${scale}, format: ${format}`);
+  const startTime = Date.now();
+
   const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
+
+  console.log(`[exportNodeAsImage] Node found: ${node.name}, type: ${node.type}, size: ${node.width}x${node.height}`);
 
   if (!("exportAsync" in node)) {
     throw new Error(`Node does not support exporting: ${nodeId}`);
@@ -889,7 +894,22 @@ async function exportNodeAsImage(params) {
       constraint: { type: "SCALE", value: scale },
     };
 
-    const bytes = await node.exportAsync(settings);
+    // Set up a timeout for large exports
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`Export timed out after 60s for node ${nodeId} (${node.name}, ${node.width}x${node.height})`));
+      }, 60000); // 60 seconds timeout
+    });
+
+    const exportPromise = node.exportAsync(settings);
+
+    const bytes = await Promise.race([exportPromise, timeoutPromise])
+      .finally(() => {
+        clearTimeout(timeoutId);
+      });
+
+    console.log(`[exportNodeAsImage] Export completed in ${Date.now() - startTime}ms, bytes: ${bytes.length}`);
 
     let mimeType;
     switch (format) {
