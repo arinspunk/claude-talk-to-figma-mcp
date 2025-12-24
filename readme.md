@@ -106,6 +106,11 @@ Claude Desktop ↔ MCP Server ↔ WebSocket Server ↔ Figma Plugin
 | `get_styles` | Document styles | Color/text style audit |
 | `join_channel` | Connect to Figma | Establish communication |
 | `export_node_as_image` | Asset export | Generate design assets |
+| `get_pages` | List all pages | Navigate document structure |
+| `create_page` | Create new page | Add pages to document |
+| `delete_page` | Remove page | Clean up document |
+| `rename_page` | Rename page | Organize pages |
+| `set_current_page` | Switch page | Navigate between pages |
 
 ### 🔧 Creation Tools
 | Command | Purpose | Example Use |
@@ -157,6 +162,8 @@ Claude Desktop ↔ MCP Server ↔ WebSocket Server ↔ Figma Plugin
 | `get_local_components` | Project components | Design system audit |
 | `get_remote_components` | Team libraries | Shared component access |
 | `create_component_instance` | Use components | Consistent UI elements |
+| `create_component_from_node` | Convert to component | Create reusable components |
+| `create_component_set` | Create variants | Build component systems |
 
 ---
 
