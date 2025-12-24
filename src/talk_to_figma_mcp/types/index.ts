@@ -91,4 +91,5 @@ export type FigmaCommand =
   | "delete_page"
   | "rename_page"
   | "get_pages"
-  | "set_current_page";
+  | "set_current_page"
+  | "save_version";

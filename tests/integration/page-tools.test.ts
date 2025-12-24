@@ -199,4 +199,63 @@ describe("page tools integration", () => {
       expect(response.content[0].text).toContain("Error");
     });
   });
+
+  describe("save_version", () => {
+    it("saves version with title and description", async () => {
+      mockSendCommand.mockResolvedValue({
+        id: "version-123",
+        title: "My Version",
+        description: "Version description"
+      });
+
+      const response = await callTool("save_version", {
+        title: "My Version",
+        description: "Version description"
+      });
+
+      expect(mockSendCommand).toHaveBeenCalledTimes(1);
+      const [command, payload] = mockSendCommand.mock.calls[0];
+      expect(command).toBe("save_version");
+      expect(payload.title).toBe("My Version");
+      expect(payload.description).toBe("Version description");
+      expect(response.content[0].text).toContain("My Version");
+      expect(response.content[0].text).toContain("version-123");
+    });
+
+    it("saves version without title and description", async () => {
+      mockSendCommand.mockResolvedValue({
+        id: "version-456",
+        title: undefined,
+        description: undefined
+      });
+
+      const response = await callTool("save_version", {});
+
+      expect(mockSendCommand).toHaveBeenCalledTimes(1);
+      const [command] = mockSendCommand.mock.calls[0];
+      expect(command).toBe("save_version");
+      expect(response.content[0].text).toContain("version-456");
+    });
+
+    it("handles null result from Figma", async () => {
+      mockSendCommand.mockResolvedValue(null);
+
+      const response = await callTool("save_version", {
+        title: "Test"
+      });
+
+      expect(response.content[0].text).toContain("no version ID was returned");
+    });
+
+    it("handles permission error", async () => {
+      mockSendCommand.mockRejectedValue(new Error("You don't have permission to save versions"));
+
+      const response = await callTool("save_version", {
+        title: "Test"
+      });
+
+      expect(response.content[0].text).toContain("Error");
+      expect(response.content[0].text).toContain("permission");
+    });
+  });
 });

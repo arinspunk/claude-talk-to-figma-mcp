@@ -111,6 +111,7 @@ Claude Desktop ↔ MCP Server ↔ WebSocket Server ↔ Figma Plugin
 | `delete_page` | Remove page | Clean up document |
 | `rename_page` | Rename page | Organize pages |
 | `set_current_page` | Switch page | Navigate between pages |
+| `save_version` | Save to version history | Create restore points |
 
 ### 🔧 Creation Tools
 | Command | Purpose | Example Use |

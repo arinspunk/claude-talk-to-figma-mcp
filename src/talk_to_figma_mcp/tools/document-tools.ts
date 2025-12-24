@@ -545,4 +545,49 @@ export function registerDocumentTools(server: McpServer): void {
       }
     }
   );
+
+  // Save Version History Tool
+  server.tool(
+    "save_version",
+    "Save the current state of the Figma document to version history with an optional title and description",
+    {
+      title: z.string().optional().describe("Title for the version (optional)"),
+      description: z.string().optional().describe("Description for the version (optional)"),
+    },
+    async ({ title, description }) => {
+      try {
+        const result = await sendCommandToFigma("save_version", { title, description });
+        const typedResult = result as { id: string; title?: string; description?: string } | null;
+
+        if (typedResult === null) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Version save was requested but no version ID was returned. This may happen if changes weren't fully saved yet.",
+              },
+            ],
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Saved version "${typedResult.title || 'Untitled'}" with ID: ${typedResult.id}${typedResult.description ? `. Description: ${typedResult.description}` : ''}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error saving version: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
 }
