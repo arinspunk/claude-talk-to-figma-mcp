@@ -36,3 +36,6 @@ yarn-error.log*
 # Temporary build directories
 temp-dxt/
 dxt-*/
+
+# Claude Code local settings
+.claude/
