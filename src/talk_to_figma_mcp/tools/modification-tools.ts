@@ -405,4 +405,40 @@ export function registerModificationTools(server: McpServer): void {
       }
     }
   );
+
+  // Rename Node Tool
+  server.tool(
+    "rename_node",
+    "Rename a node (frame, component, group, etc.) in Figma",
+    {
+      nodeId: z.string().describe("The ID of the node to rename"),
+      name: z.string().describe("The new name for the node"),
+    },
+    async ({ nodeId, name }) => {
+      try {
+        const result = await sendCommandToFigma("rename_node", {
+          nodeId,
+          name,
+        });
+        const typedResult = result as { id: string; name: string; oldName: string; type: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Renamed ${typedResult.type} from "${typedResult.oldName}" to "${typedResult.name}"`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error renaming node: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
 }
