@@ -52,6 +52,22 @@ figma.ui.onmessage = async (msg) => {
     case "close-plugin":
       figma.closePlugin();
       break;
+    case "get-file-name":
+      // Get Figma file name to use as channel
+      const fileName = figma.root.name || "untitled";
+      // Sanitize file name for use as channel (lowercase, no spaces, alphanumeric only)
+      const channelName = fileName
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "")
+        .substring(0, 50) || "default";
+
+      figma.ui.postMessage({
+        type: "set-channel",
+        channel: channelName,
+      });
+      break;
     case "execute-command":
       // Execute commands received from UI (which gets them from WebSocket)
       try {
@@ -189,6 +205,22 @@ async function handleCommand(command, params) {
       return await createVector(params);
     case "create_line":
       return await createLine(params);
+    case "create_component_from_node":
+      return await createComponentFromNode(params);
+    case "create_component_set":
+      return await createComponentSet(params);
+    case "create_page":
+      return await createPage(params);
+    case "delete_page":
+      return await deletePage(params);
+    case "rename_page":
+      return await renamePage(params);
+    case "get_pages":
+      return await getPages();
+    case "set_current_page":
+      return await setCurrentPage(params);
+    case "save_version":
+      return await saveVersion(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3292,4 +3324,295 @@ async function createLine(params) {
     vectorPaths: line.vectorPaths,
     parentId: line.parent ? line.parent.id : undefined
   };
+}
+
+// Create component from an existing node
+async function createComponentFromNode(params) {
+  const { nodeId, name } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  // Check if the node can be converted to a component
+  if (node.type === "DOCUMENT" || node.type === "PAGE") {
+    throw new Error(`Cannot create component from ${node.type}`);
+  }
+
+  // If already a component, return its info
+  if (node.type === "COMPONENT") {
+    return {
+      id: node.id,
+      name: node.name,
+      key: node.key,
+      alreadyComponent: true
+    };
+  }
+
+  let component;
+
+  // For frames, groups, and other container nodes, we can use createComponentFromNode
+  if ("createComponentFromNode" in figma && (node.type === "FRAME" || node.type === "GROUP" || node.type === "INSTANCE")) {
+    // Use Figma's built-in createComponentFromNode API
+    component = figma.createComponentFromNode(node);
+  } else {
+    // For other node types, we need a different approach
+    // Create a new component and copy properties from the original node
+    const parent = node.parent;
+    const index = parent ? parent.children.indexOf(node) : 0;
+
+    // Create frame first if it's not a frame-like node
+    if (node.type === "RECTANGLE" || node.type === "ELLIPSE" || node.type === "POLYGON" ||
+        node.type === "STAR" || node.type === "VECTOR" || node.type === "TEXT" || node.type === "LINE") {
+      // Create a component and add the node as a child
+      component = figma.createComponent();
+      component.x = node.x;
+      component.y = node.y;
+      component.resize(node.width, node.height);
+
+      // Clone the node and add it to the component
+      const clone = node.clone();
+      clone.x = 0;
+      clone.y = 0;
+      component.appendChild(clone);
+
+      // Add component to the same parent at the same position
+      if (parent && "insertChild" in parent) {
+        parent.insertChild(index, component);
+      } else {
+        figma.currentPage.appendChild(component);
+      }
+
+      // Remove the original node
+      node.remove();
+    } else if (node.type === "FRAME" || node.type === "GROUP") {
+      // Fallback for frames/groups if createComponentFromNode is not available
+      component = figma.createComponent();
+      component.x = node.x;
+      component.y = node.y;
+      component.resize(node.width, node.height);
+
+      // Copy children
+      for (const child of [...node.children]) {
+        component.appendChild(child);
+      }
+
+      // Copy visual properties if available
+      if ("fills" in node && "fills" in component) {
+        component.fills = node.fills;
+      }
+      if ("strokes" in node && "strokes" in component) {
+        component.strokes = node.strokes;
+      }
+      if ("effects" in node && "effects" in component) {
+        component.effects = node.effects;
+      }
+      if ("cornerRadius" in node && "cornerRadius" in component) {
+        component.cornerRadius = node.cornerRadius;
+      }
+
+      // Add component to the same parent
+      if (parent && "insertChild" in parent) {
+        parent.insertChild(index, component);
+      } else {
+        figma.currentPage.appendChild(component);
+      }
+
+      // Remove the original node
+      node.remove();
+    } else {
+      throw new Error(`Cannot create component from node type: ${node.type}`);
+    }
+  }
+
+  // Set the name if provided
+  if (name) {
+    component.name = name;
+  }
+
+  return {
+    id: component.id,
+    name: component.name,
+    key: component.key,
+    width: component.width,
+    height: component.height,
+    x: component.x,
+    y: component.y
+  };
+}
+
+// Create component set from multiple components
+async function createComponentSet(params) {
+  const { componentIds, name } = params || {};
+
+  if (!componentIds || !Array.isArray(componentIds) || componentIds.length === 0) {
+    throw new Error("Missing or empty componentIds parameter");
+  }
+
+  const components = [];
+  for (const id of componentIds) {
+    const node = await figma.getNodeByIdAsync(id);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${id}`);
+    }
+    if (node.type !== "COMPONENT") {
+      throw new Error(`Node with ID ${id} is not a component (type: ${node.type})`);
+    }
+    components.push(node);
+  }
+
+  // Combine components into a component set
+  const componentSet = figma.combineAsVariants(components, figma.currentPage);
+
+  if (name) {
+    componentSet.name = name;
+  }
+
+  return {
+    id: componentSet.id,
+    name: componentSet.name,
+    key: componentSet.key,
+    variantCount: componentSet.children.length,
+    width: componentSet.width,
+    height: componentSet.height
+  };
+}
+
+// Create a new page
+async function createPage(params) {
+  const { name } = params || {};
+
+  if (!name) {
+    throw new Error("Missing name parameter");
+  }
+
+  const page = figma.createPage();
+  page.name = name;
+
+  return {
+    id: page.id,
+    name: page.name
+  };
+}
+
+// Delete a page
+async function deletePage(params) {
+  const { pageId } = params || {};
+
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+
+  // Cannot delete the only page or the current page if it's the only one
+  if (figma.root.children.length <= 1) {
+    throw new Error("Cannot delete the only page in the document");
+  }
+
+  const page = figma.root.children.find(p => p.id === pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  const pageName = page.name;
+
+  // If deleting current page, switch to another page first
+  if (figma.currentPage.id === pageId) {
+    const otherPage = figma.root.children.find(p => p.id !== pageId);
+    if (otherPage) {
+      await figma.setCurrentPageAsync(otherPage);
+    }
+  }
+
+  page.remove();
+
+  return {
+    success: true,
+    name: pageName
+  };
+}
+
+// Rename a page
+async function renamePage(params) {
+  const { pageId, name } = params || {};
+
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+  if (!name) {
+    throw new Error("Missing name parameter");
+  }
+
+  const page = figma.root.children.find(p => p.id === pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  const oldName = page.name;
+  page.name = name;
+
+  return {
+    id: page.id,
+    name: page.name,
+    oldName: oldName
+  };
+}
+
+// Get all pages in the document
+async function getPages() {
+  return {
+    pages: figma.root.children.map(page => ({
+      id: page.id,
+      name: page.name,
+      childCount: page.children.length,
+      isCurrent: page.id === figma.currentPage.id
+    })),
+    currentPageId: figma.currentPage.id
+  };
+}
+
+// Set the current page
+async function setCurrentPage(params) {
+  const { pageId } = params || {};
+
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+
+  const page = figma.root.children.find(p => p.id === pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  await figma.setCurrentPageAsync(page);
+
+  return {
+    id: page.id,
+    name: page.name
+  };
+}
+
+// Save version to history
+async function saveVersion(params) {
+  const { title, description } = params || {};
+
+  // Wait a bit to ensure all pending changes are processed
+  // This is recommended by Figma docs as saveVersionHistoryAsync may not include recent changes
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  try {
+    const result = await figma.saveVersionHistoryAsync(title || "", description || "");
+
+    return result === null ? null : { id: result.id, title, description };
+  } catch (error) {
+    // Handle permission errors (viewers can't save versions)
+    if (error.message && error.message.includes("permission")) {
+      throw new Error("You don't have permission to save versions. Only editors can save to version history.");
+    }
+    throw error;
+  }
 }

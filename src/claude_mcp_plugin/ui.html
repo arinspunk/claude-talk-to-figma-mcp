@@ -309,11 +309,20 @@
           state.serverPort = port;
           state.socket = new WebSocket(`ws://localhost:${port}`);
 
-          state.socket.onopen = () => {
-            // Generate random channel name
-            const channelName = generateChannelName();
+          state.socket.onopen = async () => {
+            // Request file name from plugin to use as channel
+            if (!state.channel) {
+              parent.postMessage(
+                { pluginMessage: { type: "get-file-name" } },
+                "*"
+              );
+
+              // Wait for file name response
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            const channelName = state.channel || "default";
             console.log("Joining channel:", channelName);
-            state.channel = channelName;
 
             // Join the channel using the same format as App.tsx
             state.socket.send(
@@ -634,6 +643,11 @@
             break;
           case "auto-disconnect":
             disconnectButton.click();
+            break;
+          case "set-channel":
+            // Set channel name from plugin
+            state.channel = message.channel;
+            console.log("Channel set to:", message.channel);
             break;
           case "command-result":
             // Forward the result from plugin code back to WebSocket
