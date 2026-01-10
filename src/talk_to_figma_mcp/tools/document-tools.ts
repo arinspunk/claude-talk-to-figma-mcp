@@ -363,7 +363,7 @@ export function registerDocumentTools(server: McpServer): void {
           nodeId,
           format: format || "PNG",
           scale: scale || 1,
-        });
+        }, 120000); // 120 second timeout for image export
         const typedResult = result as { imageData: string; mimeType: string };
 
         return {

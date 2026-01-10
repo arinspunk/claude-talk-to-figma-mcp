@@ -825,8 +825,8 @@ async function createComponentInstance(params) {
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
-        reject(new Error("Timeout while creating component instance (10s). The component may be too complex or unavailable."));
-      }, 10000); // 10 seconds timeout
+        reject(new Error("Timeout while creating component instance (30s). The component may be too complex or unavailable."));
+      }, 30000); // 30 seconds timeout
     });
 
     console.log(`Starting component import for key: ${componentKey}...`);
@@ -884,18 +884,21 @@ async function createComponentInstance(params) {
 }
 
 async function exportNodeAsImage(params) {
-  const { nodeId, scale = 1 } = params || {};
-
-  const format = "PNG";
+  const { nodeId, scale = 1, format = "PNG" } = params || {};
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
   }
 
+  console.log(`[exportNodeAsImage] Starting export for node ${nodeId}, scale: ${scale}, format: ${format}`);
+  const startTime = Date.now();
+
   const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
+
+  console.log(`[exportNodeAsImage] Node found: ${node.name}, type: ${node.type}, size: ${node.width}x${node.height}`);
 
   if (!("exportAsync" in node)) {
     throw new Error(`Node does not support exporting: ${nodeId}`);
@@ -907,7 +910,22 @@ async function exportNodeAsImage(params) {
       constraint: { type: "SCALE", value: scale },
     };
 
-    const bytes = await node.exportAsync(settings);
+    // Set up a timeout for large exports
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`Export timed out after 60s for node ${nodeId} (${node.name}, ${node.width}x${node.height})`));
+      }, 60000); // 60 seconds timeout
+    });
+
+    const exportPromise = node.exportAsync(settings);
+
+    const bytes = await Promise.race([exportPromise, timeoutPromise])
+      .finally(() => {
+        clearTimeout(timeoutId);
+      });
+
+    console.log(`[exportNodeAsImage] Export completed in ${Date.now() - startTime}ms, bytes: ${bytes.length}`);
 
     let mimeType;
     switch (format) {
@@ -2474,8 +2492,8 @@ async function getRemoteComponents() {
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
-        reject(new Error("Internal timeout while retrieving remote components (15s)"));
-      }, 15000); // 15 seconds internal timeout
+        reject(new Error("Internal timeout while retrieving remote components (45s)"));
+      }, 45000); // 45 seconds internal timeout
     });
 
     // Execute the request with a manual timeout
@@ -2592,8 +2610,8 @@ async function setEffectStyleId(params) {
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
-        reject(new Error("Timeout while setting effect style ID (8s). The operation took too long to complete."));
-      }, 8000); // 8 seconds timeout
+        reject(new Error("Timeout while setting effect style ID (20s). The operation took too long to complete."));
+      }, 20000); // 20 seconds timeout
     });
 
     console.log(`Starting to set effect style ID ${effectStyleId} on node ${nodeId}...`);
@@ -2771,8 +2789,8 @@ async function flattenNode(params) {
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
-        reject(new Error("Flatten operation timed out after 8 seconds. The node may be too complex."));
-      }, 8000); // 8 seconds timeout
+        reject(new Error("Flatten operation timed out after 20 seconds. The node may be too complex."));
+      }, 20000); // 20 seconds timeout
     });
 
     // Execute the flatten operation in a promise
