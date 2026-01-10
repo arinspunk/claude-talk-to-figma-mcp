@@ -816,36 +816,51 @@ async function getLocalComponents() {
 // }
 
 async function createComponentInstance(params) {
-  const { componentKey, x = 0, y = 0 } = params || {};
+  const { componentId, componentKey, x = 0, y = 0 } = params || {};
 
-  if (!componentKey) {
-    throw new Error("Missing componentKey parameter");
+  if (!componentId && !componentKey) {
+    throw new Error("Missing componentId or componentKey parameter");
   }
 
   try {
-    // Set up a manual timeout to detect long operations
-    let timeoutId;
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error("Timeout while creating component instance (30s). The component may be too complex or unavailable."));
-      }, 30000); // 30 seconds timeout
-    });
+    let component;
 
-    console.log(`Starting component import for key: ${componentKey}...`);
+    if (componentId) {
+      // Local component - get it directly by ID
+      console.log(`Getting local component by ID: ${componentId}...`);
+      component = await figma.getNodeByIdAsync(componentId);
 
-    // Execute the import with a timeout
-    const importPromise = figma.importComponentByKeyAsync(componentKey);
+      if (!component) {
+        throw new Error(`Component not found with ID: ${componentId}`);
+      }
 
-    // Use Promise.race to implement the timeout
-    const component = await Promise.race([importPromise, timeoutPromise])
-      .finally(() => {
-        clearTimeout(timeoutId); // Clear the timeout to prevent memory leaks
+      if (component.type !== "COMPONENT") {
+        throw new Error(`Node with ID ${componentId} is not a component (type: ${component.type})`);
+      }
+
+      console.log(`Local component found: ${component.name}`);
+    } else {
+      // Remote component - import from team library with timeout
+      let timeoutId;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error("Timeout while importing remote component (30s). The component may be too complex or unavailable."));
+        }, 30000); // 30 seconds timeout
       });
 
-    // Add progress logging
-    console.log(`Component imported successfully, creating instance...`);
+      console.log(`Starting remote component import for key: ${componentKey}...`);
 
-    // Create instance and set properties in a separate try block to handle errors specifically from this step
+      const importPromise = figma.importComponentByKeyAsync(componentKey);
+
+      component = await Promise.race([importPromise, timeoutPromise])
+        .finally(() => {
+          clearTimeout(timeoutId);
+        });
+
+      console.log(`Remote component imported successfully: ${component.name}`);
+    }
+
+    // Create instance and set properties
     try {
       const instance = component.createInstance();
       instance.x = x;
@@ -876,7 +891,8 @@ async function createComponentInstance(params) {
     if (error.message.includes("timeout") || error.message.includes("Timeout")) {
       throw new Error(`The component import timed out after 30 seconds. This usually happens with complex remote components or network issues. Try again later or use a simpler component.`);
     } else if (error.message.includes("not found") || error.message.includes("Not found")) {
-      throw new Error(`Component with key "${componentKey}" not found. Make sure the component exists and is accessible in your document or team libraries.`);
+      const identifier = componentId || componentKey;
+      throw new Error(`Component not found: ${identifier}. Make sure the component exists and is accessible in your document or team libraries.`);
     } else if (error.message.includes("permission") || error.message.includes("Permission")) {
       throw new Error(`You don't have permission to use this component. Make sure you have access to the team library containing this component.`);
     } else {
