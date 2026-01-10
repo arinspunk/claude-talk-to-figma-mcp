@@ -874,7 +874,7 @@ async function createComponentInstance(params) {
 
     // Provide more helpful error messages for common failure scenarios
     if (error.message.includes("timeout") || error.message.includes("Timeout")) {
-      throw new Error(`The component import timed out after 10 seconds. This usually happens with complex remote components or network issues. Try again later or use a simpler component.`);
+      throw new Error(`The component import timed out after 30 seconds. This usually happens with complex remote components or network issues. Try again later or use a simpler component.`);
     } else if (error.message.includes("not found") || error.message.includes("Not found")) {
       throw new Error(`Component with key "${componentKey}" not found. Make sure the component exists and is accessible in your document or team libraries.`);
     } else if (error.message.includes("permission") || error.message.includes("Permission")) {
