@@ -205,6 +205,8 @@ async function handleCommand(command, params) {
       return await createVector(params);
     case "create_line":
       return await createLine(params);
+    case "rename_node":
+      return await renameNode(params);
     case "create_component_from_node":
       return await createComponentFromNode(params);
     case "create_component_set":
@@ -3341,6 +3343,38 @@ async function createLine(params) {
     strokes: line.strokes,
     vectorPaths: line.vectorPaths,
     parentId: line.parent ? line.parent.id : undefined
+  };
+}
+
+// Rename a node (frame, component, group, etc.)
+async function renameNode(params) {
+  const { nodeId, name } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!name) {
+    throw new Error("Missing name parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type === "DOCUMENT") {
+    throw new Error("Cannot rename the document node");
+  }
+
+  const oldName = node.name;
+  node.name = name;
+
+  return {
+    id: node.id,
+    name: node.name,
+    oldName: oldName,
+    type: node.type
   };
 }
 
