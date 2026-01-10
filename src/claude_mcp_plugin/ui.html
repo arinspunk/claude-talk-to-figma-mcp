@@ -210,6 +210,10 @@
           Not connected to Claude MCP server
         </div>
 
+        <div id="retry-status" class="status info" style="display: none;">
+          Retrying connection...
+        </div>
+
         <div class="section">
           <button id="btn-disconnect" class="secondary" disabled>
             Disconnect
@@ -262,6 +266,10 @@
         serverPort: 3055,
         pendingRequests: new Map(),
         channel: null,
+        retryCount: 0,
+        retryTimer: null,
+        retryDelay: 3000, // 3 seconds
+        manualDisconnect: false,
       };
 
       // UI Elements
@@ -269,6 +277,7 @@
       const connectButton = document.getElementById("btn-connect");
       const disconnectButton = document.getElementById("btn-disconnect");
       const connectionStatus = document.getElementById("connection-status");
+      const retryStatus = document.getElementById("retry-status");
 
       // Tabs
       const tabs = document.querySelectorAll(".tab");
@@ -296,6 +305,45 @@
         connectButton.disabled = isConnected;
         disconnectButton.disabled = !isConnected;
         portInput.disabled = isConnected;
+
+        // Hide retry status when connected or explicitly disconnected
+        if (isConnected || !state.retryTimer) {
+          retryStatus.style.display = "none";
+        }
+      }
+
+      function updateRetryStatus() {
+        if (state.retryCount > 0) {
+          retryStatus.innerHTML = `Reconnecting... (attempt ${state.retryCount})`;
+          retryStatus.style.display = "block";
+        } else {
+          retryStatus.style.display = "none";
+        }
+      }
+
+      function clearRetry() {
+        if (state.retryTimer) {
+          clearTimeout(state.retryTimer);
+          state.retryTimer = null;
+        }
+        state.retryCount = 0;
+        retryStatus.style.display = "none";
+      }
+
+      function scheduleRetry(port) {
+        // Prevent duplicate retry scheduling
+        if (state.retryTimer) {
+          return;
+        }
+
+        state.retryCount++;
+        updateRetryStatus();
+
+        state.retryTimer = setTimeout(() => {
+          state.retryTimer = null;
+          console.log(`Retry attempt ${state.retryCount}`);
+          connectToServer(port);
+        }, state.retryDelay);
       }
 
       // Connect to WebSocket server
@@ -309,11 +357,20 @@
           state.serverPort = port;
           state.socket = new WebSocket(`ws://localhost:${port}`);
 
-          state.socket.onopen = () => {
-            // Generate random channel name
-            const channelName = generateChannelName();
+          state.socket.onopen = async () => {
+            // Request file name from plugin to use as channel
+            if (!state.channel) {
+              parent.postMessage(
+                { pluginMessage: { type: "get-file-name" } },
+                "*"
+              );
+
+              // Wait for file name response
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            const channelName = state.channel || "default";
             console.log("Joining channel:", channelName);
-            state.channel = channelName;
 
             // Join the channel using the same format as App.tsx
             state.socket.send(
@@ -334,6 +391,10 @@
                 if (data.message && data.message.result) {
                   state.connected = true;
                   const channelName = data.channel;
+
+                  // Clear retry on successful connection
+                  clearRetry();
+
                   updateConnectionStatus(
                     true,
                     `Connected to server on port ${port} in channel: <strong>${channelName}</strong>`
@@ -366,6 +427,11 @@
             state.connected = false;
             state.socket = null;
             updateConnectionStatus(false, "Disconnected from server");
+
+            // Auto-retry connection if not manually disconnected
+            if (!state.manualDisconnect) {
+              scheduleRetry(port);
+            }
           };
 
           state.socket.onerror = (error) => {
@@ -373,6 +439,11 @@
             updateConnectionStatus(false, "Connection error");
             state.connected = false;
             state.socket = null;
+
+            // Auto-retry connection if not manually disconnected
+            if (!state.manualDisconnect) {
+              scheduleRetry(port);
+            }
           };
         } catch (error) {
           console.error("Connection error:", error);
@@ -380,11 +451,19 @@
             false,
             `Connection error: ${error.message || "Unknown error"}`
           );
+
+          // Auto-retry connection if not manually disconnected
+          if (!state.manualDisconnect) {
+            scheduleRetry(port);
+          }
         }
       }
 
       // Disconnect from websocket server
       function disconnectFromServer() {
+        state.manualDisconnect = true;
+        clearRetry();
+
         if (state.socket) {
           state.socket.close();
           state.socket = null;
@@ -539,6 +618,8 @@
       // Connect to server
       connectButton.addEventListener("click", () => {
         const port = parseInt(portInput.value, 10) || 3055;
+        state.manualDisconnect = false;
+        clearRetry();
         updateConnectionStatus(false, "Connecting...");
         connectionStatus.className = "status info";
         connectToServer(port);
@@ -634,6 +715,11 @@
             break;
           case "auto-disconnect":
             disconnectButton.click();
+            break;
+          case "set-channel":
+            // Set channel name from plugin
+            state.channel = message.channel;
+            console.log("Channel set to:", message.channel);
             break;
           case "command-result":
             // Forward the result from plugin code back to WebSocket

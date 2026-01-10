@@ -387,4 +387,207 @@ export function registerDocumentTools(server: McpServer): void {
       }
     }
   );
+
+  // Create Page Tool
+  server.tool(
+    "create_page",
+    "Create a new page in the current Figma document",
+    {
+      name: z.string().describe("Name for the new page"),
+    },
+    async ({ name }) => {
+      try {
+        const result = await sendCommandToFigma("create_page", { name });
+        const typedResult = result as { id: string; name: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Created page "${typedResult.name}" with ID: ${typedResult.id}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error creating page: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Delete Page Tool
+  server.tool(
+    "delete_page",
+    "Delete a page from the current Figma document",
+    {
+      pageId: z.string().describe("ID of the page to delete"),
+    },
+    async ({ pageId }) => {
+      try {
+        const result = await sendCommandToFigma("delete_page", { pageId });
+        const typedResult = result as { success: boolean; name: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Deleted page "${typedResult.name}" successfully`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error deleting page: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Rename Page Tool
+  server.tool(
+    "rename_page",
+    "Rename an existing page in the Figma document",
+    {
+      pageId: z.string().describe("ID of the page to rename"),
+      name: z.string().describe("New name for the page"),
+    },
+    async ({ pageId, name }) => {
+      try {
+        const result = await sendCommandToFigma("rename_page", { pageId, name });
+        const typedResult = result as { id: string; name: string; oldName: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Renamed page from "${typedResult.oldName}" to "${typedResult.name}"`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error renaming page: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Get Pages Tool
+  server.tool(
+    "get_pages",
+    "Get all pages in the current Figma document",
+    {},
+    async () => {
+      try {
+        const result = await sendCommandToFigma("get_pages");
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting pages: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Set Current Page Tool
+  server.tool(
+    "set_current_page",
+    "Switch to a specific page in the Figma document",
+    {
+      pageId: z.string().describe("ID of the page to switch to"),
+    },
+    async ({ pageId }) => {
+      try {
+        const result = await sendCommandToFigma("set_current_page", { pageId });
+        const typedResult = result as { id: string; name: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Switched to page "${typedResult.name}"`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error switching page: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Save Version History Tool
+  server.tool(
+    "save_version",
+    "Save the current state of the Figma document to version history with an optional title and description",
+    {
+      title: z.string().optional().describe("Title for the version (optional)"),
+      description: z.string().optional().describe("Description for the version (optional)"),
+    },
+    async ({ title, description }) => {
+      try {
+        const result = await sendCommandToFigma("save_version", { title, description });
+        const typedResult = result as { id: string; title?: string; description?: string } | null;
+
+        if (typedResult === null) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Version save was requested but no version ID was returned. This may happen if changes weren't fully saved yet.",
+              },
+            ],
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Saved version "${typedResult.title || 'Untitled'}" with ID: ${typedResult.id}${typedResult.description ? `. Description: ${typedResult.description}` : ''}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error saving version: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
 }
