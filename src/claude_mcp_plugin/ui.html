@@ -268,7 +268,6 @@
         channel: null,
         retryCount: 0,
         retryTimer: null,
-        maxRetries: 10,
         retryDelay: 3000, // 3 seconds
         manualDisconnect: false,
       };
@@ -315,7 +314,7 @@
 
       function updateRetryStatus() {
         if (state.retryCount > 0) {
-          retryStatus.innerHTML = `Reconnecting... (attempt ${state.retryCount}/${state.maxRetries})`;
+          retryStatus.innerHTML = `Reconnecting... (attempt ${state.retryCount})`;
           retryStatus.style.display = "block";
         } else {
           retryStatus.style.display = "none";
@@ -337,21 +336,12 @@
           return;
         }
 
-        if (state.retryCount >= state.maxRetries) {
-          updateConnectionStatus(
-            false,
-            `Connection failed after ${state.maxRetries} attempts`
-          );
-          clearRetry();
-          return;
-        }
-
         state.retryCount++;
         updateRetryStatus();
 
         state.retryTimer = setTimeout(() => {
           state.retryTimer = null;
-          console.log(`Retry attempt ${state.retryCount}/${state.maxRetries}`);
+          console.log(`Retry attempt ${state.retryCount}`);
           connectToServer(port);
         }, state.retryDelay);
       }
