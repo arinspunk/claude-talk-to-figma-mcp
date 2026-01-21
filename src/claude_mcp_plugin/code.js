@@ -789,27 +789,55 @@ async function createComponentInstance(params) {
   }
 
   try {
-    // Set up a manual timeout to detect long operations
-    let timeoutId;
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error("Timeout while creating component instance (10s). The component may be too complex or unavailable."));
-      }, 10000); // 10 seconds timeout
-    });
-    
-    console.log(`Starting component import for key: ${componentKey}...`);
-    
-    // Execute the import with a timeout
-    const importPromise = figma.importComponentByKeyAsync(componentKey);
-    
-    // Use Promise.race to implement the timeout
-    const component = await Promise.race([importPromise, timeoutPromise])
-      .finally(() => {
-        clearTimeout(timeoutId); // Clear the timeout to prevent memory leaks
+    console.log(`Looking for component with key: ${componentKey}...`);
+
+    let component = null;
+
+    // Try to find the component locally first (faster than import)
+    try {
+      // First check current page (fastest)
+      const currentPageComponents = figma.currentPage.findAllWithCriteria({
+        types: ["COMPONENT"]
+      });
+      component = currentPageComponents.find(c => c.key === componentKey);
+
+      if (!component) {
+        // Load all pages and search entire document
+        console.log(`Not on current page, searching all pages...`);
+        await figma.loadAllPagesAsync();
+        const allComponents = figma.root.findAllWithCriteria({
+          types: ["COMPONENT"]
+        });
+        component = allComponents.find(c => c.key === componentKey);
+      }
+
+      if (component) {
+        console.log(`Found component locally: ${component.name}`);
+      }
+    } catch (findError) {
+      console.log(`Error searching locally: ${findError.message}`);
+    }
+
+    // If not found locally, try importing (for remote/team library components)
+    if (!component) {
+      console.log(`Component not found locally, trying import...`);
+
+      let timeoutId;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error("Timeout while importing component (10s). The component may be in a team library you don't have access to."));
+        }, 10000);
       });
 
-    // Add progress logging
-    console.log(`Component imported successfully, creating instance...`);
+      const importPromise = figma.importComponentByKeyAsync(componentKey);
+
+      component = await Promise.race([importPromise, timeoutPromise])
+        .finally(() => {
+          clearTimeout(timeoutId);
+        });
+    }
+
+    console.log(`Component ready, creating instance...`);
     
     // Create instance and set properties in a separate try block to handle errors specifically from this step
     try {
