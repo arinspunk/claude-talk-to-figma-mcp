@@ -2728,11 +2728,15 @@ async function setTextStyleId(params) {
       // Try to validate the text style exists before applying
       console.log(`Fetching text styles to validate style ID: ${textStyleId}`);
       const textStyles = await figma.getLocalTextStylesAsync();
-      const foundStyle = textStyles.find(style => style.id === textStyleId);
+      // Look for the style by ID or by Key (LLMs often pass the key which is a cleaner hex string)
+      const foundStyle = textStyles.find(style => style.id === textStyleId || style.key === textStyleId);
 
       if (!foundStyle) {
-        throw new Error(`Text style not found with ID: ${textStyleId}. Available styles: ${textStyles.map(s => s.name).join(', ')}`);
+        throw new Error(`Text style with ID "${textStyleId}" not found. Make sure the style exists in your local styles.`);
       }
+
+      // Ensure we use the full Figma ID for applying the style
+      const actualStyleId = foundStyle.id;
 
       console.log(`Text style "${foundStyle.name}" found, applying to node...`);
 
@@ -2740,7 +2744,7 @@ async function setTextStyleId(params) {
       await figma.loadFontAsync(foundStyle.fontName);
 
       // Apply the text style to the node
-      await node.setTextStyleIdAsync(textStyleId);
+      await node.setTextStyleIdAsync(actualStyleId);
 
       return {
         id: node.id,
