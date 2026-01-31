@@ -274,6 +274,10 @@ src/
 5. **Pull Request**: Clear description of changes
 
 #### Recent Contributors
+- **[Rob Dearborn](https://github.com/rfdearborn)** - Optimized component lookup to resolve timeout issues and implemented `set_text_style_id` tool ([PR #42](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/42), [PR #43](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/43))
+- **[sk (kovalevsky)](https://github.com/kovalevsky)** - Fixed SVG export format parameters and added comprehensive page management tools (`create_page`, `delete_page`, `rename_page`, `get_pages`, `set_current_page`) ([PR #32](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/32))
+- **[Beomsu Koh](https://github.com/GoBeromsu)** - Added `rename_node` tool for better organization of Figma elements ([PR #36](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/36))
+- **[Timur](https://github.com/Mirsmog)** - Improved Zod validation for `join_channel` parameter ([PR #29](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/29))
 - **[Taylor Smits](https://github.com/smitstay)** - DXT Package Support implementation, automated CI/CD workflows, testing improvements, and bug fixes ([PR #17](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/17), [PR #16](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/16), [PR #13](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/13), [PR #14](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/14))
 - **[easyhak](https://github.com/easyhak)** - Fixed build script not working on Windows OS ([PR #10](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/10))
 
