@@ -301,7 +301,7 @@ export function registerDocumentTools(server: McpServer): void {
     "join_channel",
     "Join a specific channel to communicate with Figma",
     {
-      channel: z.string().describe("The name of the channel to join").default(""),
+      channel: z.string().describe("The name of the channel to join"),
     },
     async ({ channel }) => {
       try {
@@ -323,7 +323,7 @@ export function registerDocumentTools(server: McpServer): void {
 
         // Use joinChannel instead of sendCommandToFigma to ensure currentChannel is updated
         await joinChannel(channel);
-        
+
         return {
           content: [
             {
