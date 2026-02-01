@@ -13,6 +13,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'release' }}
     
     steps:
