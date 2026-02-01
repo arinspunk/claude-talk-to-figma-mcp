@@ -295,12 +295,13 @@ src/
 
 ## 📋 Version History
 
-### Current: 0.7.0
-- **🎨 New Tools**: Added `set_text_style_id`, `rename_node`, and full suite of Page Management tools.
-- **🚀 Performance Fix**: Resolved component loading timeouts for large libraries (Thanks to [Rob Dearborn](https://github.com/rfdearborn) - [PR #42](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/42)).
-- **🛡️ Validation**: Mandatory channel validation and SVG export fixes (Thanks to [Timur](https://github.com/Mirsmog) and [sk (kovalevsky)](https://github.com/kovalevsky)).
+### Current: 0.8.0
+- **🚀 One-command Setup**: Unified launcher via `npx claude-talk-to-figma-mcp` for frictionless installation.
+- **🛠️ Smart Environment**: Automated Bun detection and OS-specific setup prompts.
+- **🛡️ CI/CD Stability**: Fixed TypeScript definitions and release permissions for faster delivery.
 
-### Previous: 0.6.1
+### Previous: 0.7.0
+- **🎨 New Tools**: Added `set_text_style_id`, `rename_node`, and full suite of Page Management tools.
 - **🔧 Tool Fix**: The `set_stroke_color` tool now correctly accepts a `strokeWeight` of `0` for creating invisible strokes.
 - **🚀 DXT Package Support**: one-click installation via Claude Desktop's extension manager (Thanks to [Taylor Smits](https://github.com/smitstay) - [PR #17](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/17))
 - **📦 Automated Distribution**: GitHub Actions workflow for automatic DXT package generation and release uploads
