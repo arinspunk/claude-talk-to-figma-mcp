@@ -5,11 +5,14 @@
   "module": "dist/talk_to_figma_mcp/server.js",
   "main": "dist/talk_to_figma_mcp/server.js",
   "bin": {
-    "claude-talk-to-figma-mcp": "dist/talk_to_figma_mcp/server.js",
+    "claude-talk-to-figma-mcp": "scripts/launcher.js",
+    "claude-talk-to-figma-mcp-server": "dist/talk_to_figma_mcp/server.js",
     "claude-talk-to-figma-mcp-socket": "dist/socket.js"
   },
   "files": [
     "dist",
+    "scripts/launcher.js",
+    "src/claude_mcp_plugin/manifest.json",
     "readme.md",
     "LICENSE",
     "TESTING.md",
