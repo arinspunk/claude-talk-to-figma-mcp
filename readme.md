@@ -9,9 +9,19 @@ A Model Context Protocol (MCP) plugin that allows Claude Desktop and other AI to
 ## ⚡ Installation
 
 ### 1. Prerequisites
-- [Claude Desktop](https://claude.ai/download) or [Cursor](https://cursor.com/downloads) + [Figma Desktop](https://www.figma.com/downloads/) + [Bun](https://bun.sh) installed
+- [Claude Desktop](https://claude.ai/download) or [Cursor](https://cursor.com/downloads) + [Figma Desktop](https://www.figma.com/downloads/)
 
 ### 2. Setup
+
+#### The Pro Way 🚀
+If you already have Node.js installed, you can just run:
+```bash
+npx claude-talk-to-figma-mcp
+```
+This single command will clone the repository, install optimized dependencies (Bun), and start the socket server for you automatically.
+
+#### Manual Way 🛠️
+Use this if you prefer a manual setup:
 ```bash
 git clone https://github.com/arinspunk/claude-talk-to-figma-mcp.git
 cd claude-talk-to-figma-mcp
@@ -47,7 +57,7 @@ bun install
 ### 4. Setup Figma Plugin (Required for all methods)
 Import `src/claude_mcp_plugin/manifest.json` in Figma → Menu → Plugins → Development
 
-### 4. First Connection
+### 5. First Connection
 1. **Start server**: `bun socket` (verify at `http://localhost:3055/status`)
 2. **Connect plugin**: Open Claude MCP Plugin in Figma → copy channel ID
 3. **Test**: Ask your AI client: "Talk to Figma, channel {channel-ID}"
@@ -285,12 +295,13 @@ src/
 
 ## 📋 Version History
 
-### Current: 0.7.0
-- **🎨 New Tools**: Added `set_text_style_id`, `rename_node`, and full suite of Page Management tools.
-- **🚀 Performance Fix**: Resolved component loading timeouts for large libraries (Thanks to [Rob Dearborn](https://github.com/rfdearborn) - [PR #42](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/42)).
-- **🛡️ Validation**: Mandatory channel validation and SVG export fixes (Thanks to [Timur](https://github.com/Mirsmog) and [sk (kovalevsky)](https://github.com/kovalevsky)).
+### Current: 0.8.0
+- **🚀 One-command Setup**: Unified launcher via `npx claude-talk-to-figma-mcp` for frictionless installation.
+- **🛠️ Smart Environment**: Automated Bun detection and OS-specific setup prompts.
+- **🛡️ CI/CD Stability**: Fixed TypeScript definitions and release permissions for faster delivery.
 
-### Previous: 0.6.1
+### Previous: 0.7.0
+- **🎨 New Tools**: Added `set_text_style_id`, `rename_node`, and full suite of Page Management tools.
 - **🔧 Tool Fix**: The `set_stroke_color` tool now correctly accepts a `strokeWeight` of `0` for creating invisible strokes.
 - **🚀 DXT Package Support**: one-click installation via Claude Desktop's extension manager (Thanks to [Taylor Smits](https://github.com/smitstay) - [PR #17](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/17))
 - **📦 Automated Distribution**: GitHub Actions workflow for automatic DXT package generation and release uploads
