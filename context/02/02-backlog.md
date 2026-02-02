@@ -84,12 +84,20 @@ La revisión del código indica que la refactorización está bien implementada 
 
 # Registro de Cambios - Actualización del README.md
 
-## Fecha: 5 de mayo de 2025
+## Fecha: 2 de febrero de 2026
 ## Punto del plan: 1.2 Documentación de la Refactorización - Actualizar el README.md
 
 ### Resumen de la Actualización
 
-Se ha actualizado el archivo README.md del proyecto para reflejar la nueva estructura modular implementada durante la refactorización. Las principales actualizaciones incluyen:
+Se ha actualizado el archivo README.md para clarificar los requisitos previos.
+
+**[1.2]** ✅ Documentación de la Refactorización - Actualizar el README.md
+> **What to do:** Actualizar el archivo README.md del proyecto para reflejar los requisitos previos.
+> **Date completed:** 2026-02-02
+> **Work done:** Added Node.js as a required prerequisite and split prerequisites into separate bullet points for better readability.
+> **Commit:** `f925386` docs(readme): add Node.js and clarify prerequisites
+
+Las principales actualizaciones incluyen:
 
 1. **Adición de nuevas características destacadas**:
    - Se agregaron tres nuevas características clave en la sección de Features:

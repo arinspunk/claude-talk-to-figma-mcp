@@ -16,7 +16,7 @@ A Model Context Protocol (MCP) plugin that allows Claude Desktop and other AI to
 ### 2. Setup
 
 #### The Pro Way 🚀
-If you already have Node.js installed, you can just run:
+If you already have Node.js installed, first navigate to the folder where you want to install the MCP and simply run:
 ```bash
 npx claude-talk-to-figma-mcp
 ```
