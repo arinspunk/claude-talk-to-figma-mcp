@@ -564,4 +564,159 @@ export function registerTextTools(server: McpServer): void {
       }
     }
   );
+
+  // Get Available Fonts Tool
+  server.tool(
+    "get_available_fonts",
+    "Get all available fonts in Figma",
+    {},
+    async () => {
+      try {
+        const result = await sendCommandToFigma("get_available_fonts", {});
+        const typedResult = result as {
+          totalFonts: number,
+          totalFamilies: number,
+          fonts: Array<{ family: string, style: string }>,
+          fontsByFamily: Record<string, string[]>
+        };
+
+        // Format the output for better readability
+        const familyList = Object.entries(typedResult.fontsByFamily)
+          .map(([family, styles]) => `${family}: ${styles.join(', ')}`)
+          .join('\n');
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Found ${typedResult.totalFonts} fonts from ${typedResult.totalFamilies} families\n\n${familyList}`
+            }
+          ]
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting available fonts: ${error instanceof Error ? error.message : String(error)}`
+            }
+          ]
+        };
+      }
+    }
+  );
+
+  // Set Text Align Tool
+  server.tool(
+    "set_text_align",
+    "Set horizontal text alignment for a text node",
+    {
+      nodeId: z.string().describe("The ID of the text node to modify"),
+      textAlignHorizontal: z.enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"]).describe("Horizontal alignment")
+    },
+    async ({ nodeId, textAlignHorizontal }) => {
+      try {
+        const result = await sendCommandToFigma("set_text_align", {
+          nodeId,
+          textAlignHorizontal
+        });
+
+        const typedResult = result as { name: string };
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Successfully set horizontal text alignment to ${textAlignHorizontal} for node "${typedResult.name}"`
+            }
+          ]
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting text alignment: ${error instanceof Error ? error.message : String(error)}`
+            }
+          ]
+        };
+      }
+    }
+  );
+
+  // Set Text Vertical Align Tool
+  server.tool(
+    "set_text_vertical_align",
+    "Set vertical text alignment for a text node",
+    {
+      nodeId: z.string().describe("The ID of the text node to modify"),
+      textAlignVertical: z.enum(["TOP", "CENTER", "BOTTOM"]).describe("Vertical alignment")
+    },
+    async ({ nodeId, textAlignVertical }) => {
+      try {
+        const result = await sendCommandToFigma("set_text_vertical_align", {
+          nodeId,
+          textAlignVertical
+        });
+
+        const typedResult = result as { name: string };
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Successfully set vertical text alignment to ${textAlignVertical} for node "${typedResult.name}"`
+            }
+          ]
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting vertical text alignment: ${error instanceof Error ? error.message : String(error)}`
+            }
+          ]
+        };
+      }
+    }
+  );
+
+  // Set Text Auto Resize Tool
+  server.tool(
+    "set_text_auto_resize",
+    "Set auto resize behavior for a text node",
+    {
+      nodeId: z.string().describe("The ID of the text node to modify"),
+      textAutoResize: z.enum(["WIDTH_AND_HEIGHT", "HEIGHT", "NONE"]).describe("Auto resize mode")
+    },
+    async ({ nodeId, textAutoResize }) => {
+      try {
+        const result = await sendCommandToFigma("set_text_auto_resize", {
+          nodeId,
+          textAutoResize
+        });
+
+        const typedResult = result as { name: string };
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Successfully set text auto resize to ${textAutoResize} for node "${typedResult.name}"`
+            }
+          ]
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting text auto resize: ${error instanceof Error ? error.message : String(error)}`
+            }
+          ]
+        };
+      }
+    }
+  );
 }

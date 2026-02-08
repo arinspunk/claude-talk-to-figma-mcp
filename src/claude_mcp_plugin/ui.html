@@ -497,10 +497,17 @@
           return;
         }
 
+        // Use same format as sendSuccessResponse so server can process it
         state.socket.send(
           JSON.stringify({
             id,
-            error: errorMessage,
+            type: "message",
+            channel: state.channel,
+            message: {
+              id,
+              error: errorMessage,
+              result: { error: true, message: errorMessage },
+            },
           })
         );
       }

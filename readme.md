@@ -125,15 +125,50 @@ Claude Desktop ↔ MCP Server ↔ WebSocket Server ↔ Figma Plugin
 ### ✏️ Modification Tools
 | Command | Purpose | Example Use |
 |---------|---------|-------------|
-| `set_fill_color` | Element colors | Brand color application |
+| **Colors & Fills** |||
+| `set_fill_color` | Solid colors | Brand color application |
+| `set_gradient_fill` | Gradient fills | Linear, radial, angular gradients |
+| `set_image_fill` | Image fills | Photos, textures |
+| `get_image_fills` | Get image info | Inspect image fills |
+| **Strokes** |||
 | `set_stroke_color` | Border colors | Outline styling |
-| `move_node` | Positioning | Layout adjustments |
-| `resize_node` | Size changes | Responsive scaling |
-| `delete_node` | Remove elements | Clean up designs |
-| `set_corner_radius` | Rounded corners | Modern UI styling |
-| `set_auto_layout` | Flexbox-like layout | Component spacing |
+| `set_stroke_align` | Stroke position | Inside, center, outside |
+| `set_stroke_cap` | Line endings | Round, square, arrow |
+| `set_stroke_join` | Corner style | Miter, bevel, round |
+| `set_stroke_dashes` | Dashed lines | Dotted, dashed patterns |
+| **Appearance** |||
+| `set_opacity` | Transparency | Fade effects |
+| `set_blend_mode` | Blend modes | Multiply, overlay, screen |
 | `set_effects` | Shadows/blurs | Visual polish |
 | `set_effect_style_id` | Apply effect styles | Consistent shadow styles |
+| **Transform** |||
+| `move_node` | Positioning | Layout adjustments |
+| `resize_node` | Size changes | Responsive scaling |
+| `rotate_node` | Rotation | Angle adjustments |
+| `flip_horizontal` | Mirror X | Flip left-right |
+| `flip_vertical` | Mirror Y | Flip top-bottom |
+| **Layout** |||
+| `set_corner_radius` | Rounded corners | Modern UI styling |
+| `set_auto_layout` | Flexbox-like layout | Component spacing |
+| `set_constraints` | Responsive behavior | Pin, scale, center |
+| `set_layout_sizing` | Auto-layout sizing | Fixed, hug, fill |
+| `add_layout_grid` | Layout grids | Column/row guides |
+| `remove_layout_grid` | Remove grids | Clean up guides |
+| **Organization** |||
+| `delete_node` | Remove elements | Clean up designs |
+| `set_visible` | Show/hide | Toggle visibility |
+| `set_locked` | Lock/unlock | Prevent edits |
+| `rename_node` | Rename elements | Better organization |
+| **Layer Order** |||
+| `bring_to_front` | Move to top | Z-index max |
+| `send_to_back` | Move to bottom | Z-index min |
+| `bring_forward` | Move up one layer | Incremental Z+ |
+| `send_backward` | Move down one layer | Incremental Z- |
+| `reorder_children` | Custom order | Specific arrangement |
+| **Advanced** |||
+| `boolean_operation` | Boolean ops | Union, subtract, intersect |
+| `create_mask` | Clipping masks | Image cropping |
+| `apply_mask` | Apply mask | Mask content |
 
 ### 📝 Text Tools
 | Command | Purpose | Example Use |
@@ -148,8 +183,27 @@ Claude Desktop ↔ MCP Server ↔ WebSocket Server ↔ Figma Plugin
 | `set_paragraph_spacing` | Paragraph gaps | Content structure |
 | `set_text_case` | Case transformation | UPPER/lower/Title case |
 | `set_text_decoration` | Text styling | Underline/strikethrough |
+| `set_text_align` | Horizontal alignment | Left, center, right, justified |
+| `set_text_vertical_align` | Vertical alignment | Top, center, bottom |
+| `set_text_auto_resize` | Auto-resize behavior | Width/height, height, none |
 | `get_styled_text_segments` | Text analysis | Rich text inspection |
 | `load_font_async` | Font loading | Custom font access |
+| `set_text_style_id` | Apply text styles | Consistent typography |
+
+### 🔍 Search & Organization Tools
+| Command | Purpose | Example Use |
+|---------|---------|-------------|
+| `find_nodes_by_name` | Search by name | Find specific elements |
+| `find_nodes_by_type` | Search by type | Find all rectangles |
+| `align_nodes` | Align multiple nodes | Left, center, right alignment |
+| `distribute_nodes` | Even spacing | Distribute horizontally/vertically |
+
+### 🎨 Style Management Tools
+| Command | Purpose | Example Use |
+|---------|---------|-------------|
+| `create_color_style` | Create color style | Design system colors |
+| `get_color_styles` | List color styles | Audit design tokens |
+| `apply_color_style` | Apply color style | Consistent branding |
 
 ### 🎨 Component Tools
 | Command | Purpose | Example Use |

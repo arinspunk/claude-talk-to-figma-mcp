@@ -165,6 +165,8 @@ async function handleCommand(command, params) {
       return await getStyledTextSegments(params);
     case "load_font_async":
       return await loadFontAsyncWrapper(params);
+    case "get_available_fonts":
+      return await getAvailableFonts();
     case "get_remote_components":
       return await getRemoteComponents(params);
     case "set_effects":
@@ -207,6 +209,78 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "set_gradient_fill":
+      return await setGradientFill(params);
+    case "set_opacity":
+      return await setOpacity(params);
+    case "set_blend_mode":
+      return await setBlendMode(params);
+    case "set_constraints":
+      return await setConstraints(params);
+    case "set_layout_sizing":
+      return await setLayoutSizing(params);
+    case "rotate_node":
+      return await rotateNode(params);
+    case "flip_horizontal":
+      return await flipHorizontal(params);
+    case "flip_vertical":
+      return await flipVertical(params);
+    case "set_visible":
+      return await setVisible(params);
+    case "set_locked":
+      return await setLocked(params);
+    case "bring_to_front":
+      return await bringToFront(params);
+    case "send_to_back":
+      return await sendToBack(params);
+    case "bring_forward":
+      return await bringForward(params);
+    case "send_backward":
+      return await sendBackward(params);
+    case "reorder_children":
+      return await reorderChildren(params);
+    case "boolean_operation":
+      return await booleanOperation(params);
+    case "create_mask":
+      return await createMask(params);
+    case "apply_mask":
+      return await applyMask(params);
+    case "set_stroke_align":
+      return await setStrokeAlign(params);
+    case "set_stroke_cap":
+      return await setStrokeCap(params);
+    case "set_stroke_join":
+      return await setStrokeJoin(params);
+    case "set_stroke_dashes":
+      return await setStrokeDashes(params);
+    case "set_text_align":
+      return await setTextAlign(params);
+    case "set_text_vertical_align":
+      return await setTextVerticalAlign(params);
+    case "set_text_auto_resize":
+      return await setTextAutoResize(params);
+    case "set_image_fill":
+      return await setImageFill(params);
+    case "get_image_fills":
+      return await getImageFills(params);
+    case "add_layout_grid":
+      return await addLayoutGrid(params);
+    case "remove_layout_grid":
+      return await removeLayoutGrid(params);
+    case "find_nodes_by_name":
+      return await findNodesByName(params);
+    case "find_nodes_by_type":
+      return await findNodesByType(params);
+    case "create_color_style":
+      return await createColorStyle(params);
+    case "get_color_styles":
+      return await getColorStyles();
+    case "apply_color_style":
+      return await applyColorStyle(params);
+    case "align_nodes":
+      return await alignNodes(params);
+    case "distribute_nodes":
+      return await distributeNodes(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -640,6 +714,122 @@ async function setStrokeColor(params) {
     name: node.name,
     strokes: node.strokes,
     strokeWeight: "strokeWeight" in node ? node.strokeWeight : undefined,
+  };
+}
+
+async function setGradientFill(params) {
+  const {
+    nodeId,
+    gradientType,
+    stops,
+    angle = 0,
+    opacity = 1,
+  } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!gradientType) {
+    throw new Error("Missing gradientType parameter");
+  }
+
+  if (!stops || !Array.isArray(stops) || stops.length < 2) {
+    throw new Error("At least 2 gradient stops are required");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("fills" in node)) {
+    throw new Error(`Node does not support fills: ${nodeId}`);
+  }
+
+  // Validate all stops have required properties
+  for (let i = 0; i < stops.length; i++) {
+    const stop = stops[i];
+    if (stop.position === undefined || !stop.color) {
+      throw new Error(`Invalid gradient stop at index ${i}`);
+    }
+    if (stop.color.r === undefined || stop.color.g === undefined ||
+        stop.color.b === undefined || stop.color.a === undefined) {
+      throw new Error(`Incomplete color data in gradient stop at index ${i}`);
+    }
+  }
+
+  // Convert stops to Figma format
+  const gradientStops = stops.map(stop => ({
+    position: parseFloat(stop.position),
+    color: {
+      r: parseFloat(stop.color.r),
+      g: parseFloat(stop.color.g),
+      b: parseFloat(stop.color.b),
+      a: parseFloat(stop.color.a)
+    }
+  }));
+
+  // Calculate gradient transform based on type and angle
+  let gradientTransform;
+  const angleRad = (angle * Math.PI) / 180;
+
+  switch (gradientType) {
+    case "LINEAR": {
+      // Linear gradient transform
+      // The default is left-to-right (0 degrees)
+      // We rotate around the center point
+      const cos = Math.cos(angleRad);
+      const sin = Math.sin(angleRad);
+
+      gradientTransform = [
+        [cos, -sin, 0.5 - 0.5 * cos + 0.5 * sin],
+        [sin, cos, 0.5 - 0.5 * sin - 0.5 * cos]
+      ];
+      break;
+    }
+    case "RADIAL": {
+      // Radial gradient transform (centered)
+      gradientTransform = [
+        [1, 0, 0],
+        [0, 1, 0]
+      ];
+      break;
+    }
+    case "ANGULAR": {
+      // Angular gradient transform (centered)
+      gradientTransform = [
+        [1, 0, 0],
+        [0, 1, 0]
+      ];
+      break;
+    }
+    case "DIAMOND": {
+      // Diamond gradient transform (centered)
+      gradientTransform = [
+        [1, 0, 0],
+        [0, 1, 0]
+      ];
+      break;
+    }
+    default:
+      throw new Error(`Invalid gradient type: ${gradientType}`);
+  }
+
+  // Create the gradient paint
+  const gradientPaint = {
+    type: `GRADIENT_${gradientType}`,
+    gradientStops: gradientStops,
+    gradientTransform: gradientTransform,
+    opacity: parseFloat(opacity)
+  };
+
+  node.fills = [gradientPaint];
+
+  return {
+    id: node.id,
+    name: node.name,
+    fills: node.fills
   };
 }
 
@@ -2486,6 +2676,33 @@ async function loadFontAsyncWrapper(params) {
   }
 }
 
+async function getAvailableFonts() {
+  try {
+    const fonts = await figma.listAvailableFontsAsync();
+
+    // Group fonts by family
+    const fontsByFamily = {};
+    fonts.forEach(font => {
+      if (!fontsByFamily[font.fontName.family]) {
+        fontsByFamily[font.fontName.family] = [];
+      }
+      fontsByFamily[font.fontName.family].push(font.fontName.style);
+    });
+
+    return {
+      totalFonts: fonts.length,
+      totalFamilies: Object.keys(fontsByFamily).length,
+      fonts: fonts.map(font => ({
+        family: font.fontName.family,
+        style: font.fontName.style
+      })),
+      fontsByFamily: fontsByFamily
+    };
+  } catch (error) {
+    throw new Error(`Error getting available fonts: ${error.message}`);
+  }
+}
+
 async function getRemoteComponents() {
   try {
     // Check if figma.teamLibrary is available
@@ -3748,5 +3965,1225 @@ async function setCurrentPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+// ============================================================================
+// OPACITY AND BLEND MODE
+// ============================================================================
+
+async function setOpacity(params) {
+  const { nodeId, opacity } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (opacity === undefined) {
+    throw new Error("Missing opacity parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("opacity" in node)) {
+    throw new Error(`Node does not support opacity: ${nodeId}`);
+  }
+
+  node.opacity = parseFloat(opacity);
+
+  return {
+    id: node.id,
+    name: node.name,
+    opacity: node.opacity
+  };
+}
+
+async function setBlendMode(params) {
+  const { nodeId, blendMode } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!blendMode) {
+    throw new Error("Missing blendMode parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("blendMode" in node)) {
+    throw new Error(`Node does not support blend modes: ${nodeId}`);
+  }
+
+  node.blendMode = blendMode;
+
+  return {
+    id: node.id,
+    name: node.name,
+    blendMode: node.blendMode
+  };
+}
+
+// ============================================================================
+// CONSTRAINTS AND LAYOUT SIZING
+// ============================================================================
+
+async function setConstraints(params) {
+  const { nodeId, horizontal, vertical } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("constraints" in node)) {
+    throw new Error(`Node does not support constraints: ${nodeId}`);
+  }
+
+  const currentConstraints = {
+    horizontal: node.constraints.horizontal,
+    vertical: node.constraints.vertical
+  };
+
+  if (horizontal) {
+    currentConstraints.horizontal = horizontal;
+  }
+
+  if (vertical) {
+    currentConstraints.vertical = vertical;
+  }
+
+  node.constraints = currentConstraints;
+
+  return {
+    id: node.id,
+    name: node.name,
+    constraints: node.constraints
+  };
+}
+
+async function setLayoutSizing(params) {
+  const { nodeId, horizontal, vertical } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("layoutSizingHorizontal" in node)) {
+    throw new Error(`Node does not support layout sizing: ${nodeId}`);
+  }
+
+  if (horizontal) {
+    node.layoutSizingHorizontal = horizontal;
+  }
+
+  if (vertical) {
+    node.layoutSizingVertical = vertical;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    layoutSizingHorizontal: node.layoutSizingHorizontal,
+    layoutSizingVertical: node.layoutSizingVertical
+  };
+}
+
+// ============================================================================
+// ROTATION AND FLIP
+// ============================================================================
+
+async function rotateNode(params) {
+  const { nodeId, angle } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (angle === undefined) {
+    throw new Error("Missing angle parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("rotation" in node)) {
+    throw new Error(`Node does not support rotation: ${nodeId}`);
+  }
+
+  node.rotation = parseFloat(angle);
+
+  return {
+    id: node.id,
+    name: node.name,
+    rotation: node.rotation
+  };
+}
+
+async function flipHorizontal(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("rotation" in node) || !("rescale" in node)) {
+    throw new Error(`Node does not support flipping: ${nodeId}`);
+  }
+
+  // Flip horizontally by scaling X by -1
+  node.rescale(-1, 1);
+
+  return {
+    id: node.id,
+    name: node.name,
+    message: "Flipped horizontally"
+  };
+}
+
+async function flipVertical(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("rotation" in node) || !("rescale" in node)) {
+    throw new Error(`Node does not support flipping: ${nodeId}`);
+  }
+
+  // Flip vertically by scaling Y by -1
+  node.rescale(1, -1);
+
+  return {
+    id: node.id,
+    name: node.name,
+    message: "Flipped vertically"
+  };
+}
+
+// ============================================================================
+// VISIBILITY AND LOCK
+// ============================================================================
+
+async function setVisible(params) {
+  const { nodeId, visible } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (visible === undefined) {
+    throw new Error("Missing visible parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("visible" in node)) {
+    throw new Error(`Node does not support visibility: ${nodeId}`);
+  }
+
+  node.visible = visible;
+
+  return {
+    id: node.id,
+    name: node.name,
+    visible: node.visible
+  };
+}
+
+async function setLocked(params) {
+  const { nodeId, locked } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (locked === undefined) {
+    throw new Error("Missing locked parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("locked" in node)) {
+    throw new Error(`Node does not support locking: ${nodeId}`);
+  }
+
+  node.locked = locked;
+
+  return {
+    id: node.id,
+    name: node.name,
+    locked: node.locked
+  };
+}
+
+// ============================================================================
+// LAYER ORDERING
+// ============================================================================
+
+async function bringToFront(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!node.parent) {
+    throw new Error(`Node has no parent: ${nodeId}`);
+  }
+
+  const parent = node.parent;
+  if (!("children" in parent)) {
+    throw new Error(`Parent does not support children: ${nodeId}`);
+  }
+
+  parent.appendChild(node);
+
+  return {
+    id: node.id,
+    name: node.name,
+    message: "Brought to front"
+  };
+}
+
+async function sendToBack(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!node.parent) {
+    throw new Error(`Node has no parent: ${nodeId}`);
+  }
+
+  const parent = node.parent;
+  if (!("children" in parent)) {
+    throw new Error(`Parent does not support children: ${nodeId}`);
+  }
+
+  parent.insertChild(0, node);
+
+  return {
+    id: node.id,
+    name: node.name,
+    message: "Sent to back"
+  };
+}
+
+async function bringForward(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!node.parent) {
+    throw new Error(`Node has no parent: ${nodeId}`);
+  }
+
+  const parent = node.parent;
+  if (!("children" in parent)) {
+    throw new Error(`Parent does not support children: ${nodeId}`);
+  }
+
+  const currentIndex = parent.children.indexOf(node);
+  if (currentIndex < parent.children.length - 1) {
+    parent.insertChild(currentIndex + 2, node);
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    message: "Brought forward"
+  };
+}
+
+async function sendBackward(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!node.parent) {
+    throw new Error(`Node has no parent: ${nodeId}`);
+  }
+
+  const parent = node.parent;
+  if (!("children" in parent)) {
+    throw new Error(`Parent does not support children: ${nodeId}`);
+  }
+
+  const currentIndex = parent.children.indexOf(node);
+  if (currentIndex > 0) {
+    parent.insertChild(currentIndex - 1, node);
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    message: "Sent backward"
+  };
+}
+
+async function reorderChildren(params) {
+  const { nodeId, childIds } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!childIds || !Array.isArray(childIds)) {
+    throw new Error("Missing or invalid childIds parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("children" in node)) {
+    throw new Error(`Node does not support children: ${nodeId}`);
+  }
+
+  // Reorder children based on the provided array
+  for (let i = 0; i < childIds.length; i++) {
+    const child = await figma.getNodeByIdAsync(childIds[i]);
+    if (child && child.parent === node) {
+      node.insertChild(i, child);
+    }
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    childCount: node.children.length,
+    message: "Children reordered"
+  };
+}
+
+// ============================================================================
+// BOOLEAN OPERATIONS
+// ============================================================================
+
+async function booleanOperation(params) {
+  const { nodeIds, operation } = params || {};
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length < 2) {
+    throw new Error("At least 2 node IDs are required for boolean operation");
+  }
+
+  if (!operation) {
+    throw new Error("Missing operation parameter");
+  }
+
+  const nodes = [];
+  for (const id of nodeIds) {
+    const node = await figma.getNodeByIdAsync(id);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${id}`);
+    }
+    nodes.push(node);
+  }
+
+  const booleanNode = figma.union(nodes, figma.currentPage);
+
+  // Apply the specific operation
+  switch (operation) {
+    case "UNION":
+      // Already done by figma.union
+      break;
+    case "SUBTRACT":
+      booleanNode.booleanOperation = "SUBTRACT";
+      break;
+    case "INTERSECT":
+      booleanNode.booleanOperation = "INTERSECT";
+      break;
+    case "EXCLUDE":
+      booleanNode.booleanOperation = "EXCLUDE";
+      break;
+    default:
+      throw new Error(`Invalid operation: ${operation}`);
+  }
+
+  return {
+    id: booleanNode.id,
+    name: booleanNode.name,
+    operation: booleanNode.booleanOperation,
+    message: `Boolean operation ${operation} completed`
+  };
+}
+
+// ============================================================================
+// MASKS
+// ============================================================================
+
+async function createMask(params) {
+  const { nodeIds } = params || {};
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length < 2) {
+    throw new Error("At least 2 node IDs are required to create a mask");
+  }
+
+  const nodes = [];
+  for (const id of nodeIds) {
+    const node = await figma.getNodeByIdAsync(id);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${id}`);
+    }
+    nodes.push(node);
+  }
+
+  // First node becomes the mask
+  const maskNode = nodes[0];
+  if (!("isMask" in maskNode)) {
+    throw new Error("First node does not support masking");
+  }
+
+  maskNode.isMask = true;
+
+  // Group all nodes together
+  const parent = maskNode.parent;
+  const group = figma.group(nodes, parent);
+
+  return {
+    id: group.id,
+    name: group.name,
+    maskNodeId: maskNode.id,
+    message: "Mask created"
+  };
+}
+
+async function applyMask(params) {
+  const { nodeId, maskNodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!maskNodeId) {
+    throw new Error("Missing maskNodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  const maskNode = await figma.getNodeByIdAsync(maskNodeId);
+  if (!maskNode) {
+    throw new Error(`Mask node not found with ID: ${maskNodeId}`);
+  }
+
+  if (!("isMask" in maskNode)) {
+    throw new Error("Mask node does not support masking");
+  }
+
+  maskNode.isMask = true;
+
+  // Group nodes together
+  const parent = node.parent || figma.currentPage;
+  const group = figma.group([maskNode, node], parent);
+
+  return {
+    id: group.id,
+    name: group.name,
+    message: "Mask applied"
+  };
+}
+
+// ============================================================================
+// ADVANCED STROKE PROPERTIES
+// ============================================================================
+
+async function setStrokeAlign(params) {
+  const { nodeId, strokeAlign } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!strokeAlign) {
+    throw new Error("Missing strokeAlign parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("strokeAlign" in node)) {
+    throw new Error(`Node does not support stroke align: ${nodeId}`);
+  }
+
+  node.strokeAlign = strokeAlign;
+
+  return {
+    id: node.id,
+    name: node.name,
+    strokeAlign: node.strokeAlign
+  };
+}
+
+async function setStrokeCap(params) {
+  const { nodeId, strokeCap } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!strokeCap) {
+    throw new Error("Missing strokeCap parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("strokeCap" in node)) {
+    throw new Error(`Node does not support stroke cap: ${nodeId}`);
+  }
+
+  node.strokeCap = strokeCap;
+
+  return {
+    id: node.id,
+    name: node.name,
+    strokeCap: node.strokeCap
+  };
+}
+
+async function setStrokeJoin(params) {
+  const { nodeId, strokeJoin } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!strokeJoin) {
+    throw new Error("Missing strokeJoin parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("strokeJoin" in node)) {
+    throw new Error(`Node does not support stroke join: ${nodeId}`);
+  }
+
+  node.strokeJoin = strokeJoin;
+
+  return {
+    id: node.id,
+    name: node.name,
+    strokeJoin: node.strokeJoin
+  };
+}
+
+async function setStrokeDashes(params) {
+  const { nodeId, dashPattern } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!dashPattern || !Array.isArray(dashPattern)) {
+    throw new Error("Missing or invalid dashPattern parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("dashPattern" in node)) {
+    throw new Error(`Node does not support stroke dashes: ${nodeId}`);
+  }
+
+  node.dashPattern = dashPattern;
+
+  return {
+    id: node.id,
+    name: node.name,
+    dashPattern: node.dashPattern
+  };
+}
+
+// ============================================================================
+// TEXT ALIGNMENT
+// ============================================================================
+
+async function setTextAlign(params) {
+  const { nodeId, textAlignHorizontal } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!textAlignHorizontal) {
+    throw new Error("Missing textAlignHorizontal parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type !== "TEXT") {
+    throw new Error(`Node is not a text node: ${nodeId}`);
+  }
+
+  node.textAlignHorizontal = textAlignHorizontal;
+
+  return {
+    id: node.id,
+    name: node.name,
+    textAlignHorizontal: node.textAlignHorizontal
+  };
+}
+
+async function setTextVerticalAlign(params) {
+  const { nodeId, textAlignVertical } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!textAlignVertical) {
+    throw new Error("Missing textAlignVertical parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type !== "TEXT") {
+    throw new Error(`Node is not a text node: ${nodeId}`);
+  }
+
+  node.textAlignVertical = textAlignVertical;
+
+  return {
+    id: node.id,
+    name: node.name,
+    textAlignVertical: node.textAlignVertical
+  };
+}
+
+async function setTextAutoResize(params) {
+  const { nodeId, textAutoResize } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!textAutoResize) {
+    throw new Error("Missing textAutoResize parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type !== "TEXT") {
+    throw new Error(`Node is not a text node: ${nodeId}`);
+  }
+
+  node.textAutoResize = textAutoResize;
+
+  return {
+    id: node.id,
+    name: node.name,
+    textAutoResize: node.textAutoResize
+  };
+}
+
+// ============================================================================
+// IMAGE FILLS
+// ============================================================================
+
+async function setImageFill(params) {
+  const { nodeId, imageUrl, scaleMode } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!imageUrl) {
+    throw new Error("Missing imageUrl parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("fills" in node)) {
+    throw new Error(`Node does not support fills: ${nodeId}`);
+  }
+
+  // Fetch the image
+  const image = await figma.createImageAsync(imageUrl);
+
+  const imageFill = {
+    type: "IMAGE",
+    imageHash: image.hash,
+    scaleMode: scaleMode || "FILL"
+  };
+
+  node.fills = [imageFill];
+
+  return {
+    id: node.id,
+    name: node.name,
+    message: "Image fill applied"
+  };
+}
+
+async function getImageFills(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("fills" in node)) {
+    throw new Error(`Node does not support fills: ${nodeId}`);
+  }
+
+  const imageFills = node.fills.filter(fill => fill.type === "IMAGE");
+
+  return {
+    id: node.id,
+    name: node.name,
+    imageFills: imageFills.map(fill => ({
+      type: fill.type,
+      scaleMode: fill.scaleMode,
+      imageHash: fill.imageHash
+    }))
+  };
+}
+
+// ============================================================================
+// LAYOUT GRID
+// ============================================================================
+
+async function addLayoutGrid(params) {
+  const { nodeId, gridType, count, offset, gutterSize, color } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("layoutGrids" in node)) {
+    throw new Error(`Node does not support layout grids: ${nodeId}`);
+  }
+
+  const grid = {
+    pattern: gridType || "COLUMNS",
+    sectionSize: count || 12,
+    offset: offset || 0,
+    gutterSize: gutterSize || 20,
+    color: color || { r: 0.9, g: 0.9, b: 0.9, a: 0.5 },
+    visible: true
+  };
+
+  const currentGrids = node.layoutGrids.slice();
+  currentGrids.push(grid);
+  node.layoutGrids = currentGrids;
+
+  return {
+    id: node.id,
+    name: node.name,
+    layoutGrids: node.layoutGrids
+  };
+}
+
+async function removeLayoutGrid(params) {
+  const { nodeId, index } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("layoutGrids" in node)) {
+    throw new Error(`Node does not support layout grids: ${nodeId}`);
+  }
+
+  if (index !== undefined) {
+    // Remove specific grid by index
+    const grids = node.layoutGrids.slice();
+    grids.splice(index, 1);
+    node.layoutGrids = grids;
+  } else {
+    // Remove all grids
+    node.layoutGrids = [];
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    layoutGrids: node.layoutGrids
+  };
+}
+
+// ============================================================================
+// SEARCH TOOLS
+// ============================================================================
+
+async function findNodesByName(params) {
+  const { name, caseSensitive, exactMatch } = params || {};
+
+  if (!name) {
+    throw new Error("Missing name parameter");
+  }
+
+  const results = [];
+  const searchName = caseSensitive ? name : name.toLowerCase();
+
+  function searchNode(node) {
+    const nodeName = caseSensitive ? node.name : node.name.toLowerCase();
+
+    const matches = exactMatch
+      ? nodeName === searchName
+      : nodeName.includes(searchName);
+
+    if (matches) {
+      results.push({
+        id: node.id,
+        name: node.name,
+        type: node.type
+      });
+    }
+
+    if ("children" in node) {
+      for (const child of node.children) {
+        searchNode(child);
+      }
+    }
+  }
+
+  searchNode(figma.currentPage);
+
+  return {
+    results: results,
+    count: results.length
+  };
+}
+
+async function findNodesByType(params) {
+  const { nodeType } = params || {};
+
+  if (!nodeType) {
+    throw new Error("Missing nodeType parameter");
+  }
+
+  const results = [];
+
+  function searchNode(node) {
+    if (node.type === nodeType) {
+      results.push({
+        id: node.id,
+        name: node.name,
+        type: node.type
+      });
+    }
+
+    if ("children" in node) {
+      for (const child of node.children) {
+        searchNode(child);
+      }
+    }
+  }
+
+  searchNode(figma.currentPage);
+
+  return {
+    results: results,
+    count: results.length
+  };
+}
+
+// ============================================================================
+// STYLE MANAGEMENT
+// ============================================================================
+
+async function createColorStyle(params) {
+  const { name, color } = params || {};
+
+  if (!name) {
+    throw new Error("Missing name parameter");
+  }
+
+  if (!color) {
+    throw new Error("Missing color parameter");
+  }
+
+  const style = figma.createPaintStyle();
+  style.name = name;
+
+  const paint = {
+    type: "SOLID",
+    color: {
+      r: parseFloat(color.r) || 0,
+      g: parseFloat(color.g) || 0,
+      b: parseFloat(color.b) || 0
+    },
+    opacity: parseFloat(color.a) || 1
+  };
+
+  style.paints = [paint];
+
+  return {
+    id: style.id,
+    name: style.name,
+    key: style.key
+  };
+}
+
+async function getColorStyles() {
+  const styles = figma.getLocalPaintStyles();
+
+  return {
+    styles: styles.map(style => ({
+      id: style.id,
+      name: style.name,
+      key: style.key,
+      paints: style.paints
+    }))
+  };
+}
+
+async function applyColorStyle(params) {
+  const { nodeId, styleId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!styleId) {
+    throw new Error("Missing styleId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("fillStyleId" in node)) {
+    throw new Error(`Node does not support fill styles: ${nodeId}`);
+  }
+
+  node.fillStyleId = styleId;
+
+  return {
+    id: node.id,
+    name: node.name,
+    fillStyleId: node.fillStyleId
+  };
+}
+
+// ============================================================================
+// BATCH OPERATIONS
+// ============================================================================
+
+async function alignNodes(params) {
+  const { nodeIds, alignment } = params || {};
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length < 2) {
+    throw new Error("At least 2 node IDs are required for alignment");
+  }
+
+  if (!alignment) {
+    throw new Error("Missing alignment parameter");
+  }
+
+  const nodes = [];
+  for (const id of nodeIds) {
+    const node = await figma.getNodeByIdAsync(id);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${id}`);
+    }
+    if (!("x" in node) || !("y" in node)) {
+      throw new Error(`Node does not support positioning: ${id}`);
+    }
+    nodes.push(node);
+  }
+
+  // Calculate bounds
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+
+  for (const node of nodes) {
+    minX = Math.min(minX, node.x);
+    maxX = Math.max(maxX, node.x + node.width);
+    minY = Math.min(minY, node.y);
+    maxY = Math.max(maxY, node.y + node.height);
+  }
+
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+
+  // Apply alignment
+  for (const node of nodes) {
+    switch (alignment) {
+      case "LEFT":
+        node.x = minX;
+        break;
+      case "RIGHT":
+        node.x = maxX - node.width;
+        break;
+      case "TOP":
+        node.y = minY;
+        break;
+      case "BOTTOM":
+        node.y = maxY - node.height;
+        break;
+      case "CENTER_HORIZONTAL":
+        node.x = centerX - node.width / 2;
+        break;
+      case "CENTER_VERTICAL":
+        node.y = centerY - node.height / 2;
+        break;
+    }
+  }
+
+  return {
+    nodeIds: nodeIds,
+    alignment: alignment,
+    message: `Aligned ${nodes.length} nodes`
+  };
+}
+
+async function distributeNodes(params) {
+  const { nodeIds, direction } = params || {};
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length < 3) {
+    throw new Error("At least 3 node IDs are required for distribution");
+  }
+
+  if (!direction) {
+    throw new Error("Missing direction parameter");
+  }
+
+  const nodes = [];
+  for (const id of nodeIds) {
+    const node = await figma.getNodeByIdAsync(id);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${id}`);
+    }
+    if (!("x" in node) || !("y" in node)) {
+      throw new Error(`Node does not support positioning: ${id}`);
+    }
+    nodes.push(node);
+  }
+
+  // Sort nodes by position
+  if (direction === "HORIZONTAL") {
+    nodes.sort((a, b) => a.x - b.x);
+
+    const firstX = nodes[0].x;
+    const lastX = nodes[nodes.length - 1].x + nodes[nodes.length - 1].width;
+    const totalWidth = nodes.reduce((sum, node) => sum + node.width, 0);
+    const spacing = (lastX - firstX - totalWidth) / (nodes.length - 1);
+
+    let currentX = firstX;
+    for (const node of nodes) {
+      node.x = currentX;
+      currentX += node.width + spacing;
+    }
+  } else if (direction === "VERTICAL") {
+    nodes.sort((a, b) => a.y - b.y);
+
+    const firstY = nodes[0].y;
+    const lastY = nodes[nodes.length - 1].y + nodes[nodes.length - 1].height;
+    const totalHeight = nodes.reduce((sum, node) => sum + node.height, 0);
+    const spacing = (lastY - firstY - totalHeight) / (nodes.length - 1);
+
+    let currentY = firstY;
+    for (const node of nodes) {
+      node.y = currentY;
+      currentY += node.height + spacing;
+    }
+  }
+
+  return {
+    nodeIds: nodeIds,
+    direction: direction,
+    message: `Distributed ${nodes.length} nodes`
   };
 }

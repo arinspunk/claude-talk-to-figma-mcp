@@ -103,20 +103,26 @@ export function connectToFigma(port: number = defaultPort) {
         logger.debug(`Received message: ${JSON.stringify(myResponse)}`);
         logger.log('myResponse' + JSON.stringify(myResponse));
 
-        // Handle response to a request
+        // Handle response to a request - check for either result OR error
         if (
+          myResponse &&
           myResponse.id &&
           pendingRequests.has(myResponse.id) &&
-          myResponse.result
+          (myResponse.result || myResponse.error)
         ) {
           const request = pendingRequests.get(myResponse.id)!;
           clearTimeout(request.timeout);
 
           if (myResponse.error) {
+            // Handle error responses immediately
             logger.error(`Error from Figma: ${myResponse.error}`);
             request.reject(new Error(myResponse.error));
-          } else {
-            if (myResponse.result) {
+          } else if (myResponse.result) {
+            // Check if result contains an error object (from sendErrorResponse)
+            if (myResponse.result.error === true && myResponse.result.message) {
+              logger.error(`Error from Figma: ${myResponse.result.message}`);
+              request.reject(new Error(myResponse.result.message));
+            } else {
               request.resolve(myResponse.result);
             }
           }
