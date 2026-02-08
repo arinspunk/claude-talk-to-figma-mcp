@@ -48,13 +48,19 @@ bun install
     {
       "mcpServers": {
         "ClaudeTalkToFigma": {
-          "command": "bunx",
-          "args": ["claude-talk-to-figma-mcp@latest"]
+          "command": "npx",
+          "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"]
         }
       }
     }
     ```
   4. Save the file ([screenshot](images/cursor-config-2.png))
+
+#### Option 3: Claude Code (CLI)
+```bash
+claude mcp add -s user ClaudeTalkToFigma -- npx -p claude-talk-to-figma-mcp@latest claude-talk-to-figma-mcp-server
+```
+This registers the MCP server globally so it's available across all projects.
 
 ### 4. Setup Figma Plugin (Required for all methods)
 Import `src/claude_mcp_plugin/manifest.json` in Figma → Menu → Plugins → Development
