@@ -564,4 +564,42 @@ export function registerTextTools(server: McpServer): void {
       }
     }
   );
+
+  // Set Text Align Tool
+  server.tool(
+    "set_text_align",
+    "Set the text alignment of a text node in Figma. Use textAlignHorizontal RIGHT for RTL/Arabic text.",
+    {
+      nodeId: z.string().describe("The ID of the text node to modify"),
+      textAlignHorizontal: z.enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"]).optional().describe("Horizontal text alignment (LEFT, CENTER, RIGHT, JUSTIFIED). Use RIGHT for Arabic/RTL text."),
+      textAlignVertical: z.enum(["TOP", "CENTER", "BOTTOM"]).optional().describe("Vertical text alignment (TOP, CENTER, BOTTOM)"),
+    },
+    async ({ nodeId, textAlignHorizontal, textAlignVertical }) => {
+      try {
+        const result = await sendCommandToFigma("set_text_align", {
+          nodeId,
+          textAlignHorizontal,
+          textAlignVertical
+        });
+        const typedResult = result as { name: string, textAlignHorizontal: string, textAlignVertical: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Updated text alignment of node "${typedResult.name}" to horizontal: ${typedResult.textAlignHorizontal}, vertical: ${typedResult.textAlignVertical}`
+            }
+          ]
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting text alignment: ${error instanceof Error ? error.message : String(error)}`
+            }
+          ]
+        };
+      }
+    }
+  );
 }

@@ -161,6 +161,8 @@ async function handleCommand(command, params) {
       return await setTextCase(params);
     case "set_text_decoration":
       return await setTextDecoration(params);
+    case "set_text_align":
+      return await setTextAlign(params);
     case "get_styled_text_segments":
       return await getStyledTextSegments(params);
     case "load_font_async":
@@ -427,6 +429,8 @@ async function createText(params) {
     fontColor = { r: 0, g: 0, b: 0, a: 1 }, // Default to black
     name = "Text",
     parentId,
+    textAlignHorizontal,
+    textAutoResize,
   } = params || {};
 
   // Map common font weights to Figma font styles
@@ -482,6 +486,16 @@ async function createText(params) {
     opacity: parseFloat(fontColor.a) || 1,
   };
   textNode.fills = [paintStyle];
+
+  // Set text alignment if provided
+  if (textAlignHorizontal && ["LEFT", "CENTER", "RIGHT", "JUSTIFIED"].includes(textAlignHorizontal)) {
+    textNode.textAlignHorizontal = textAlignHorizontal;
+  }
+
+  // Set text auto resize if provided (WIDTH_AND_HEIGHT, HEIGHT, NONE, TRUNCATE)
+  if (textAutoResize && ["WIDTH_AND_HEIGHT", "HEIGHT", "NONE", "TRUNCATE"].includes(textAutoResize)) {
+    textNode.textAutoResize = textAutoResize;
+  }
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
@@ -2384,6 +2398,55 @@ async function setTextDecoration(params) {
     };
   } catch (error) {
     throw new Error(`Error setting text decoration: ${error.message}`);
+  }
+}
+
+async function setTextAlign(params) {
+  const { nodeId, textAlignHorizontal, textAlignVertical } = params || {};
+  if (!nodeId) {
+    throw new Error("Missing nodeId");
+  }
+
+  const validHorizontal = ["LEFT", "CENTER", "RIGHT", "JUSTIFIED"];
+  const validVertical = ["TOP", "CENTER", "BOTTOM"];
+
+  if (textAlignHorizontal && !validHorizontal.includes(textAlignHorizontal)) {
+    throw new Error("Invalid textAlignHorizontal value. Must be one of: LEFT, CENTER, RIGHT, JUSTIFIED");
+  }
+
+  if (textAlignVertical && !validVertical.includes(textAlignVertical)) {
+    throw new Error("Invalid textAlignVertical value. Must be one of: TOP, CENTER, BOTTOM");
+  }
+
+  if (!textAlignHorizontal && !textAlignVertical) {
+    throw new Error("Must provide textAlignHorizontal or textAlignVertical");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type !== "TEXT") {
+    throw new Error(`Node is not a text node: ${nodeId}`);
+  }
+
+  try {
+    await figma.loadFontAsync(node.fontName);
+    if (textAlignHorizontal) {
+      node.textAlignHorizontal = textAlignHorizontal;
+    }
+    if (textAlignVertical) {
+      node.textAlignVertical = textAlignVertical;
+    }
+    return {
+      id: node.id,
+      name: node.name,
+      textAlignHorizontal: node.textAlignHorizontal,
+      textAlignVertical: node.textAlignVertical
+    };
+  } catch (error) {
+    throw new Error(`Error setting text alignment: ${error.message}`);
   }
 }
 
