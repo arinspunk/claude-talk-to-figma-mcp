@@ -116,6 +116,8 @@ async function handleCommand(command, params) {
       return await setFillColor(params);
     case "set_stroke_color":
       return await setStrokeColor(params);
+    case "set_selection_colors":
+      return await setSelectionColors(params);
     case "move_node":
       return await moveNode(params);
     case "resize_node":
@@ -654,6 +656,72 @@ async function setStrokeColor(params) {
     name: node.name,
     strokes: node.strokes,
     strokeWeight: "strokeWeight" in node ? node.strokeWeight : undefined,
+  };
+}
+
+async function setSelectionColors(params) {
+  const { nodeId, r, g, b, a } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (r === undefined || g === undefined || b === undefined) {
+    throw new Error("RGB components (r, g, b) are required");
+  }
+
+  const newColor = {
+    r: parseFloat(r),
+    g: parseFloat(g),
+    b: parseFloat(b),
+  };
+  const opacity = a !== undefined ? parseFloat(a) : 1;
+
+  let changed = 0;
+
+  function updateDescendants(n) {
+    // Update strokes on this node if it has them
+    if ("strokes" in n && Array.isArray(n.strokes) && n.strokes.length > 0) {
+      n.strokes = n.strokes.map(function(s) {
+        if (s.type === "SOLID") {
+          return { type: "SOLID", color: newColor, opacity: opacity };
+        }
+        return s;
+      });
+      changed++;
+    }
+    // Update fills on this node if it has visible solid fills
+    if ("fills" in n && Array.isArray(n.fills) && n.fills.length > 0) {
+      const hasVisibleFill = n.fills.some(function(f) { return f.type === "SOLID" && f.visible !== false; });
+      if (hasVisibleFill) {
+        n.fills = n.fills.map(function(f) {
+          if (f.type === "SOLID" && f.visible !== false) {
+            return { type: "SOLID", color: newColor, opacity: opacity, visible: true };
+          }
+          return f;
+        });
+        changed++;
+      }
+    }
+    // Recurse into children
+    if ("children" in n) {
+      for (var i = 0; i < n.children.length; i++) {
+        updateDescendants(n.children[i]);
+      }
+    }
+  }
+
+  updateDescendants(node);
+
+  return {
+    id: node.id,
+    name: node.name,
+    nodesChanged: changed,
   };
 }
 
