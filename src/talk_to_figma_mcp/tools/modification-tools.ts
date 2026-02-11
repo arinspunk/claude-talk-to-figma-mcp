@@ -109,6 +109,54 @@ export function registerModificationTools(server: McpServer): void {
     }
   );
 
+  // Set Selection Colors Tool - recursively change all descendant stroke/fill colors
+  server.tool(
+    "set_selection_colors",
+    "Recursively change all stroke and fill colors of a node and all its descendants. Works like Figma's 'Selection colors' feature - perfect for recoloring icon instances.",
+    {
+      nodeId: z.string().describe("The ID of the node to modify (typically an icon instance)"),
+      r: z.number().min(0).max(1).describe("Red component (0-1)"),
+      g: z.number().min(0).max(1).describe("Green component (0-1)"),
+      b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+      a: z.number().min(0).max(1).optional().describe("Alpha component (0-1, defaults to 1)"),
+    },
+    async ({ nodeId, r, g, b, a }) => {
+      try {
+        if (r === undefined || g === undefined || b === undefined) {
+          throw new Error("RGB components (r, g, b) are required");
+        }
+
+        const colorWithDefaults = applyColorDefaults({ r, g, b, a } as Color);
+
+        const result = await sendCommandToFigma("set_selection_colors", {
+          nodeId,
+          r: colorWithDefaults.r,
+          g: colorWithDefaults.g,
+          b: colorWithDefaults.b,
+          a: colorWithDefaults.a,
+        });
+        const typedResult = result as { name: string; nodesChanged: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Changed selection colors of "${typedResult.name}" and descendants (${typedResult.nodesChanged} paint(s) updated) to RGBA(${r}, ${g}, ${b}, ${colorWithDefaults.a})`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting selection colors: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Move Node Tool
   server.tool(
     "move_node",

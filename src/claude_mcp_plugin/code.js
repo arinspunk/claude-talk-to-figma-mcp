@@ -116,6 +116,8 @@ async function handleCommand(command, params) {
       return await setFillColor(params);
     case "set_stroke_color":
       return await setStrokeColor(params);
+    case "set_selection_colors":
+      return await setSelectionColors(params);
     case "move_node":
       return await moveNode(params);
     case "resize_node":
@@ -161,6 +163,8 @@ async function handleCommand(command, params) {
       return await setTextCase(params);
     case "set_text_decoration":
       return await setTextDecoration(params);
+    case "set_text_align":
+      return await setTextAlign(params);
     case "get_styled_text_segments":
       return await getStyledTextSegments(params);
     case "load_font_async":
@@ -427,6 +431,8 @@ async function createText(params) {
     fontColor = { r: 0, g: 0, b: 0, a: 1 }, // Default to black
     name = "Text",
     parentId,
+    textAlignHorizontal,
+    textAutoResize,
   } = params || {};
 
   // Map common font weights to Figma font styles
@@ -482,6 +488,16 @@ async function createText(params) {
     opacity: parseFloat(fontColor.a) || 1,
   };
   textNode.fills = [paintStyle];
+
+  // Set text alignment if provided
+  if (textAlignHorizontal && ["LEFT", "CENTER", "RIGHT", "JUSTIFIED"].includes(textAlignHorizontal)) {
+    textNode.textAlignHorizontal = textAlignHorizontal;
+  }
+
+  // Set text auto resize if provided (WIDTH_AND_HEIGHT, HEIGHT, NONE, TRUNCATE)
+  if (textAutoResize && ["WIDTH_AND_HEIGHT", "HEIGHT", "NONE", "TRUNCATE"].includes(textAutoResize)) {
+    textNode.textAutoResize = textAutoResize;
+  }
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
@@ -640,6 +656,72 @@ async function setStrokeColor(params) {
     name: node.name,
     strokes: node.strokes,
     strokeWeight: "strokeWeight" in node ? node.strokeWeight : undefined,
+  };
+}
+
+async function setSelectionColors(params) {
+  const { nodeId, r, g, b, a } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (r === undefined || g === undefined || b === undefined) {
+    throw new Error("RGB components (r, g, b) are required");
+  }
+
+  const newColor = {
+    r: parseFloat(r),
+    g: parseFloat(g),
+    b: parseFloat(b),
+  };
+  const opacity = a !== undefined ? parseFloat(a) : 1;
+
+  let changed = 0;
+
+  function updateDescendants(n) {
+    // Update strokes on this node if it has them
+    if ("strokes" in n && Array.isArray(n.strokes) && n.strokes.length > 0) {
+      n.strokes = n.strokes.map(function(s) {
+        if (s.type === "SOLID") {
+          return { type: "SOLID", color: newColor, opacity: opacity };
+        }
+        return s;
+      });
+      changed++;
+    }
+    // Update fills on this node if it has visible solid fills
+    if ("fills" in n && Array.isArray(n.fills) && n.fills.length > 0) {
+      const hasVisibleFill = n.fills.some(function(f) { return f.type === "SOLID" && f.visible !== false; });
+      if (hasVisibleFill) {
+        n.fills = n.fills.map(function(f) {
+          if (f.type === "SOLID" && f.visible !== false) {
+            return { type: "SOLID", color: newColor, opacity: opacity, visible: true };
+          }
+          return f;
+        });
+        changed++;
+      }
+    }
+    // Recurse into children
+    if ("children" in n) {
+      for (var i = 0; i < n.children.length; i++) {
+        updateDescendants(n.children[i]);
+      }
+    }
+  }
+
+  updateDescendants(node);
+
+  return {
+    id: node.id,
+    name: node.name,
+    nodesChanged: changed,
   };
 }
 
@@ -2384,6 +2466,55 @@ async function setTextDecoration(params) {
     };
   } catch (error) {
     throw new Error(`Error setting text decoration: ${error.message}`);
+  }
+}
+
+async function setTextAlign(params) {
+  const { nodeId, textAlignHorizontal, textAlignVertical } = params || {};
+  if (!nodeId) {
+    throw new Error("Missing nodeId");
+  }
+
+  const validHorizontal = ["LEFT", "CENTER", "RIGHT", "JUSTIFIED"];
+  const validVertical = ["TOP", "CENTER", "BOTTOM"];
+
+  if (textAlignHorizontal && !validHorizontal.includes(textAlignHorizontal)) {
+    throw new Error("Invalid textAlignHorizontal value. Must be one of: LEFT, CENTER, RIGHT, JUSTIFIED");
+  }
+
+  if (textAlignVertical && !validVertical.includes(textAlignVertical)) {
+    throw new Error("Invalid textAlignVertical value. Must be one of: TOP, CENTER, BOTTOM");
+  }
+
+  if (!textAlignHorizontal && !textAlignVertical) {
+    throw new Error("Must provide textAlignHorizontal or textAlignVertical");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type !== "TEXT") {
+    throw new Error(`Node is not a text node: ${nodeId}`);
+  }
+
+  try {
+    await figma.loadFontAsync(node.fontName);
+    if (textAlignHorizontal) {
+      node.textAlignHorizontal = textAlignHorizontal;
+    }
+    if (textAlignVertical) {
+      node.textAlignVertical = textAlignVertical;
+    }
+    return {
+      id: node.id,
+      name: node.name,
+      textAlignHorizontal: node.textAlignHorizontal,
+      textAlignVertical: node.textAlignVertical
+    };
+  } catch (error) {
+    throw new Error(`Error setting text alignment: ${error.message}`);
   }
 }
 

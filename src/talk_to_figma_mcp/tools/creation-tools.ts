@@ -178,8 +178,16 @@ export function registerCreationTools(server: McpServer): void {
         .string()
         .optional()
         .describe("Optional parent node ID to append the text to"),
+      textAlignHorizontal: z
+        .enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"])
+        .optional()
+        .describe("Horizontal text alignment. Use RIGHT for Arabic/RTL text."),
+      textAutoResize: z
+        .enum(["WIDTH_AND_HEIGHT", "HEIGHT", "NONE", "TRUNCATE"])
+        .optional()
+        .describe("Text resize behavior. Use HEIGHT for fixed-width text that wraps."),
     },
-    async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId }) => {
+    async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId, textAlignHorizontal, textAutoResize }) => {
       try {
         const result = await sendCommandToFigma("create_text", {
           x,
@@ -190,6 +198,8 @@ export function registerCreationTools(server: McpServer): void {
           fontColor: fontColor || { r: 0, g: 0, b: 0, a: 1 },
           name: name || "Text",
           parentId,
+          textAlignHorizontal,
+          textAutoResize,
         });
         const typedResult = result as { name: string; id: string };
         return {
