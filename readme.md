@@ -152,12 +152,14 @@ Claude Desktop ↔ MCP Server ↔ WebSocket Server ↔ Figma Plugin
 | `set_auto_layout` | Flexbox-like layout | Component spacing |
 | `set_effects` | Shadows/blurs | Visual polish |
 | `set_effect_style_id` | Apply effect styles | Consistent shadow styles |
+| `set_selection_colors` | Bulk recolor selection | Recursive icon/group recoloring |
 
 ### 📝 Text Tools
 | Command | Purpose | Example Use |
 |---------|---------|-------------|
 | `set_text_content` | Text updates | Copy changes |
 | `set_multiple_text_contents` | Batch text updates | Multi-element editing |
+| `set_text_align` | RTL & V/H alignment | Center text or fix Arabic/RTL |
 | `set_font_name` | Typography | Brand font application |
 | `set_font_size` | Text sizing | Hierarchy creation |
 | `set_font_weight` | Text weight | Bold/light variations |
