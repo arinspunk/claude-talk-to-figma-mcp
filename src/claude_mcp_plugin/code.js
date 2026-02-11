@@ -660,7 +660,7 @@ async function setStrokeColor(params) {
 }
 
 async function setSelectionColors(params) {
-  const { nodeId, r, g, b, a } = params || {};
+  const { nodeId, r, g, b, a, commandId } = params || {};
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -682,46 +682,86 @@ async function setSelectionColors(params) {
   };
   const opacity = a !== undefined ? parseFloat(a) : 1;
 
-  let changed = 0;
+  // Get all descendant nodes + the target node itself
+  let targets = [];
+  if ("findAll" in node) {
+    targets = [node].concat(node.findAll(() => true));
+  } else {
+    targets = [node];
+  }
 
-  function updateDescendants(n) {
-    // Update strokes on this node if it has them
-    if ("strokes" in n && Array.isArray(n.strokes) && n.strokes.length > 0) {
-      n.strokes = n.strokes.map(function(s) {
-        if (s.type === "SOLID") {
-          return { type: "SOLID", color: newColor, opacity: opacity };
+  let changedCount = 0;
+  const totalNodes = targets.length;
+  const chunkSize = 200; // Process 200 nodes at a time
+
+  sendProgressUpdate(commandId, "set_selection_colors", "started", 0, totalNodes, 0, `Starting color update for ${totalNodes} nodes...`);
+
+  for (let i = 0; i < totalNodes; i += chunkSize) {
+    const chunk = targets.slice(i, i + chunkSize);
+    
+    for (const n of chunk) {
+      let nodeModified = false;
+
+      // Update strokes
+      if ("strokes" in n && Array.isArray(n.strokes) && n.strokes.length > 0) {
+        let strokesChanged = false;
+        const newStrokes = n.strokes.map(s => {
+          if (s.type === "SOLID") {
+            // Only update if color or opacity is different
+            if (s.color.r !== newColor.r || s.color.g !== newColor.g || s.color.b !== newColor.b || s.opacity !== opacity) {
+              strokesChanged = true;
+              return Object.assign({}, s, { color: newColor, opacity: opacity });
+            }
+          }
+          return s;
+        });
+        
+        if (strokesChanged) {
+          n.strokes = newStrokes;
+          nodeModified = true;
         }
-        return s;
-      });
-      changed++;
-    }
-    // Update fills on this node if it has visible solid fills
-    if ("fills" in n && Array.isArray(n.fills) && n.fills.length > 0) {
-      const hasVisibleFill = n.fills.some(function(f) { return f.type === "SOLID" && f.visible !== false; });
-      if (hasVisibleFill) {
-        n.fills = n.fills.map(function(f) {
+      }
+
+      // Update fills
+      if ("fills" in n && Array.isArray(n.fills) && n.fills.length > 0) {
+        let fillsChanged = false;
+        const newFills = n.fills.map(f => {
           if (f.type === "SOLID" && f.visible !== false) {
-            return { type: "SOLID", color: newColor, opacity: opacity, visible: true };
+            // Only update if color or opacity is different
+            if (f.color.r !== newColor.r || f.color.g !== newColor.g || f.color.b !== newColor.b || f.opacity !== opacity) {
+              fillsChanged = true;
+              return Object.assign({}, f, { color: newColor, opacity: opacity, visible: true });
+            }
           }
           return f;
         });
-        changed++;
-      }
-    }
-    // Recurse into children
-    if ("children" in n) {
-      for (var i = 0; i < n.children.length; i++) {
-        updateDescendants(n.children[i]);
-      }
-    }
-  }
 
-  updateDescendants(node);
+        if (fillsChanged) {
+          n.fills = newFills;
+          nodeModified = true;
+        }
+      }
+
+      if (nodeModified) {
+        changedCount++;
+      }
+    }
+
+    // After each chunk, yield to main thread and send progress
+    const processedCount = Math.min(i + chunkSize, totalNodes);
+    const progress = Math.round((processedCount / totalNodes) * 100);
+    
+    sendProgressUpdate(commandId, "set_selection_colors", "in_progress", progress, totalNodes, processedCount, `Processed ${processedCount}/${totalNodes} nodes...`);
+    
+    // Tiny delay to breathe
+    await new Promise(resolve => setTimeout(resolve, 1));
+  }
 
   return {
     id: node.id,
     name: node.name,
-    nodesChanged: changed,
+    nodesChanged: changedCount,
+    totalProcessed: totalNodes
   };
 }
 

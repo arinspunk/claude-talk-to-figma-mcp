@@ -1,7 +1,7 @@
 {
   "name": "claude-talk-to-figma-mcp",
   "description": "Claude Desktop Talk to Figma MCP",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "module": "dist/talk_to_figma_mcp/server.js",
   "main": "dist/talk_to_figma_mcp/server.js",
   "bin": {

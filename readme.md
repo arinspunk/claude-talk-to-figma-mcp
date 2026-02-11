@@ -292,6 +292,8 @@ src/
 5. **Pull Request**: Clear description of changes
 
 #### Recent Contributors
+- **[mmabas77](https://github.com/mmabas77)** - Added support for full text alignment, RTL/Arabic languages, and the `set_selection_colors` tool for recursive icon recoloring ([PR #49](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/49))
+- **[ehs208](https://github.com/ehs208)** - Fixed MCP server command in `configure-claude.js` and `README.md` to resolve connection failures ([PR #47](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/47))
 - **[Rob Dearborn](https://github.com/rfdearborn)** - Optimized component lookup to resolve timeout issues and implemented `set_text_style_id` tool ([PR #42](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/42), [PR #43](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/43))
 - **[sk (kovalevsky)](https://github.com/kovalevsky)** - Fixed SVG export format parameters and added comprehensive page management tools (`create_page`, `delete_page`, `rename_page`, `get_pages`, `set_current_page`) ([PR #32](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/32))
 - **[Beomsu Koh](https://github.com/GoBeromsu)** - Added `rename_node` tool for better organization of Figma elements ([PR #36](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/36))
@@ -303,10 +305,11 @@ src/
 
 ## 📋 Version History
 
-### Current: 0.8.0
-- **🚀 One-command Setup**: Unified launcher via `npx claude-talk-to-figma-mcp` for frictionless installation.
-- **🛠️ Smart Environment**: Automated Bun detection and OS-specific setup prompts.
-- **🛡️ CI/CD Stability**: Fixed TypeScript definitions and release permissions for faster delivery.
+### Current: 0.8.1
+- **🎨 Selection Colors**: New `set_selection_colors` tool for recursive recoloring.
+- **📝 Text Improvements**: Full alignment support and RTL/Arabic optimization.
+- **🚀 Unified Launcher**: Improved `npx claude-talk-to-figma-mcp` command stability.
+- **�️ Bug Fix**: Corrected configuration paths for Claude Desktop and Cursor.
 
 ### Previous: 0.7.0
 - **🎨 New Tools**: Added `set_text_style_id`, `rename_node`, and full suite of Page Management tools.
