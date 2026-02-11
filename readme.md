@@ -311,14 +311,6 @@ src/
 - **🚀 Unified Launcher**: Improved `npx claude-talk-to-figma-mcp` command stability.
 - **�️ Bug Fix**: Corrected configuration paths for Claude Desktop and Cursor.
 
-### Previous: 0.7.0
-- **🎨 New Tools**: Added `set_text_style_id`, `rename_node`, and full suite of Page Management tools.
-- **🔧 Tool Fix**: The `set_stroke_color` tool now correctly accepts a `strokeWeight` of `0` for creating invisible strokes.
-- **🚀 DXT Package Support**: one-click installation via Claude Desktop's extension manager (Thanks to [Taylor Smits](https://github.com/smitstay) - [PR #17](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/17))
-- **📦 Automated Distribution**: GitHub Actions workflow for automatic DXT package generation and release uploads
-- **⚡ Enhanced UX**: Installation time reduced from 15-30 minutes to 2-5 minutes for end users
-- **🔧 Developer Tools**: New build scripts for DXT packaging (`npm run build:dxt`, `npm run pack`)
-
 See [CHANGELOG.md](CHANGELOG.md) for complete version history.
 
 ---
