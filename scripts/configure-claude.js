@@ -65,10 +65,11 @@ try {
 }
 
 // Add MCP configuration
+// Use -p to install the package, then run the server binary (not the launcher)
 config.mcpServers = config.mcpServers || {};
 config.mcpServers['ClaudeTalkToFigma'] = {
   command: 'npx',
-  args: [`${packageName}@latest`]
+  args: ['-p', `${packageName}@latest`, `${packageName}-server`]
 };
 
 console.log('Updated configuration for ClaudeTalkToFigma:');
