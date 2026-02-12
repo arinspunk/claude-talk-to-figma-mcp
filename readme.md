@@ -9,9 +9,18 @@ A Model Context Protocol (MCP) plugin that allows Claude Desktop and other AI to
 ## ⚡ Installation
 
 ### 1. Prerequisites
-- [Claude Desktop](https://claude.ai/download) or [Cursor](https://cursor.com/downloads)
+
+- [Node.js](https://nodejs.org/en/download) installed
 - [Figma Desktop](https://www.figma.com/downloads/)
-- [Node.js](https://nodejs.org/es/download) installed
+- [Figma Desktop](https://www.figma.com/downloads/)
+- AI client:
+  - [Claude Desktop](https://claude.ai/download)
+  - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+  - [Cursor](https://cursor.com/downloads)
+  - [Windsurf](https://windsurf.com/download)
+  - [VS Code](https://code.visualstudio.com/) + [GitHub Copilot](https://github.com/features/copilot)
+  - [Cline](https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev)
+  - [Roo Code](https://marketplace.visualstudio.com/items?itemName=RooVeterinaryInc.roo-cline)
 
 ### 2. Setup
 
