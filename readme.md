@@ -71,6 +71,9 @@ claude mcp add -s user ClaudeTalkToFigma -- npx -p claude-talk-to-figma-mcp@late
 ```
 This registers the MCP server globally so it's available across all projects.
 
+#### Option 4: Other AI clients
+Instructions for other AI clients can be found in the [INSTALLATION.md](INSTALLATION.md).
+
 ### 4. Setup Figma Plugin (Required for all methods)
 Import `src/claude_mcp_plugin/manifest.json` in Figma → Menu → Plugins → Development
 
