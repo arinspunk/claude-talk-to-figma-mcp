@@ -2,13 +2,13 @@
 
 📖 [**Docs**](COMMANDS.md) | 🚀 [**Installation**](INSTALLATION.md) | 🛠️ [**Contributing**](CONTRIBUTING.md) | 🆘 [**Troubleshooting**](TROUBLESHOOTING.md) | 📜 [**Changelog**](CHANGELOG.md)
 
-This guide covers all installation and configuration methods for different AI clients.
+This guide covers all installation and configuration methods for different Agentic Tools.
 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/en/download)
 - [Figma Desktop](https://www.figma.com/downloads/)
-- AI client:
+- Agentic Tool:
   - [Claude Desktop](https://claude.ai/download)
   - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
   - [Cursor](https://cursor.com/downloads)
@@ -46,7 +46,7 @@ This single command will:
 
 ---
 
-## 3. Configure your MCP Client
+## 3. Configure your Agentic Tool
 
 Once the server is running, you need to tell your AI tool how to find the MCP tools.
 
