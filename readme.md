@@ -6,10 +6,11 @@ Enable your AI agents to read, analyze, and modify Figma designs.
 
 From your favorite agentic tool:
 
-- [Claude Desktop](https://claude.ai/download)
+- [Claude Desktop](https://claude.ai/)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-- [Cursor](https://cursor.com/downloads)
-- [Windsurf](https://windsurf.com/download)
+- [Cursor](https://cursor.com/)
+- [Antigravity](https://antigravity.google/)
+- [Windsurf](https://windsurf.com/)
 - [VS Code](https://code.visualstudio.com/) + [GitHub Copilot](https://github.com/features/copilot)
 - [Cline](https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev)
 - [Roo Code](https://marketplace.visualstudio.com/items?itemName=RooVeterinaryInc.roo-cline)
@@ -60,6 +61,7 @@ Generate production-ready code directly from designs:
   - [Claude Desktop](https://claude.ai/download)
   - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
   - [Cursor](https://cursor.com/downloads)
+  - [Antigravity](https://antigravity.google/download)
   - [Windsurf](https://windsurf.com/download)
   - [VS Code](https://code.visualstudio.com/) + [GitHub Copilot](https://github.com/features/copilot)
   - [Cline](https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev)

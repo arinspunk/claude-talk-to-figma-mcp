@@ -107,9 +107,9 @@ Inside Claude Code, use `/mcp` to check the server status.
 
 ---
 
-### Cursor IDE
+### Cursor
 
-1. Open **Cursor Settings → Tools & Integrations**
+1. Open **Cursor Settings → Tools & MCP**
 2. Click **"New MCP Server"** to open the `mcp.json` file
 3. Add this configuration:
 
@@ -125,6 +125,28 @@ Inside Claude Code, use `/mcp` to check the server status.
 ```
 
 4. Save the file and restart Cursor
+
+---
+
+### Antigravity
+
+1. Click **Additional options (3 dots icon top right in Agent chat) → MCP Servers → Manage MCP Servers → View raw config** to open the `mcp_config.json` file
+2. Add this configuration:
+```json
+{
+  "mcpServers": {
+    "ClaudeTalkToFigma": {
+      "command": "npx",
+      "args": [
+        "-p",
+        "claude-talk-to-figma-mcp@latest",
+        "claude-talk-to-figma-mcp-server"
+      ]
+    }
+  }
+}
+```
+3. Save the file and restart Antigravity
 
 ---
 
