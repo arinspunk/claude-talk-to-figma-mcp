@@ -89,6 +89,7 @@ export type FigmaCommand =
   | "insert_child"
   | "create_component_from_node"
   | "create_component_set"
+  | "set_instance_variant"
   | "create_page"
   | "delete_page"
   | "rename_page"

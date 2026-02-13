@@ -201,6 +201,8 @@ async function handleCommand(command, params) {
       return await createComponentFromNode(params);
     case "create_component_set":
       return await createComponentSet(params);
+    case "set_instance_variant":
+      return await setInstanceVariant(params);
     case "create_page":
       return await createPage(params);
     case "delete_page":
@@ -3808,6 +3810,44 @@ async function createComponentSet(params) {
     variantCount: componentSet.children.length,
     width: componentSet.width,
     height: componentSet.height
+  };
+}
+
+// Set variant properties of a component instance
+async function setInstanceVariant(params) {
+  const { nodeId, properties } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!properties || typeof properties !== "object") {
+    throw new Error("Missing or invalid properties parameter");
+  }
+
+  if (Object.keys(properties).length === 0) {
+    throw new Error("Properties object cannot be empty");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type !== "INSTANCE") {
+    throw new Error(`Node with ID ${nodeId} is not a component instance (type: ${node.type})`);
+  }
+
+  if (!("setProperties" in node)) {
+    throw new Error(`Node does not support variant properties`);
+  }
+
+  node.setProperties(properties);
+
+  return {
+    id: node.id,
+    name: node.name,
+    properties: node.componentProperties
   };
 }
 
