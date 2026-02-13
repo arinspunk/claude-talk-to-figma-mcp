@@ -92,6 +92,8 @@ function updateSettings(settings) {
 // Handle commands from UI
 async function handleCommand(command, params) {
   switch (command) {
+    case "ping":
+      return { status: "ok" };
     case "get_document_info":
       return await getDocumentInfo();
     case "get_selection":
