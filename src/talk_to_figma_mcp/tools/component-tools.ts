@@ -117,4 +117,40 @@ export function registerComponentTools(server: McpServer): void {
       }
     }
   );
+
+  // Set Instance Variant Tool
+  server.tool(
+    "set_instance_variant",
+    "Change the variant properties of a component instance without recreating it. This preserves instance overrides and is more efficient than delete + create workflow.",
+    {
+      nodeId: z.string().describe("The ID of the instance node to modify"),
+      properties: z.record(z.string()).describe("Variant properties to set as key-value pairs (e.g., { \"State\": \"Hover\", \"Size\": \"Large\" })"),
+    },
+    async ({ nodeId, properties }) => {
+      try {
+        const result = await sendCommandToFigma("set_instance_variant", {
+          nodeId,
+          properties,
+        });
+        const typedResult = result as { id: string; name: string; properties: Record<string, string> };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Successfully changed variant properties of instance "${typedResult.name}" (ID: ${typedResult.id}). New properties: ${JSON.stringify(typedResult.properties)}`,
+            }
+          ]
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting instance variant: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
 }
