@@ -89,7 +89,7 @@ In Figma Desktop go to Menu → Plugins → Development → Import plugin from m
 
 #### Claude Desktop
 
-Download [claude-talk-to-figma-mcp.dxt](https://github.com/arinspunk/claude-talk-to-figma-mcp/releases) and double-click. Claude configures itself automatically.
+Download [claude-talk-to-figma-mcp.dxt](https://github.com/arinspunk/claude-talk-to-figma-mcp/releases) (from Assets section of the latest release) and double-click. Claude configures itself automatically.
 
 #### Cursor
 
