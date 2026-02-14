@@ -4,7 +4,7 @@
 
 Enable your AI agents to read, analyze, and modify Figma designs.
 
-From your favorite agentic tool:
+Works with your favorite agentic tools:
 
 - [Claude Desktop](https://claude.ai/)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
