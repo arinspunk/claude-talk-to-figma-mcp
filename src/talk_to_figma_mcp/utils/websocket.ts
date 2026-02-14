@@ -174,7 +174,18 @@ export async function joinChannel(channelName: string): Promise<void> {
   try {
     await sendCommandToFigma("join", { channel: channelName });
     currentChannel = channelName;
-    logger.info(`Joined channel: ${channelName}`);
+
+    try {
+      await sendCommandToFigma("ping", {}, 12000);
+      logger.info(`Joined channel: ${channelName}`);
+    } catch (verificationError) {
+      currentChannel = null;
+      const errorMsg = verificationError instanceof Error
+        ? verificationError.message
+        : String(verificationError);
+      logger.error(`Failed to verify channel ${channelName}: ${errorMsg}`);
+      throw new Error(`Failed to verify connection to channel "${channelName}". The Figma plugin may not be connected to this channel.`);
+    }
   } catch (error) {
     logger.error(`Failed to join channel: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
