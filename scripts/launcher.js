@@ -46,6 +46,24 @@ async function installBun() {
 async function main() {
     console.log('🎨 Welcome to Claude Talk to Figma MCP Launcher!');
 
+    // Handle optional target directory
+    const targetDir = process.argv[2];
+    if (targetDir) {
+        const absolutePath = path.resolve(targetDir);
+        if (fs.existsSync(absolutePath)) {
+            const stats = fs.statSync(absolutePath);
+            if (!stats.isDirectory()) {
+                console.error(`\n❌ Error: ${absolutePath} is not a directory.`);
+                process.exit(1);
+            }
+        } else {
+            console.log(`\n📁 Creating directory: ${absolutePath}`);
+            fs.mkdirSync(absolutePath, { recursive: true });
+        }
+        process.chdir(absolutePath);
+        console.log(`\n📍 Working directory set to: ${process.cwd()}`);
+    }
+
     let engine = 'bun';
     const hasBun = await checkCommand('bun');
 
