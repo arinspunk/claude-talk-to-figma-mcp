@@ -163,8 +163,8 @@ git checkout -b feature/my-new-feature
 
 ## Contributors
 
+- **[ehs208](https://github.com/ehs208)** — Configuration script, Korean localization, channel verification ping, and `set_instance_variant` tool.
 - **[mmabas77](https://github.com/mmabas77)** — Full text alignment support, RTL/Arabic languages, and `set_selection_colors` tool.
-- **[ehs208](https://github.com/ehs208)** — Configuration script and documentation fixes.
 - **[Rob Dearborn](https://github.com/rfdearborn)** — Component optimization and `set_text_style_id` tool.
 - **[sk (kovalevsky)](https://github.com/kovalevsky)** — Page management tools and SVG export fix.
 - **[Beomsu Koh](https://github.com/GoBeromsu)** — `rename_node` tool.
