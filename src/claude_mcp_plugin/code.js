@@ -38,7 +38,7 @@ function sendProgressUpdate(commandId, commandType, status, progress, totalItems
 }
 
 // Show UI
-figma.showUI(__html__, { width: 300, height: 264 });
+figma.showUI(__html__, { width: 300, height: 220 });
 
 // Plugin commands from UI
 figma.ui.onmessage = async (msg) => {

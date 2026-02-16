@@ -27,9 +27,10 @@
         justify-content: center;
         gap: 4px;
         font-size: 10px;
+        opacity: 0.4;
       }
       .mcp-plugin__mode:hover {
-        opacity: 0.6;
+        opacity: 1;
       }
       .mcp-plugin {
         position: relative;
@@ -64,6 +65,9 @@
         border-radius: 4px;
         height: 32px;
         line-height: 1.35;
+      }
+      .mcp-plugin__content-activity {
+        display: flex;
       }
       .mcp-plugin__connection-status.connected {
         background: #D8FFBB;
@@ -165,10 +169,10 @@
       .hidden {
         display: none !important;
       }
-      /* Progress styles */
       .mcp-plugin__progress {
         display: flex;
         flex-direction: column;
+        width: calc(100% - 112px);
         gap: 4px;
       }
       .mcp-plugin__progress-bar {
@@ -234,20 +238,21 @@
         <div id="connection-status" class="disconnected mcp-plugin__connection-status">
           Disconnected from server…<br>Try to reconnect clicking the button
         </div>
-        <button id="btn-connect" class="mcp-plugin__button mcp-plugin__button--primary">Connect</button>
-        <button id="btn-disconnect" class="mcp-plugin__button mcp-plugin__button--secondary" disabled>
-          Disconnect
-        </button>
-      </div>
-      <!-- Add Progress Bar Section -->
-      <div id="progress-container" class="hidden mcp-plugin__progress">
-        <div class="mcp-plugin__progress-bar">
-          <div id="progress-bar" class="mcp-plugin__progress-bar-fill"></div>
-        </div>
-        <div class="mcp-plugin__progress-indicators">
-          <div id="progress-status">Not started</div>
-          <div id="progress-message" class="mcp-plugin__progress-message">No operation in progress</div>
-          <div id="progress-percentage">0%</div>
+        <div class="mcp-plugin__content-activity">
+          <div id="progress-container" class="hidden mcp-plugin__progress">
+            <div class="mcp-plugin__progress-bar">
+              <div id="progress-bar" class="mcp-plugin__progress-bar-fill"></div>
+            </div>
+            <div class="mcp-plugin__progress-indicators">
+              <div id="progress-status">Not started</div>
+              <div id="progress-message" class="mcp-plugin__progress-message">No operation in progress</div>
+              <div id="progress-percentage">0%</div>
+            </div>
+          </div>
+          <button id="btn-connect" class="mcp-plugin__button mcp-plugin__button--primary">Connect</button>
+          <button id="btn-disconnect" class="mcp-plugin__button mcp-plugin__button--secondary" disabled>
+            Disconnect
+          </button>
         </div>
       </div>
     </div>
