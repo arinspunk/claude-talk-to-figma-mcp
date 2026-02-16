@@ -14,9 +14,25 @@
       }
       .dark {
         color: #fff;
-        background-color: #1e1e1e;
+        background-color: #2c2c2c;
+      }
+      .mcp-plugin__mode {
+        position: absolute;
+        bottom: -8px;
+        right: -4px;
+        cursor: pointer;
+        transition: ease 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        font-size: 10px;
+      }
+      .mcp-plugin__mode:hover {
+        opacity: 0.6;
       }
       .mcp-plugin {
+        position: relative;
         display: flex;
         flex-direction: column;
         gap: 24px;
@@ -34,6 +50,9 @@
       .mcp-plugin__header-description {
         font-size: 12px;
         margin: 0;
+      }
+      .dark .mcp-plugin__header-description {
+        color: #CCCCCC;
       }
       .mcp-plugin__content {
         display: flex;
@@ -70,7 +89,7 @@
       .mcp-plugin__channel-name::after {
         content: "Click to copy";
         position: absolute;
-        bottom: 18px;
+        bottom: 16px;
         left: 50%;
         transform: translateX(-50%);
         background-color: #223005;
@@ -85,6 +104,9 @@
         transition: opacity 0.2s, visibility 0.2s;
         pointer-events: none;
         z-index: 100;
+      }
+      .dark .mcp-plugin__channel-name::after {
+        background-color: #2c2c2c;
       }
       .mcp-plugin__channel-name:hover::after {
         opacity: 1;
@@ -102,35 +124,40 @@
         border-radius: 4px;
         font-size: 12px;
         cursor: pointer;
-        transition: background-color 0.2s;
+        transition: ease 0.2s;
         margin-left: auto;
+      }
+      .dark .mcp-plugin__button {
+        border-color: #5467F7;
+        background-color: #5467F7;
+        color: #fffff;
       }
       .mcp-plugin__button:hover {
         background-color: transparent;
         color: #732392;
       }
+      .dark .mcp-plugin__button:hover {
+        background-color: transparent;
+        color: #ffffff;
+        border-color: #5467F7;
+      }
       .mcp-plugin__button--secondary {
         background-color: transparent;
         color: #732392;
+      }
+      .dark .mcp-plugin__button--secondary {
+        background-color: transparent;
+        color: #fff;
+        border-color: #5467F7;
       }
       .mcp-plugin__button--secondary:hover {
         background-color: #732392;
         color: #fff;
       }
-      .dark .mcp-plugin__button:hover {
-        background-color: transparent;
-        color: #fff;
-        border-color: #fff;
-      }
-      .dark .mcp-plugin__button--secondary {
-        background-color: transparent;
-        color: #fff;
-        border-color: #fff;
-      }
       .dark .mcp-plugin__button--secondary:hover {
-        background-color: #732392;
-        color: #fff;
-        border-color: #732392;
+        background-color: #5467F7;
+        color: #ffffff;
+        border-color: #5467F7;
       }
       .mcp-plugin__button:disabled {
         display: none;
@@ -144,35 +171,63 @@
         flex-direction: column;
         gap: 4px;
       }
-      .mcp-plugin__progress-bar{
+      .mcp-plugin__progress-bar {
         width: 100%; 
         height: 4px; 
         background-color: #EDD0F8; 
         border-radius: 4px;
       }
-      .mcp-plugin__progress-bar-fill{
+      .dark .mcp-plugin__progress-bar {
+        background-color: #575757;
+      }
+      .mcp-plugin__progress-bar-fill {
         width: 0%; 
         height: 4px; 
         background-color: #732392; 
         border-radius: 4px; 
         transition: width 0.3s;
       }
-      .mcp-plugin__progress-indicators,
-      .mcp-plugin__progress-message {
-        font-size: 12px;
+      .dark .mcp-plugin__progress-bar-fill {
+        background-color: #5467F7;
+      }
+      .mcp-plugin__progress-indicators {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        font-size: 10px;
+      }
+      .dark .mcp-plugin__progress-indicators {
+        color: #ABABAB;
       }
       #progress-status {
-        opacity: 0;
+        display: none;
       }
       .operation-error {
         color: #f87359ff;
       }
     </style>
   </head>
-  <body class="">
+  <body class="dark">
     <div class="container mcp-plugin">
+      <div class="mcp-plugin__mode">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          fill="#400b55"
+          class="mcp-plugin__mode-moon hidden"
+          viewBox="0 -960 960 960"><path d="M483.11-116q-76.3 0-143.05-28.93-66.76-28.93-116.48-78.65t-78.65-116.48Q116-406.81 116-483.11q0-125.27 75.12-223.93 75.11-98.65 198.19-129.65-10.08 96.31 20.34 181.27 30.43 84.96 97.12 151.65 64.69 64.69 151.65 94.62 86.96 29.92 178.27 19.84-29.38 121.08-128.85 197.19Q608.38-116 483.11-116m-.11-52q88 0 164-45t115-122.11q-83-5.01-158.5-39.56T469-468.3q-60-60.08-94-134.89T335-762q-77 41-122 116.18-45 75.19-45 162.82 0 131.25 91.88 223.12Q351.75-168 483-168m-14-300.38"/></svg>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          fill="#fff"
+          class="mcp-plugin__mode-sun"
+          viewBox="0 -960 960 960">
+            <path d="M454-794.31V-902h52v107.69zM454-58v-107.69h52V-58zm340.31-396v-52H902v52zM58-454v-52h107.69v52zm660.31-227.15-37.16-37.16L759-798.38 798.38-759zM202-162.62 162.62-202l79.07-76.85 37.16 37.16zm557 0-77.85-79.07 37.16-37.16L798.38-202zM241.69-681.15 162.62-759 202-798.38l76.85 80.07zm82.54 356.92Q260-388.46 260-480t64.23-155.77T480-700t155.77 64.23T700-480t-64.23 155.77T480-260t-155.77-64.23M599-360.5q49-49.5 49-119.75 0-70.24-48.75-119-48.76-48.75-119-48.75Q410-648 361-599.25q-49 48.76-49 119 0 70.25 48.75 119.75 48.76 49.5 119 49.5Q550-311 599-360.5M481-481"/></svg>
+      </div>
       <div class="header mcp-plugin__header">
-        <h1 class="mcp-plugin__header-title">🤖 Claude Talk to Figma</h1>
+        <h1 class="mcp-plugin__header-title">🤖🎨 Claude Talk to Figma</h1>
         <p class="mcp-plugin__header-description">AI agents reading and modifing Figma designs</p>
       </div>
       <div class="content mcp-plugin__content">   
@@ -189,11 +244,11 @@
         <div class="mcp-plugin__progress-bar">
           <div id="progress-bar" class="mcp-plugin__progress-bar-fill"></div>
         </div>
-        <div class="mcp-plugin__progress-indicators" style="display: flex; justify-content: space-between; font-size: 12px;">
+        <div class="mcp-plugin__progress-indicators">
           <div id="progress-status">Not started</div>
+          <div id="progress-message" class="mcp-plugin__progress-message">No operation in progress</div>
           <div id="progress-percentage">0%</div>
         </div>
-        <div id="progress-message" class="mcp-plugin__progress-message">No operation in progress</div>
       </div>
     </div>
 
@@ -222,6 +277,9 @@
             progressMessage: document.getElementById("progress-message"),
             progressStatus: document.getElementById("progress-status"),
             progressPercentage: document.getElementById("progress-percentage"),
+            modeToggle: document.querySelector(".mcp-plugin__mode"),
+            modeSun: document.querySelector(".mcp-plugin__mode-sun"),
+            modeMoon: document.querySelector(".mcp-plugin__mode-moon"),
           };
 
           this.init();
@@ -238,6 +296,9 @@
               this.copyToClipboard(e.target.textContent);
             }
           });
+
+          // Mode toggle
+          this.ui.modeToggle.addEventListener("click", () => this.toggleMode());
 
           // Figma messages
           window.onmessage = (event) => this.handleFigmaMessage(event.data.pluginMessage);
@@ -527,6 +588,21 @@
             } catch (fallbackErr) {
               console.error("All copy methods failed:", fallbackErr);
             }
+          }
+        }
+
+        /**
+         * Toggle between dark and light mode
+         */
+        toggleMode() {
+          const isDark = document.body.classList.toggle("dark");
+          
+          if (isDark) {
+            this.ui.modeSun.classList.remove("hidden");
+            this.ui.modeMoon.classList.add("hidden");
+          } else {
+            this.ui.modeSun.classList.add("hidden");
+            this.ui.modeMoon.classList.remove("hidden");
           }
         }
 
