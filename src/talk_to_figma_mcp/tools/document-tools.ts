@@ -76,11 +76,16 @@ export function registerDocumentTools(server: McpServer): void {
     async ({ nodeId }) => {
       try {
         const result = await sendCommandToFigma("get_node_info", { nodeId });
+        const filtered = filterFigmaNode(result);
+        const coordinateNote = filtered.absoluteBoundingBox && filtered.localPosition
+          ? "\n\nNote: absoluteBoundingBox contains global coordinates (relative to canvas). localPosition contains local coordinates (relative to parent, use these for move_node)."
+          : "";
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(filterFigmaNode(result))
+              text: JSON.stringify(filtered) + coordinateNote
             }
           ]
         };
