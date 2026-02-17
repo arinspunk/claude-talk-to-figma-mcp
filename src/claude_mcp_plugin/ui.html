@@ -515,7 +515,14 @@
          */
         sendErrorResponse(id, errorMessage) {
           if (!this.state.connected || !this.state.socket) return;
-          this.state.socket.send(JSON.stringify({ id, error: errorMessage }));
+          this.state.socket.send(
+            JSON.stringify({
+              id,
+              type: "message",
+              channel: this.state.channel,
+              message: { id, error: errorMessage },
+            })
+          );
         }
 
         /**

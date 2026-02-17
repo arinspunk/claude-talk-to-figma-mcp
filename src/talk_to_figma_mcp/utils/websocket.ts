@@ -103,11 +103,11 @@ export function connectToFigma(port: number = defaultPort) {
         logger.debug(`Received message: ${JSON.stringify(myResponse)}`);
         logger.log('myResponse' + JSON.stringify(myResponse));
 
-        // Handle response to a request
+        // Handle response to a request (both success and error responses)
         if (
           myResponse.id &&
           pendingRequests.has(myResponse.id) &&
-          myResponse.result
+          (myResponse.result || myResponse.error)
         ) {
           const request = pendingRequests.get(myResponse.id)!;
           clearTimeout(request.timeout);
