@@ -7,6 +7,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **🖼️ Image Manipulation Tools**: Complete image handling support for Figma nodes
+  - `set_image_fill`: Apply images from URL or base64 data with scaleMode options (FILL, FIT, CROP, TILE)
+  - `get_image_from_node`: Extract image metadata (hash, scaleMode, rotation, filters)
+  - `replace_image_fill`: Replace existing images while preserving transforms and filters
+  - `apply_image_transform`: Adjust image position, scale, rotation (90° increments), and scaleMode
+  - `set_image_filters`: Apply 7 types of color/light adjustments (exposure, contrast, saturation, temperature, tint, highlights, shadows) with -1.0 to 1.0 range
+
+### Fixed
+- **🔄 Image Rotation**: Image rotation properly implemented (90-degree increments: 0, 90, 180, 270). Rotates IMAGE inside node, not the node itself.
+- **🎨 Image Filters**: Image filters preserved when replacing images with `replace_image_fill`
+
+### Notes
+- **Image Sources**: Base64 fully supported, external URLs restricted by manifest.json allowedDomains, Data URIs not supported by Figma API
+- **Image Rotation vs Node Rotation**: `apply_image_transform` rotates the image fill inside the node boundary (node shape unchanged). To rotate the entire node, use a separate node rotation tool (not yet implemented).
+
 ## [0.8.2] - 2026-02-15
 
 ### Added
