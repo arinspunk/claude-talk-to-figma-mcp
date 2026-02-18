@@ -1154,6 +1154,36 @@ function customBase64Encode(bytes) {
   return base64;
 }
 
+// Decode base64 string to Uint8Array (mirror of customBase64Encode)
+function customBase64Decode(base64) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) {
+    lookup[chars.charCodeAt(i)] = i;
+  }
+
+  // Remove padding and calculate output length
+  let padding = 0;
+  if (base64.length > 0 && base64[base64.length - 1] === "=") padding++;
+  if (base64.length > 1 && base64[base64.length - 2] === "=") padding++;
+  const byteLength = (base64.length * 3) / 4 - padding;
+  const bytes = new Uint8Array(byteLength);
+
+  let p = 0;
+  for (let i = 0; i < base64.length; i += 4) {
+    const a = lookup[base64.charCodeAt(i)];
+    const b = lookup[base64.charCodeAt(i + 1)];
+    const c = lookup[base64.charCodeAt(i + 2)];
+    const d = lookup[base64.charCodeAt(i + 3)];
+
+    bytes[p++] = (a << 2) | (b >> 4);
+    if (p < byteLength) bytes[p++] = ((b & 15) << 4) | (c >> 2);
+    if (p < byteLength) bytes[p++] = ((c & 3) << 6) | d;
+  }
+
+  return bytes;
+}
+
 async function setCornerRadius(params) {
   const { nodeId, radius, corners } = params || {};
 
@@ -3990,12 +4020,8 @@ async function setImage(params) {
     throw new Error("Invalid base64 encoding. Ensure the string contains only valid base64 characters (no data URI prefix).");
   }
 
-  // Decode base64 to Uint8Array
-  const binaryString = atob(imageData);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
+  // Decode base64 to Uint8Array (atob is not available in Figma plugin sandbox)
+  const bytes = customBase64Decode(imageData);
 
   // Check decoded size limit (5MB)
   if (bytes.length > 5 * 1024 * 1024) {
