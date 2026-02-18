@@ -96,4 +96,8 @@ export type FigmaCommand =
   | "get_pages"
   | "set_current_page"
   | "rename_node"
-  | "set_selection_colors";
+  | "set_selection_colors"
+  | "get_variables"
+  | "set_variable"
+  | "apply_variable_to_node"
+  | "switch_variable_mode";

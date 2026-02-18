@@ -215,6 +215,14 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "get_variables":
+      return await getVariables(params);
+    case "set_variable":
+      return await setVariable(params);
+    case "apply_variable_to_node":
+      return await applyVariableToNode(params);
+    case "switch_variable_mode":
+      return await switchVariableMode(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3961,5 +3969,229 @@ async function setCurrentPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+
+// Get all variable collections and their variables
+async function getVariables() {
+  // Check if Variables API is available
+  if (!figma.variables) {
+    throw new Error(
+      "Variables API is not available. This feature requires Figma with Variables support. " +
+      "Ensure enableProposedApi is true in the plugin manifest."
+    );
+  }
+
+  const collections = await figma.variables.getLocalVariableCollectionsAsync();
+  const result = [];
+
+  for (const collection of collections) {
+    const variables = [];
+    for (const variableId of collection.variableIds) {
+      const variable = await figma.variables.getVariableByIdAsync(variableId);
+      if (variable) {
+        variables.push({
+          id: variable.id,
+          name: variable.name,
+          resolvedType: variable.resolvedType,
+          valuesByMode: variable.valuesByMode
+        });
+      }
+    }
+
+    result.push({
+      id: collection.id,
+      name: collection.name,
+      modes: collection.modes,
+      variableIds: collection.variableIds,
+      variables: variables
+    });
+  }
+
+  return { collections: result };
+}
+
+// Create or update a variable
+async function setVariable(params) {
+  const { collectionId, collectionName, name, resolvedType, value, modeId } = params || {};
+
+  if (!figma.variables) {
+    throw new Error(
+      "Variables API is not available. This feature requires Figma with Variables support."
+    );
+  }
+
+  if (!name) {
+    throw new Error("Missing name parameter");
+  }
+  if (!resolvedType) {
+    throw new Error("Missing resolvedType parameter");
+  }
+  if (value === undefined || value === null) {
+    throw new Error("Missing value parameter");
+  }
+
+  let collection;
+
+  // Find or create collection
+  if (collectionId) {
+    collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+    if (!collection) {
+      throw new Error(`Variable collection not found: ${collectionId}`);
+    }
+  } else if (collectionName) {
+    // Search existing collections first
+    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    collection = collections.find(c => c.name === collectionName);
+    if (!collection) {
+      // Create new collection
+      collection = figma.variables.createVariableCollection(collectionName);
+    }
+  } else {
+    throw new Error("Either collectionId or collectionName must be provided");
+  }
+
+  // Find existing variable by name in collection, or create new one
+  let variable = null;
+  for (const varId of collection.variableIds) {
+    const v = await figma.variables.getVariableByIdAsync(varId);
+    if (v && v.name === name) {
+      variable = v;
+      break;
+    }
+  }
+
+  if (!variable) {
+    variable = figma.variables.createVariable(name, collection, resolvedType);
+  }
+
+  // Determine mode
+  const targetModeId = modeId || collection.modes[0].modeId;
+
+  // Validate value type matches resolvedType
+  if (resolvedType === "COLOR") {
+    if (typeof value !== "object" || value.r === undefined) {
+      throw new Error("Value does not match resolvedType. Expected COLOR object {r, g, b, a}, got " + typeof value);
+    }
+  } else if (resolvedType === "FLOAT") {
+    if (typeof value !== "number") {
+      throw new Error("Value does not match resolvedType. Expected FLOAT (number), got " + typeof value);
+    }
+  } else if (resolvedType === "STRING") {
+    if (typeof value !== "string") {
+      throw new Error("Value does not match resolvedType. Expected STRING, got " + typeof value);
+    }
+  } else if (resolvedType === "BOOLEAN") {
+    if (typeof value !== "boolean") {
+      throw new Error("Value does not match resolvedType. Expected BOOLEAN, got " + typeof value);
+    }
+  }
+
+  // Set value for mode
+  variable.setValueForMode(targetModeId, value);
+
+  return {
+    variableId: variable.id,
+    variableName: variable.name,
+    collectionId: collection.id,
+    collectionName: collection.name,
+    resolvedType: variable.resolvedType
+  };
+}
+
+// Apply a variable binding to a node property
+async function applyVariableToNode(params) {
+  const { nodeId, variableId, field } = params || {};
+
+  if (!figma.variables) {
+    throw new Error(
+      "Variables API is not available. This feature requires Figma with Variables support."
+    );
+  }
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!variableId) {
+    throw new Error("Missing variableId parameter");
+  }
+  if (!field) {
+    throw new Error("Missing field parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  const variable = await figma.variables.getVariableByIdAsync(variableId);
+  if (!variable) {
+    throw new Error(`Variable not found with ID: ${variableId}`);
+  }
+
+  // Apply the variable binding
+  if (!("setBoundVariable" in node)) {
+    throw new Error(`Node type ${node.type} does not support variable bindings`);
+  }
+
+  node.setBoundVariable(field, variable);
+
+  return {
+    nodeId: node.id,
+    nodeName: node.name,
+    variableId: variable.id,
+    variableName: variable.name,
+    field: field
+  };
+}
+
+// Switch variable mode on a node for a collection
+async function switchVariableMode(params) {
+  const { nodeId, collectionId, modeId } = params || {};
+
+  if (!figma.variables) {
+    throw new Error(
+      "Variables API is not available. This feature requires Figma with Variables support."
+    );
+  }
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!collectionId) {
+    throw new Error("Missing collectionId parameter");
+  }
+  if (!modeId) {
+    throw new Error("Missing modeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("setExplicitVariableModeForCollection" in node)) {
+    throw new Error(`Node type ${node.type} does not support variable mode switching`);
+  }
+
+  const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+  if (!collection) {
+    throw new Error(`Variable collection not found: ${collectionId}`);
+  }
+
+  const mode = collection.modes.find(m => m.modeId === modeId);
+  if (!mode) {
+    throw new Error(`Mode not found with ID: ${modeId} in collection "${collection.name}"`);
+  }
+
+  node.setExplicitVariableModeForCollection(collection, mode.modeId);
+
+  return {
+    nodeId: node.id,
+    nodeName: node.name,
+    collectionId: collection.id,
+    collectionName: collection.name,
+    modeId: mode.modeId,
+    modeName: mode.name
   };
 }
