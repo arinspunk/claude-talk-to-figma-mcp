@@ -215,6 +215,8 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "duplicate_page":
+      return await duplicatePage(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3961,5 +3963,35 @@ async function setCurrentPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+
+// Duplicate a page
+async function duplicatePage(params) {
+  const { pageId, name } = params || {};
+
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+
+  const page = figma.root.children.find(p => p.id === pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  const originalName = page.name;
+  const clonedPage = page.clone();
+
+  if (name) {
+    clonedPage.name = name;
+  } else {
+    clonedPage.name = `${originalName} (Copy)`;
+  }
+
+  return {
+    id: clonedPage.id,
+    name: clonedPage.name,
+    originalName: originalName,
+    childCount: clonedPage.children.length
   };
 }
