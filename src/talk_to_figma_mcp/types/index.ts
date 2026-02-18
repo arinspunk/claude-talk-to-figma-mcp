@@ -100,3 +100,4 @@ export type FigmaCommand =
   | "rotate_node";
   | "set_node_properties";
   | "reorder_node";
+  | "duplicate_page";
