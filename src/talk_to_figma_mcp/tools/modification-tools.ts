@@ -552,6 +552,23 @@ export function registerModificationTools(server: McpServer): void {
           gradientTransform: gradientTransform || [[1, 0, 0], [0, 1, 0]],
         });
         const typedResult = result as { name: string };
+  // Set Image Fill Tool
+  server.tool(
+    "set_image",
+    "Set an image fill on a node from base64-encoded image data. Supports PNG, JPEG, GIF, WebP. Max ~5MB after decode.",
+    {
+      nodeId: z.string().describe("The ID of the node to apply the image fill to"),
+      imageData: z.string().max(7_000_000).describe("Base64-encoded image data (PNG, JPEG, GIF, or WebP). Max ~5MB after decode."),
+      scaleMode: z.enum(["FILL", "FIT", "CROP", "TILE"]).optional().describe("How the image is scaled within the node (default: FILL)"),
+    },
+    async ({ nodeId, imageData, scaleMode }) => {
+      try {
+        const result = await sendCommandToFigma("set_image", {
+          nodeId,
+          imageData,
+          scaleMode: scaleMode || "FILL",
+        });
+        const typedResult = result as { name: string; imageHash: string };
         return {
           content: [
             {
@@ -561,6 +578,7 @@ export function registerModificationTools(server: McpServer): void {
               text: `Reordered node "${typedResult.name}" to index ${typedResult.newIndex} of ${typedResult.parentChildCount} siblings`,
               text: `Converted ${typedResult.originalType} "${typedResult.name}" to FRAME with ID: ${typedResult.id} (${typedResult.childCount} children preserved)`,
               text: `Applied ${type} gradient with ${stops.length} stops to node "${typedResult.name}"`,
+              text: `Set image fill on node "${typedResult.name}" with scale mode ${scaleMode || "FILL"} (hash: ${typedResult.imageHash})`,
             },
           ],
         };
@@ -574,6 +592,7 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error reordering node: ${error instanceof Error ? error.message : String(error)}`,
               text: `Error converting to frame: ${error instanceof Error ? error.message : String(error)}`,
               text: `Error setting gradient: ${error instanceof Error ? error.message : String(error)}`,
+              text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
         };

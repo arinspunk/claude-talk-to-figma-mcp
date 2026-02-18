@@ -233,6 +233,8 @@ async function handleCommand(command, params) {
       return await setSvg(params);
     case "get_svg":
       return await getSvg(params);
+    case "set_image":
+      return await setImage(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -4058,6 +4060,9 @@ async function setSvg(params) {
 // Export a node as SVG string
 async function getSvg(params) {
   const { nodeId } = params || {};
+// Set image fill on a node from base64-encoded image data
+async function setImage(params) {
+  const { nodeId, imageData, scaleMode } = params || {};
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -4065,6 +4070,8 @@ async function getSvg(params) {
 
   if (angle === undefined) {
     throw new Error("Missing angle parameter");
+  if (!imageData) {
+    throw new Error("Missing imageData parameter");
   }
 
   const node = await figma.getNodeByIdAsync(nodeId);
@@ -4119,6 +4126,32 @@ async function getSvg(params) {
   };
 
   node.fills = [gradientFill];
+  // Validate base64 charset
+  if (!/^[A-Za-z0-9+/=]+$/.test(imageData)) {
+    throw new Error("Invalid base64 encoding. Ensure the string contains only valid base64 characters (no data URI prefix).");
+  }
+
+  // Decode base64 to Uint8Array
+  const binaryString = atob(imageData);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  // Check decoded size limit (5MB)
+  if (bytes.length > 5 * 1024 * 1024) {
+    throw new Error("Image exceeds 5MB limit. Use a smaller image or compress it first.");
+  }
+
+  // Create image in Figma and set as fill
+  const image = figma.createImage(bytes);
+  node.fills = [{
+    type: "IMAGE",
+    imageHash: image.hash,
+    scaleMode: scaleMode || "FILL",
+    visible: true,
+    opacity: 1
+  }];
 
   return {
     id: node.id,
@@ -4323,5 +4356,7 @@ async function booleanOperation(params) {
     svgString: svgString,
     name: node.name,
     id: node.id
+    imageHash: image.hash,
+    scaleMode: scaleMode || "FILL"
   };
 }

@@ -106,3 +106,4 @@ export type FigmaCommand =
   | "boolean_operation";
   | "set_svg"
   | "get_svg";
+  | "set_image";
