@@ -3993,14 +3993,15 @@ async function setAnnotation(params) {
     );
   }
 
-  const annotations = node.annotations || [];
-  annotations.push({ label: label });
-  node.annotations = annotations;
+  // node.annotations is ReadonlyArray — must create a new array (not push)
+  const existing = node.annotations ? [...node.annotations] : [];
+  existing.push({ label: label });
+  node.annotations = existing;
 
   return {
     id: node.id,
     name: node.name,
-    annotationCount: annotations.length
+    annotationCount: existing.length
   };
 }
 
