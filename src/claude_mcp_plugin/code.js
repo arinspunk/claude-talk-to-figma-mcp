@@ -215,6 +215,10 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "set_svg":
+      return await setSvg(params);
+    case "get_svg":
+      return await getSvg(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3961,5 +3965,89 @@ async function setCurrentPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+
+// SVG sanitization - strip scripts, event handlers, external resources
+function sanitizeSvg(svgString) {
+  let clean = svgString;
+  // Strip <script> tags
+  clean = clean.replace(/<script[\s\S]*?<\/script>/gi, '');
+  // Strip event handlers (onclick, onload, etc.)
+  clean = clean.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
+  // Strip external resource references
+  clean = clean.replace(/xlink:href\s*=\s*["']https?:\/\/[^"']*["']/gi, '');
+  clean = clean.replace(/href\s*=\s*["']https?:\/\/[^"']*["']/gi, '');
+  // Strip data URIs that could be injection vectors
+  clean = clean.replace(/href\s*=\s*["']data:text\/html[^"']*["']/gi, '');
+  return clean;
+}
+
+// Import SVG string as vector node
+async function setSvg(params) {
+  const { svgString, x, y, name, parentId } = params || {};
+
+  if (!svgString) {
+    throw new Error("Missing svgString parameter");
+  }
+
+  // Validate SVG content
+  if (!svgString.includes('<svg') && !svgString.includes('<?xml')) {
+    throw new Error("Invalid SVG: string must contain an <svg> element");
+  }
+
+  // Sanitize the SVG
+  const cleanSvg = sanitizeSvg(svgString);
+
+  const node = figma.createNodeFromSvg(cleanSvg);
+
+  if (x !== undefined) node.x = x;
+  if (y !== undefined) node.y = y;
+  if (name) node.name = name;
+
+  // If parentId is provided, move into that parent
+  if (parentId) {
+    const parentNode = await figma.getNodeByIdAsync(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    parentNode.appendChild(node);
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    width: node.width,
+    height: node.height,
+    type: node.type
+  };
+}
+
+// Export a node as SVG string
+async function getSvg(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("exportAsync" in node)) {
+    throw new Error(`Node type ${node.type} does not support export`);
+  }
+
+  const svgString = await node.exportAsync({ format: "SVG_STRING" });
+
+  return {
+    svgString: svgString,
+    name: node.name,
+    id: node.id
   };
 }
