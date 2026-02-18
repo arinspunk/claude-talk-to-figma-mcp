@@ -97,22 +97,22 @@ export type FigmaCommand =
   | "set_current_page"
   | "rename_node"
   | "set_selection_colors"
-  | "rotate_node";
-  | "set_node_properties";
-  | "reorder_node";
-  | "duplicate_page";
-  | "convert_to_frame";
-  | "set_gradient";
-  | "boolean_operation";
+  | "rotate_node"
+  | "set_node_properties"
+  | "reorder_node"
+  | "duplicate_page"
+  | "convert_to_frame"
+  | "set_gradient"
+  | "boolean_operation"
   | "set_svg"
-  | "get_svg";
-  | "set_image";
+  | "get_svg"
+  | "set_image"
   | "set_grid"
   | "get_grid"
   | "set_guide"
-  | "get_guide";
+  | "get_guide"
   | "set_annotation"
-  | "get_annotation";
+  | "get_annotation"
   | "get_variables"
   | "set_variable"
   | "apply_variable_to_node"

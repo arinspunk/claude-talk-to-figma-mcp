@@ -27,11 +27,11 @@ export function registerModificationTools(server: McpServer): void {
         if (r === undefined || g === undefined || b === undefined) {
           throw new Error("RGB components (r, g, b) are required and cannot be undefined");
         }
-        
+
         // Apply default values safely - preserves opacity 0 for transparency
         const colorInput: Color = { r, g, b, a };
         const colorWithDefaults = applyColorDefaults(colorInput);
-        
+
         const result = await sendCommandToFigma("set_fill_color", {
           nodeId,
           color: colorWithDefaults,
@@ -76,12 +76,12 @@ export function registerModificationTools(server: McpServer): void {
         if (r === undefined || g === undefined || b === undefined) {
           throw new Error("RGB components (r, g, b) are required and cannot be undefined");
         }
-        
+
         const colorInput: Color = { r, g, b, a };
         const colorWithDefaults = applyColorDefaults(colorInput);
-        
+
         const strokeWeightWithDefault = applyDefault(strokeWeight, FIGMA_DEFAULTS.stroke.weight);
-        
+
         const result = await sendCommandToFigma("set_stroke_color", {
           nodeId,
           color: colorWithDefaults,
@@ -321,23 +321,23 @@ export function registerModificationTools(server: McpServer): void {
       layoutWrap: z.enum(["WRAP", "NO_WRAP"]).optional().describe("Whether items wrap to new lines"),
       strokesIncludedInLayout: z.boolean().optional().describe("Whether strokes are included in layout calculations")
     },
-    async ({ nodeId, layoutMode, paddingTop, paddingBottom, paddingLeft, paddingRight, 
+    async ({ nodeId, layoutMode, paddingTop, paddingBottom, paddingLeft, paddingRight,
              itemSpacing, primaryAxisAlignItems, counterAxisAlignItems, layoutWrap, strokesIncludedInLayout }) => {
       try {
-        const result = await sendCommandToFigma("set_auto_layout", { 
-          nodeId, 
-          layoutMode, 
-          paddingTop, 
-          paddingBottom, 
-          paddingLeft, 
-          paddingRight, 
-          itemSpacing, 
-          primaryAxisAlignItems, 
-          counterAxisAlignItems, 
-          layoutWrap, 
-          strokesIncludedInLayout 
+        const result = await sendCommandToFigma("set_auto_layout", {
+          nodeId,
+          layoutMode,
+          paddingTop,
+          paddingBottom,
+          paddingLeft,
+          paddingRight,
+          itemSpacing,
+          primaryAxisAlignItems,
+          counterAxisAlignItems,
+          layoutWrap,
+          strokesIncludedInLayout
         });
-        
+
         const typedResult = result as { name: string };
         return {
           content: [
@@ -392,9 +392,9 @@ export function registerModificationTools(server: McpServer): void {
           nodeId,
           effects
         });
-        
+
         const typedResult = result as { name: string, effects: any[] };
-        
+
         return {
           content: [
             {
@@ -430,9 +430,9 @@ export function registerModificationTools(server: McpServer): void {
           nodeId,
           effectStyleId
         });
-        
+
         const typedResult = result as { name: string, effectStyleId: string };
-        
+
         return {
           content: [
             {
@@ -471,6 +471,27 @@ export function registerModificationTools(server: McpServer): void {
           relative: relative || false,
         });
         const typedResult = result as { name: string; rotation: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Rotated node "${typedResult.name}" to ${typedResult.rotation}°`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error rotating node: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Set Node Properties Tool (visibility, lock, opacity)
   server.tool(
     "set_node_properties",
@@ -494,6 +515,27 @@ export function registerModificationTools(server: McpServer): void {
         if (visible !== undefined) changes.push(`visible=${typedResult.visible}`);
         if (locked !== undefined) changes.push(`locked=${typedResult.locked}`);
         if (opacity !== undefined) changes.push(`opacity=${typedResult.opacity}`);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Updated node "${typedResult.name}": ${changes.join(", ")}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting node properties: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Reorder Node Tool (z-order within same parent)
   server.tool(
     "reorder_node",
@@ -511,6 +553,27 @@ export function registerModificationTools(server: McpServer): void {
           index,
         });
         const typedResult = result as { name: string; newIndex: number; parentChildCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Reordered node "${typedResult.name}" to index ${typedResult.newIndex} of ${typedResult.parentChildCount} siblings`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error reordering node: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Convert to Frame Tool
   server.tool(
     "convert_to_frame",
@@ -522,6 +585,27 @@ export function registerModificationTools(server: McpServer): void {
       try {
         const result = await sendCommandToFigma("convert_to_frame", { nodeId });
         const typedResult = result as { id: string; name: string; originalType: string; childCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Converted ${typedResult.originalType} "${typedResult.name}" to FRAME with ID: ${typedResult.id} (${typedResult.childCount} children preserved)`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error converting to frame: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Set Gradient Fill Tool
   server.tool(
     "set_gradient",
@@ -552,6 +636,27 @@ export function registerModificationTools(server: McpServer): void {
           gradientTransform: gradientTransform || [[1, 0, 0], [0, 1, 0]],
         });
         const typedResult = result as { name: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Applied ${type} gradient with ${stops.length} stops to node "${typedResult.name}"`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting gradient: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Set Image Fill Tool
   server.tool(
     "set_image",
@@ -569,6 +674,27 @@ export function registerModificationTools(server: McpServer): void {
           scaleMode: scaleMode || "FILL",
         });
         const typedResult = result as { name: string; imageHash: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Set image fill on node "${typedResult.name}" with scale mode ${scaleMode || "FILL"} (hash: ${typedResult.imageHash})`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Set Layout Grid Tool
   server.tool(
     "set_grid",
@@ -597,62 +723,11 @@ export function registerModificationTools(server: McpServer): void {
       try {
         const result = await sendCommandToFigma("set_grid", { nodeId, grids });
         const typedResult = result as { name: string; gridCount: number };
-  // Set Annotation Tool
-  server.tool(
-    "set_annotation",
-    "Add an annotation label to a node in Figma. Uses the proposed Annotations API — requires Figma Desktop with enableProposedApi.",
-    {
-      nodeId: z.string().describe("The ID of the node to annotate"),
-      label: z.string().describe("The annotation label text"),
-    },
-    async ({ nodeId, label }) => {
-      try {
-        const result = await sendCommandToFigma("set_annotation", { nodeId, label });
-        const typedResult = result as { name: string; annotationCount: number };
         return {
           content: [
             {
               type: "text",
-              text: `Added annotation "${label}" to node "${typedResult.name}" (${typedResult.annotationCount} total annotations)`,
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error setting annotation: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-        };
-      }
-    }
-  );
-
-  // Get Annotation Tool
-  server.tool(
-    "get_annotation",
-    "Read annotations from a node in Figma. Uses the proposed Annotations API.",
-    {
-      nodeId: z.string().describe("The ID of the node to read annotations from"),
-    },
-    async ({ nodeId }) => {
-      try {
-        const result = await sendCommandToFigma("get_annotation", { nodeId });
-        const typedResult = result as { name: string; annotations: any[] };
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Rotated node "${typedResult.name}" to ${typedResult.rotation}°`,
-              text: `Updated node "${typedResult.name}": ${changes.join(", ")}`,
-              text: `Reordered node "${typedResult.name}" to index ${typedResult.newIndex} of ${typedResult.parentChildCount} siblings`,
-              text: `Converted ${typedResult.originalType} "${typedResult.name}" to FRAME with ID: ${typedResult.id} (${typedResult.childCount} children preserved)`,
-              text: `Applied ${type} gradient with ${stops.length} stops to node "${typedResult.name}"`,
-              text: `Set image fill on node "${typedResult.name}" with scale mode ${scaleMode || "FILL"} (hash: ${typedResult.imageHash})`,
               text: `Applied ${typedResult.gridCount} layout grid(s) to frame "${typedResult.name}"`,
-              text: JSON.stringify({ name: typedResult.name, annotations: typedResult.annotations }, null, 2),
             },
           ],
         };
@@ -661,12 +736,6 @@ export function registerModificationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Error rotating node: ${error instanceof Error ? error.message : String(error)}`,
-              text: `Error setting node properties: ${error instanceof Error ? error.message : String(error)}`,
-              text: `Error reordering node: ${error instanceof Error ? error.message : String(error)}`,
-              text: `Error converting to frame: ${error instanceof Error ? error.message : String(error)}`,
-              text: `Error setting gradient: ${error instanceof Error ? error.message : String(error)}`,
-              text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}`,
               text: `Error setting layout grids: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
@@ -770,6 +839,70 @@ export function registerModificationTools(server: McpServer): void {
             {
               type: "text",
               text: `Error getting guides: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Set Annotation Tool
+  server.tool(
+    "set_annotation",
+    "Add an annotation label to a node in Figma. Uses the proposed Annotations API — requires Figma Desktop with enableProposedApi.",
+    {
+      nodeId: z.string().describe("The ID of the node to annotate"),
+      label: z.string().describe("The annotation label text"),
+    },
+    async ({ nodeId, label }) => {
+      try {
+        const result = await sendCommandToFigma("set_annotation", { nodeId, label });
+        const typedResult = result as { name: string; annotationCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Added annotation "${label}" to node "${typedResult.name}" (${typedResult.annotationCount} total annotations)`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting annotation: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Get Annotation Tool
+  server.tool(
+    "get_annotation",
+    "Read annotations from a node in Figma. Uses the proposed Annotations API.",
+    {
+      nodeId: z.string().describe("The ID of the node to read annotations from"),
+    },
+    async ({ nodeId }) => {
+      try {
+        const result = await sendCommandToFigma("get_annotation", { nodeId });
+        const typedResult = result as { name: string; annotations: any[] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ name: typedResult.name, annotations: typedResult.annotations }, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
               text: `Error getting annotations: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],

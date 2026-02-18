@@ -29,6 +29,6 @@ export {
   registerModificationTools,
   registerTextTools,
   registerComponentTools,
-  registerSvgTools
+  registerSvgTools,
   registerVariableTools
 };
