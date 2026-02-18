@@ -113,3 +113,7 @@ export type FigmaCommand =
   | "get_guide";
   | "set_annotation"
   | "get_annotation";
+  | "get_variables"
+  | "set_variable"
+  | "apply_variable_to_node"
+  | "switch_variable_mode";
