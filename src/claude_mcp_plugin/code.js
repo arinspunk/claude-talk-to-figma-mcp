@@ -215,6 +215,14 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "set_grid":
+      return await setGrid(params);
+    case "get_grid":
+      return await getGrid(params);
+    case "set_guide":
+      return await setGuide(params);
+    case "get_guide":
+      return await getGuide(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3961,5 +3969,139 @@ async function setCurrentPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+
+// Set layout grids on a frame node
+async function setGrid(params) {
+  const { nodeId, grids } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!grids || !Array.isArray(grids)) {
+    throw new Error("Missing or invalid grids parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (!("layoutGrids" in node)) {
+    throw new Error(`Node type ${node.type} does not support layout grids. Use a frame node.`);
+  }
+
+  const layoutGrids = grids.map(grid => {
+    const layoutGrid = {
+      pattern: grid.pattern,
+      visible: grid.visible !== undefined ? grid.visible : true
+    };
+
+    if (grid.sectionSize !== undefined) layoutGrid.sectionSize = grid.sectionSize;
+    if (grid.count !== undefined) layoutGrid.count = grid.count;
+    if (grid.gutterSize !== undefined) layoutGrid.gutterSize = grid.gutterSize;
+    if (grid.offset !== undefined) layoutGrid.offset = grid.offset;
+    if (grid.alignment !== undefined) layoutGrid.alignment = grid.alignment;
+    if (grid.color) {
+      layoutGrid.color = {
+        r: grid.color.r,
+        g: grid.color.g,
+        b: grid.color.b,
+        a: grid.color.a !== undefined ? grid.color.a : 0.1
+      };
+    }
+
+    return layoutGrid;
+  });
+
+  node.layoutGrids = layoutGrids;
+
+  return {
+    id: node.id,
+    name: node.name,
+    gridCount: layoutGrids.length
+  };
+}
+
+// Get layout grids from a frame node
+async function getGrid(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (!("layoutGrids" in node)) {
+    throw new Error(`Node type ${node.type} does not support layout grids. Use a frame node.`);
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    grids: node.layoutGrids.map(grid => ({
+      pattern: grid.pattern,
+      visible: grid.visible,
+      sectionSize: grid.sectionSize,
+      count: grid.count,
+      gutterSize: grid.gutterSize,
+      offset: grid.offset,
+      alignment: grid.alignment,
+      color: grid.color
+    }))
+  };
+}
+
+// Set guides on a page
+async function setGuide(params) {
+  const { pageId, guides } = params || {};
+
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+  if (!guides || !Array.isArray(guides)) {
+    throw new Error("Missing or invalid guides parameter");
+  }
+
+  const page = figma.root.children.find(p => p.id === pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  page.guides = guides.map(guide => ({
+    axis: guide.axis,
+    offset: guide.offset
+  }));
+
+  return {
+    id: page.id,
+    name: page.name,
+    guideCount: guides.length
+  };
+}
+
+// Get guides from a page
+async function getGuide(params) {
+  const { pageId } = params || {};
+
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+
+  const page = figma.root.children.find(p => p.id === pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  return {
+    id: page.id,
+    name: page.name,
+    guides: (page.guides || []).map(guide => ({
+      axis: guide.axis,
+      offset: guide.offset
+    }))
   };
 }
