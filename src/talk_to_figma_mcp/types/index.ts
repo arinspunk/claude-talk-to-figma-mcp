@@ -111,3 +111,5 @@ export type FigmaCommand =
   | "get_grid"
   | "set_guide"
   | "get_guide";
+  | "set_annotation"
+  | "get_annotation";
