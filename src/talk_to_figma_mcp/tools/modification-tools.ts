@@ -494,12 +494,30 @@ export function registerModificationTools(server: McpServer): void {
         if (visible !== undefined) changes.push(`visible=${typedResult.visible}`);
         if (locked !== undefined) changes.push(`locked=${typedResult.locked}`);
         if (opacity !== undefined) changes.push(`opacity=${typedResult.opacity}`);
+  // Reorder Node Tool (z-order within same parent)
+  server.tool(
+    "reorder_node",
+    "Change the z-order (layer order) of a node within its parent. Distinct from insert_child which re-parents a node — reorder_node changes position within the same parent.",
+    {
+      nodeId: z.string().describe("The ID of the node to reorder"),
+      position: z.enum(["front", "back", "forward", "backward"]).optional().describe("Move to front/back or one step forward/backward"),
+      index: z.number().optional().describe("Direct index position within parent's children (0 = bottom). Overrides position if both provided."),
+    },
+    async ({ nodeId, position, index }) => {
+      try {
+        const result = await sendCommandToFigma("reorder_node", {
+          nodeId,
+          position,
+          index,
+        });
+        const typedResult = result as { name: string; newIndex: number; parentChildCount: number };
         return {
           content: [
             {
               type: "text",
               text: `Rotated node "${typedResult.name}" to ${typedResult.rotation}°`,
               text: `Updated node "${typedResult.name}": ${changes.join(", ")}`,
+              text: `Reordered node "${typedResult.name}" to index ${typedResult.newIndex} of ${typedResult.parentChildCount} siblings`,
             },
           ],
         };
@@ -510,6 +528,7 @@ export function registerModificationTools(server: McpServer): void {
               type: "text",
               text: `Error rotating node: ${error instanceof Error ? error.message : String(error)}`,
               text: `Error setting node properties: ${error instanceof Error ? error.message : String(error)}`,
+              text: `Error reordering node: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
         };

@@ -99,3 +99,4 @@ export type FigmaCommand =
   | "set_selection_colors"
   | "rotate_node";
   | "set_node_properties";
+  | "reorder_node";
