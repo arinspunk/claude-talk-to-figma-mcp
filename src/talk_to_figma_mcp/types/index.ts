@@ -103,3 +103,4 @@ export type FigmaCommand =
   | "duplicate_page";
   | "convert_to_frame";
   | "set_gradient";
+  | "boolean_operation";

@@ -227,6 +227,8 @@ async function handleCommand(command, params) {
       return await convertToFrame(params);
     case "set_gradient":
       return await setGradient(params);
+    case "boolean_operation":
+      return await booleanOperation(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -4184,5 +4186,67 @@ async function duplicatePage(params) {
     originalType: originalType,
     childCount: childCount
     fills: node.fills
+// Boolean operation (union, subtract, intersect, exclude)
+async function booleanOperation(params) {
+  const { nodeIds, operation, name } = params || {};
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length < 2) {
+    throw new Error("At least 2 node IDs are required for boolean operations");
+  }
+
+  if (!operation) {
+    throw new Error("Missing operation parameter");
+  }
+
+  // Resolve all nodes
+  const nodes = [];
+  for (const id of nodeIds) {
+    const node = await figma.getNodeByIdAsync(id);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${id}`);
+    }
+    nodes.push(node);
+  }
+
+  // Validate all nodes share the same parent
+  const parents = new Set(nodes.map(n => n.parent ? n.parent.id : null));
+  if (parents.size > 1) {
+    throw new Error(
+      `All nodes must share the same parent. Found ${parents.size} different parents. ` +
+      `Move nodes into the same frame before performing boolean operations.`
+    );
+  }
+
+  const parent = nodes[0].parent;
+  if (!parent) {
+    throw new Error("Nodes have no parent container");
+  }
+
+  let result;
+  switch (operation) {
+    case "UNION":
+      result = figma.union(nodes, parent);
+      break;
+    case "SUBTRACT":
+      result = figma.subtract(nodes, parent);
+      break;
+    case "INTERSECT":
+      result = figma.intersect(nodes, parent);
+      break;
+    case "EXCLUDE":
+      result = figma.exclude(nodes, parent);
+      break;
+    default:
+      throw new Error(`Invalid operation: ${operation}. Use UNION, SUBTRACT, INTERSECT, or EXCLUDE.`);
+  }
+
+  if (name) {
+    result.name = name;
+  }
+
+  return {
+    id: result.id,
+    name: result.name,
+    type: result.type
   };
 }
