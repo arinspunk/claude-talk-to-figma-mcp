@@ -215,6 +215,8 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "set_node_properties":
+      return await setNodeProperties(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3961,5 +3963,42 @@ async function setCurrentPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+
+// Set node properties (visibility, lock, opacity)
+async function setNodeProperties(params) {
+  const { nodeId, visible, locked, opacity } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (visible !== undefined) {
+    node.visible = visible;
+  }
+
+  if (locked !== undefined) {
+    node.locked = locked;
+  }
+
+  if (opacity !== undefined) {
+    if (!("opacity" in node)) {
+      throw new Error(`Node type ${node.type} does not support opacity`);
+    }
+    node.opacity = opacity;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    visible: node.visible,
+    locked: node.locked,
+    opacity: "opacity" in node ? node.opacity : undefined
   };
 }
