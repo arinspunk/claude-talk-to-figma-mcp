@@ -215,6 +215,10 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "set_annotation":
+      return await setAnnotation(params);
+    case "get_annotation":
+      return await getAnnotation(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3961,5 +3965,70 @@ async function setCurrentPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+
+// Set annotation on a node (proposed API)
+async function setAnnotation(params) {
+  const { nodeId, label } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!label) {
+    throw new Error("Missing label parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  // Feature detection for proposed API
+  if (!("annotations" in node)) {
+    throw new Error(
+      "Annotations API is not available in this Figma version. " +
+      "Please update Figma Desktop to the latest version. " +
+      "This feature requires the proposed API (enableProposedApi: true in manifest)."
+    );
+  }
+
+  const annotations = node.annotations || [];
+  annotations.push({ label: label });
+  node.annotations = annotations;
+
+  return {
+    id: node.id,
+    name: node.name,
+    annotationCount: annotations.length
+  };
+}
+
+// Get annotations from a node (proposed API)
+async function getAnnotation(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  // Feature detection for proposed API
+  if (!("annotations" in node)) {
+    throw new Error(
+      "Annotations API is not available in this Figma version. " +
+      "Please update Figma Desktop to the latest version. " +
+      "This feature requires the proposed API (enableProposedApi: true in manifest)."
+    );
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    annotations: node.annotations || []
   };
 }

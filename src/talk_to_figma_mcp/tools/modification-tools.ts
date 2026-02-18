@@ -454,6 +454,71 @@ export function registerModificationTools(server: McpServer): void {
     }
   );
 
+  // Set Annotation Tool
+  server.tool(
+    "set_annotation",
+    "Add an annotation label to a node in Figma. Uses the proposed Annotations API — requires Figma Desktop with enableProposedApi.",
+    {
+      nodeId: z.string().describe("The ID of the node to annotate"),
+      label: z.string().describe("The annotation label text"),
+    },
+    async ({ nodeId, label }) => {
+      try {
+        const result = await sendCommandToFigma("set_annotation", { nodeId, label });
+        const typedResult = result as { name: string; annotationCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Added annotation "${label}" to node "${typedResult.name}" (${typedResult.annotationCount} total annotations)`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting annotation: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Get Annotation Tool
+  server.tool(
+    "get_annotation",
+    "Read annotations from a node in Figma. Uses the proposed Annotations API.",
+    {
+      nodeId: z.string().describe("The ID of the node to read annotations from"),
+    },
+    async ({ nodeId }) => {
+      try {
+        const result = await sendCommandToFigma("get_annotation", { nodeId });
+        const typedResult = result as { name: string; annotations: any[] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ name: typedResult.name, annotations: typedResult.annotations }, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting annotations: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Rename Node Tool
   server.tool(
     "rename_node",
