@@ -4007,18 +4007,343 @@ async function setCurrentPage(params) {
 // Rotate a node
 async function rotateNode(params) {
   const { nodeId, angle, relative } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (angle === undefined) {
+    throw new Error("Missing angle parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("rotation" in node)) {
+    throw new Error(`Node type ${node.type} does not support rotation`);
+  }
+
+  if (relative) {
+    node.rotation = node.rotation + angle;
+  } else {
+    node.rotation = angle;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    rotation: node.rotation
+  };
+}
+
 // Set node properties (visibility, lock, opacity)
 async function setNodeProperties(params) {
   const { nodeId, visible, locked, opacity } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (visible !== undefined) {
+    node.visible = visible;
+  }
+
+  if (locked !== undefined) {
+    node.locked = locked;
+  }
+
+  if (opacity !== undefined) {
+    if (!("opacity" in node)) {
+      throw new Error(`Node type ${node.type} does not support opacity`);
+    }
+    node.opacity = opacity;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    visible: node.visible,
+    locked: node.locked,
+    opacity: "opacity" in node ? node.opacity : undefined
+  };
+}
+
 // Reorder node within its parent (z-order)
 async function reorderNode(params) {
   const { nodeId, position, index } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  const parent = node.parent;
+  if (!parent || !("children" in parent)) {
+    throw new Error("Node has no parent container or parent does not support children");
+  }
+
+  const siblings = parent.children;
+  const currentIndex = siblings.indexOf(node);
+
+  let targetIndex;
+
+  if (index !== undefined) {
+    targetIndex = Math.max(0, Math.min(index, siblings.length - 1));
+  } else if (position) {
+    switch (position) {
+      case "front":
+        targetIndex = siblings.length - 1;
+        break;
+      case "back":
+        targetIndex = 0;
+        break;
+      case "forward":
+        targetIndex = Math.min(currentIndex + 1, siblings.length - 1);
+        break;
+      case "backward":
+        targetIndex = Math.max(currentIndex - 1, 0);
+        break;
+      default:
+        throw new Error(`Invalid position: ${position}. Use front, back, forward, or backward.`);
+    }
+  } else {
+    throw new Error("Either position or index must be provided");
+  }
+
+  parent.insertChild(targetIndex, node);
+
+  return {
+    id: node.id,
+    name: node.name,
+    newIndex: targetIndex,
+    parentChildCount: siblings.length
+  };
+}
+
+// Duplicate a page
+async function duplicatePage(params) {
+  const { pageId, name } = params || {};
+
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+
+  const page = figma.root.children.find(p => p.id === pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  const originalName = page.name;
+  const clonedPage = page.clone();
+
+  if (name) {
+    clonedPage.name = name;
+  } else {
+    clonedPage.name = `${originalName} (Copy)`;
+  }
+
+  return {
+    id: clonedPage.id,
+    name: clonedPage.name,
+    originalName: originalName,
+    childCount: clonedPage.children.length
+  };
+}
+
 // Convert a group or shape to a frame
 async function convertToFrame(params) {
   const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+    throw new Error(`Node is already a ${node.type}. No conversion needed.`);
+  }
+
+  if (node.type === "PAGE" || node.type === "DOCUMENT") {
+    throw new Error(`Cannot convert ${node.type} to a frame`);
+  }
+
+  const parent = node.parent;
+  if (!parent || !("children" in parent)) {
+    throw new Error("Node has no parent container");
+  }
+
+  const originalType = node.type;
+  const originalName = node.name;
+  const siblings = parent.children;
+  const originalIndex = siblings.indexOf(node);
+
+  // Create new frame
+  const frame = figma.createFrame();
+  frame.name = originalName;
+  frame.x = node.x;
+  frame.y = node.y;
+  frame.resize(node.width, node.height);
+
+  // Copy visual properties if available
+  if ("fills" in node) frame.fills = JSON.parse(JSON.stringify(node.fills));
+  if ("strokes" in node) frame.strokes = JSON.parse(JSON.stringify(node.strokes));
+  if ("strokeWeight" in node) frame.strokeWeight = node.strokeWeight;
+  if ("effects" in node) frame.effects = JSON.parse(JSON.stringify(node.effects));
+  if ("cornerRadius" in node) frame.cornerRadius = node.cornerRadius;
+  if ("opacity" in node) frame.opacity = node.opacity;
+  if ("rotation" in node) frame.rotation = node.rotation;
+  if ("clipsContent" in node) frame.clipsContent = node.clipsContent;
+
+  // Transfer children if the node has them (e.g., groups)
+  let childCount = 0;
+  if ("children" in node) {
+    const children = [...node.children];
+    childCount = children.length;
+    for (const child of children) {
+      frame.appendChild(child);
+    }
+  }
+
+  // Insert frame at the same position in parent
+  parent.insertChild(originalIndex, frame);
+
+  // Remove the original node
+  node.remove();
+
+  return {
+    id: frame.id,
+    name: frame.name,
+    originalType: originalType,
+    childCount: childCount
+  };
+}
+
 // Set gradient fill on a node
 async function setGradient(params) {
   const { nodeId, type, stops, gradientTransform } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("fills" in node)) {
+    throw new Error(`Node type ${node.type} does not support fills`);
+  }
+
+  if (!stops || !Array.isArray(stops) || stops.length < 2) {
+    throw new Error("Gradient requires at least 2 color stops");
+  }
+
+  const gradientStops = stops.map(stop => ({
+    position: stop.position,
+    color: {
+      r: stop.color.r,
+      g: stop.color.g,
+      b: stop.color.b,
+      a: stop.color.a !== undefined ? stop.color.a : 1,
+    },
+  }));
+
+  const gradientFill = {
+    type: type,
+    gradientStops: gradientStops,
+    gradientTransform: gradientTransform || [[1, 0, 0], [0, 1, 0]],
+  };
+
+  node.fills = [gradientFill];
+
+  return {
+    id: node.id,
+    name: node.name,
+    fills: node.fills
+  };
+}
+
+// Boolean operation (union, subtract, intersect, exclude)
+async function booleanOperation(params) {
+  const { nodeIds, operation, name } = params || {};
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length < 2) {
+    throw new Error("At least 2 node IDs are required for boolean operations");
+  }
+
+  if (!operation) {
+    throw new Error("Missing operation parameter");
+  }
+
+  // Resolve all nodes
+  const nodes = [];
+  for (const id of nodeIds) {
+    const node = await figma.getNodeByIdAsync(id);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${id}`);
+    }
+    nodes.push(node);
+  }
+
+  // Validate all nodes share the same parent
+  const parents = new Set(nodes.map(n => n.parent ? n.parent.id : null));
+  if (parents.size > 1) {
+    throw new Error(
+      `All nodes must share the same parent. Found ${parents.size} different parents. ` +
+      `Move nodes into the same frame before performing boolean operations.`
+    );
+  }
+
+  const parent = nodes[0].parent;
+  if (!parent) {
+    throw new Error("Nodes have no parent container");
+  }
+
+  let result;
+  switch (operation) {
+    case "UNION":
+      result = figma.union(nodes, parent);
+      break;
+    case "SUBTRACT":
+      result = figma.subtract(nodes, parent);
+      break;
+    case "INTERSECT":
+      result = figma.intersect(nodes, parent);
+      break;
+    case "EXCLUDE":
+      result = figma.exclude(nodes, parent);
+      break;
+    default:
+      throw new Error(`Invalid operation: ${operation}. Use UNION, SUBTRACT, INTERSECT, or EXCLUDE.`);
+  }
+
+  if (name) {
+    result.name = name;
+  }
+
+  return {
+    id: result.id,
+    name: result.name,
+    type: result.type
+  };
+}
+
 // SVG sanitization - strip scripts, event handlers, external resources
 function sanitizeSvg(svgString) {
   let clean = svgString;
@@ -4080,15 +4405,282 @@ async function setSvg(params) {
 // Export a node as SVG string
 async function getSvg(params) {
   const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("exportAsync" in node)) {
+    throw new Error(`Node type ${node.type} does not support export`);
+  }
+
+  const svgString = await node.exportAsync({ format: "SVG_STRING" });
+
+  return {
+    svgString: svgString,
+    name: node.name,
+    id: node.id
+  };
+}
+
 // Set image fill on a node from base64-encoded image data
 async function setImage(params) {
   const { nodeId, imageData, scaleMode } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!imageData) {
+    throw new Error("Missing imageData parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (!("fills" in node)) {
+    throw new Error(`Node type ${node.type} does not support fills`);
+  }
+
+  // Validate base64 charset
+  if (!/^[A-Za-z0-9+/=]+$/.test(imageData)) {
+    throw new Error("Invalid base64 encoding. Ensure the string contains only valid base64 characters (no data URI prefix).");
+  }
+
+  // Decode base64 to Uint8Array
+  const binaryString = atob(imageData);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  // Check decoded size limit (5MB)
+  if (bytes.length > 5 * 1024 * 1024) {
+    throw new Error("Image exceeds 5MB limit. Use a smaller image or compress it first.");
+  }
+
+  // Create image in Figma and set as fill
+  const image = figma.createImage(bytes);
+  node.fills = [{
+    type: "IMAGE",
+    imageHash: image.hash,
+    scaleMode: scaleMode || "FILL",
+    visible: true,
+    opacity: 1
+  }];
+
+  return {
+    id: node.id,
+    name: node.name,
+    imageHash: image.hash,
+    scaleMode: scaleMode || "FILL"
+  };
+}
+
 // Set layout grids on a frame node
 async function setGrid(params) {
   const { nodeId, grids } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!grids || !Array.isArray(grids)) {
+    throw new Error("Missing or invalid grids parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (!("layoutGrids" in node)) {
+    throw new Error(`Node type ${node.type} does not support layout grids. Use a frame node.`);
+  }
+
+  const layoutGrids = grids.map(grid => {
+    const layoutGrid = {
+      pattern: grid.pattern,
+      visible: grid.visible !== undefined ? grid.visible : true
+    };
+
+    if (grid.sectionSize !== undefined) layoutGrid.sectionSize = grid.sectionSize;
+    if (grid.count !== undefined) layoutGrid.count = grid.count;
+    if (grid.gutterSize !== undefined) layoutGrid.gutterSize = grid.gutterSize;
+    if (grid.offset !== undefined) layoutGrid.offset = grid.offset;
+    if (grid.alignment !== undefined) layoutGrid.alignment = grid.alignment;
+    if (grid.color) {
+      layoutGrid.color = {
+        r: grid.color.r,
+        g: grid.color.g,
+        b: grid.color.b,
+        a: grid.color.a !== undefined ? grid.color.a : 0.1
+      };
+    }
+
+    return layoutGrid;
+  });
+
+  node.layoutGrids = layoutGrids;
+
+  return {
+    id: node.id,
+    name: node.name,
+    gridCount: layoutGrids.length
+  };
+}
+
+// Get layout grids from a frame node
+async function getGrid(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (!("layoutGrids" in node)) {
+    throw new Error(`Node type ${node.type} does not support layout grids. Use a frame node.`);
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    grids: node.layoutGrids.map(grid => ({
+      pattern: grid.pattern,
+      visible: grid.visible,
+      sectionSize: grid.sectionSize,
+      count: grid.count,
+      gutterSize: grid.gutterSize,
+      offset: grid.offset,
+      alignment: grid.alignment,
+      color: grid.color
+    }))
+  };
+}
+
+// Set guides on a page
+async function setGuide(params) {
+  const { pageId, guides } = params || {};
+
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+  if (!guides || !Array.isArray(guides)) {
+    throw new Error("Missing or invalid guides parameter");
+  }
+
+  const page = figma.root.children.find(p => p.id === pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  page.guides = guides.map(guide => ({
+    axis: guide.axis,
+    offset: guide.offset
+  }));
+
+  return {
+    id: page.id,
+    name: page.name,
+    guideCount: guides.length
+  };
+}
+
+// Get guides from a page
+async function getGuide(params) {
+  const { pageId } = params || {};
+
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+
+  const page = figma.root.children.find(p => p.id === pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  return {
+    id: page.id,
+    name: page.name,
+    guides: (page.guides || []).map(guide => ({
+      axis: guide.axis,
+      offset: guide.offset
+    }))
+  };
+}
+
 // Set annotation on a node (proposed API)
 async function setAnnotation(params) {
   const { nodeId, label } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!label) {
+    throw new Error("Missing label parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  // Feature detection for proposed API
+  if (!("annotations" in node)) {
+    throw new Error(
+      "Annotations API is not available in this Figma version. " +
+      "Please update Figma Desktop to the latest version. " +
+      "This feature requires the proposed API (enableProposedApi: true in manifest)."
+    );
+  }
+
+  const annotations = node.annotations || [];
+  annotations.push({ label: label });
+  node.annotations = annotations;
+
+  return {
+    id: node.id,
+    name: node.name,
+    annotationCount: annotations.length
+  };
+}
+
+// Get annotations from a node (proposed API)
+async function getAnnotation(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  // Feature detection for proposed API
+  if (!("annotations" in node)) {
+    throw new Error(
+      "Annotations API is not available in this Figma version. " +
+      "Please update Figma Desktop to the latest version. " +
+      "This feature requires the proposed API (enableProposedApi: true in manifest)."
+    );
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    annotations: node.annotations || []
+  };
+}
+
 // Get all variable collections and their variables
 async function getVariables() {
   // Check if Variables API is available
@@ -4229,15 +4821,6 @@ async function applyVariableToNode(params) {
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
   }
-
-  if (angle === undefined) {
-    throw new Error("Missing angle parameter");
-  if (!imageData) {
-    throw new Error("Missing imageData parameter");
-  if (!grids || !Array.isArray(grids)) {
-    throw new Error("Missing or invalid grids parameter");
-  if (!label) {
-    throw new Error("Missing label parameter");
   if (!variableId) {
     throw new Error("Missing variableId parameter");
   }
@@ -4250,169 +4833,6 @@ async function applyVariableToNode(params) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
 
-  if (!("rotation" in node)) {
-    throw new Error(`Node type ${node.type} does not support rotation`);
-  }
-
-  if (relative) {
-    node.rotation = node.rotation + angle;
-  } else {
-    node.rotation = angle;
-  if (visible !== undefined) {
-    node.visible = visible;
-  }
-
-  if (locked !== undefined) {
-    node.locked = locked;
-  }
-
-  if (opacity !== undefined) {
-    if (!("opacity" in node)) {
-      throw new Error(`Node type ${node.type} does not support opacity`);
-    }
-    node.opacity = opacity;
-  }
-  if (!("fills" in node)) {
-    throw new Error(`Node type ${node.type} does not support fills`);
-  }
-
-  if (!stops || !Array.isArray(stops) || stops.length < 2) {
-    throw new Error("Gradient requires at least 2 color stops");
-  }
-
-  const gradientStops = stops.map(stop => ({
-    position: stop.position,
-    color: {
-      r: stop.color.r,
-      g: stop.color.g,
-      b: stop.color.b,
-      a: stop.color.a !== undefined ? stop.color.a : 1,
-    },
-  }));
-
-  const gradientFill = {
-    type: type,
-    gradientStops: gradientStops,
-    gradientTransform: gradientTransform || [[1, 0, 0], [0, 1, 0]],
-  };
-
-  node.fills = [gradientFill];
-  // Validate base64 charset
-  if (!/^[A-Za-z0-9+/=]+$/.test(imageData)) {
-    throw new Error("Invalid base64 encoding. Ensure the string contains only valid base64 characters (no data URI prefix).");
-  }
-
-  // Decode base64 to Uint8Array
-  const binaryString = atob(imageData);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
-  // Check decoded size limit (5MB)
-  if (bytes.length > 5 * 1024 * 1024) {
-    throw new Error("Image exceeds 5MB limit. Use a smaller image or compress it first.");
-  }
-
-  // Create image in Figma and set as fill
-  const image = figma.createImage(bytes);
-  node.fills = [{
-    type: "IMAGE",
-    imageHash: image.hash,
-    scaleMode: scaleMode || "FILL",
-    visible: true,
-    opacity: 1
-  }];
-
-  return {
-    id: node.id,
-    name: node.name,
-    rotation: node.rotation
-    visible: node.visible,
-    locked: node.locked,
-    opacity: "opacity" in node ? node.opacity : undefined
-  const parent = node.parent;
-  if (!parent || !("children" in parent)) {
-    throw new Error("Node has no parent container or parent does not support children");
-  }
-
-  const siblings = parent.children;
-  const currentIndex = siblings.indexOf(node);
-
-  let targetIndex;
-
-  if (index !== undefined) {
-    targetIndex = Math.max(0, Math.min(index, siblings.length - 1));
-  } else if (position) {
-    switch (position) {
-      case "front":
-        targetIndex = siblings.length - 1;
-        break;
-      case "back":
-        targetIndex = 0;
-        break;
-      case "forward":
-        targetIndex = Math.min(currentIndex + 1, siblings.length - 1);
-        break;
-      case "backward":
-        targetIndex = Math.max(currentIndex - 1, 0);
-        break;
-      default:
-        throw new Error(`Invalid position: ${position}. Use front, back, forward, or backward.`);
-    }
-  } else {
-    throw new Error("Either position or index must be provided");
-  }
-
-  parent.insertChild(targetIndex, node);
-
-  return {
-    id: node.id,
-    name: node.name,
-    newIndex: targetIndex,
-    parentChildCount: siblings.length
-// Duplicate a page
-async function duplicatePage(params) {
-  const { pageId, name } = params || {};
-  if (!("layoutGrids" in node)) {
-    throw new Error(`Node type ${node.type} does not support layout grids. Use a frame node.`);
-  }
-
-  const layoutGrids = grids.map(grid => {
-    const layoutGrid = {
-      pattern: grid.pattern,
-      visible: grid.visible !== undefined ? grid.visible : true
-    };
-
-    if (grid.sectionSize !== undefined) layoutGrid.sectionSize = grid.sectionSize;
-    if (grid.count !== undefined) layoutGrid.count = grid.count;
-    if (grid.gutterSize !== undefined) layoutGrid.gutterSize = grid.gutterSize;
-    if (grid.offset !== undefined) layoutGrid.offset = grid.offset;
-    if (grid.alignment !== undefined) layoutGrid.alignment = grid.alignment;
-    if (grid.color) {
-      layoutGrid.color = {
-        r: grid.color.r,
-        g: grid.color.g,
-        b: grid.color.b,
-        a: grid.color.a !== undefined ? grid.color.a : 0.1
-      };
-    }
-
-    return layoutGrid;
-  });
-
-  node.layoutGrids = layoutGrids;
-
-  return {
-    id: node.id,
-    name: node.name,
-    gridCount: layoutGrids.length
-  };
-}
-
-// Get layout grids from a frame node
-async function getGrid(params) {
-  const { nodeId } = params || {};
   const variable = await figma.variables.getVariableByIdAsync(variableId);
   if (!variable) {
     throw new Error(`Variable not found with ID: ${variableId}`);
@@ -4447,250 +4867,6 @@ async function switchVariableMode(params) {
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
   }
-
-  const node = await figma.getNodeByIdAsync(nodeId);
-  if (!node) {
-    throw new Error(`Node not found with ID: ${nodeId}`);
-  }
-  if (!("layoutGrids" in node)) {
-    throw new Error(`Node type ${node.type} does not support layout grids. Use a frame node.`);
-  }
-
-  return {
-    id: node.id,
-    name: node.name,
-    grids: node.layoutGrids.map(grid => ({
-      pattern: grid.pattern,
-      visible: grid.visible,
-      sectionSize: grid.sectionSize,
-      count: grid.count,
-      gutterSize: grid.gutterSize,
-      offset: grid.offset,
-      alignment: grid.alignment,
-      color: grid.color
-    }))
-  };
-}
-
-// Set guides on a page
-async function setGuide(params) {
-  const { pageId, guides } = params || {};
-
-  if (!pageId) {
-    throw new Error("Missing pageId parameter");
-  }
-  if (!guides || !Array.isArray(guides)) {
-    throw new Error("Missing or invalid guides parameter");
-  }
-
-  const page = figma.root.children.find(p => p.id === pageId);
-  if (!page) {
-    throw new Error(`Page not found with ID: ${pageId}`);
-  }
-
-  page.guides = guides.map(guide => ({
-    axis: guide.axis,
-    offset: guide.offset
-  }));
-
-  return {
-    id: page.id,
-    name: page.name,
-    guideCount: guides.length
-  };
-}
-
-// Get guides from a page
-async function getGuide(params) {
-  const { pageId } = params || {};
-
-  if (!pageId) {
-    throw new Error("Missing pageId parameter");
-  }
-
-  const page = figma.root.children.find(p => p.id === pageId);
-  if (!page) {
-    throw new Error(`Page not found with ID: ${pageId}`);
-  }
-
-  const originalName = page.name;
-  const clonedPage = page.clone();
-
-  if (name) {
-    clonedPage.name = name;
-  } else {
-    clonedPage.name = `${originalName} (Copy)`;
-  }
-
-  return {
-    id: clonedPage.id,
-    name: clonedPage.name,
-    originalName: originalName,
-    childCount: clonedPage.children.length
-  if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
-    throw new Error(`Node is already a ${node.type}. No conversion needed.`);
-  }
-
-  if (node.type === "PAGE" || node.type === "DOCUMENT") {
-    throw new Error(`Cannot convert ${node.type} to a frame`);
-  }
-
-  const parent = node.parent;
-  if (!parent || !("children" in parent)) {
-    throw new Error("Node has no parent container");
-  }
-
-  const originalType = node.type;
-  const originalName = node.name;
-  const siblings = parent.children;
-  const originalIndex = siblings.indexOf(node);
-
-  // Create new frame
-  const frame = figma.createFrame();
-  frame.name = originalName;
-  frame.x = node.x;
-  frame.y = node.y;
-  frame.resize(node.width, node.height);
-
-  // Copy visual properties if available
-  if ("fills" in node) frame.fills = JSON.parse(JSON.stringify(node.fills));
-  if ("strokes" in node) frame.strokes = JSON.parse(JSON.stringify(node.strokes));
-  if ("strokeWeight" in node) frame.strokeWeight = node.strokeWeight;
-  if ("effects" in node) frame.effects = JSON.parse(JSON.stringify(node.effects));
-  if ("cornerRadius" in node) frame.cornerRadius = node.cornerRadius;
-  if ("opacity" in node) frame.opacity = node.opacity;
-  if ("rotation" in node) frame.rotation = node.rotation;
-  if ("clipsContent" in node) frame.clipsContent = node.clipsContent;
-
-  // Transfer children if the node has them (e.g., groups)
-  let childCount = 0;
-  if ("children" in node) {
-    const children = [...node.children];
-    childCount = children.length;
-    for (const child of children) {
-      frame.appendChild(child);
-    }
-  }
-
-  // Insert frame at the same position in parent
-  parent.insertChild(originalIndex, frame);
-
-  // Remove the original node
-  node.remove();
-
-  return {
-    id: frame.id,
-    name: frame.name,
-    originalType: originalType,
-    childCount: childCount
-    fills: node.fills
-// Boolean operation (union, subtract, intersect, exclude)
-async function booleanOperation(params) {
-  const { nodeIds, operation, name } = params || {};
-
-  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length < 2) {
-    throw new Error("At least 2 node IDs are required for boolean operations");
-  }
-
-  if (!operation) {
-    throw new Error("Missing operation parameter");
-  }
-
-  // Resolve all nodes
-  const nodes = [];
-  for (const id of nodeIds) {
-    const node = await figma.getNodeByIdAsync(id);
-    if (!node) {
-      throw new Error(`Node not found with ID: ${id}`);
-    }
-    nodes.push(node);
-  }
-
-  // Validate all nodes share the same parent
-  const parents = new Set(nodes.map(n => n.parent ? n.parent.id : null));
-  if (parents.size > 1) {
-    throw new Error(
-      `All nodes must share the same parent. Found ${parents.size} different parents. ` +
-      `Move nodes into the same frame before performing boolean operations.`
-    );
-  }
-
-  const parent = nodes[0].parent;
-  if (!parent) {
-    throw new Error("Nodes have no parent container");
-  }
-
-  let result;
-  switch (operation) {
-    case "UNION":
-      result = figma.union(nodes, parent);
-      break;
-    case "SUBTRACT":
-      result = figma.subtract(nodes, parent);
-      break;
-    case "INTERSECT":
-      result = figma.intersect(nodes, parent);
-      break;
-    case "EXCLUDE":
-      result = figma.exclude(nodes, parent);
-      break;
-    default:
-      throw new Error(`Invalid operation: ${operation}. Use UNION, SUBTRACT, INTERSECT, or EXCLUDE.`);
-  }
-
-  if (name) {
-    result.name = name;
-  }
-
-  return {
-    id: result.id,
-    name: result.name,
-    type: result.type
-  if (!("exportAsync" in node)) {
-    throw new Error(`Node type ${node.type} does not support export`);
-  }
-
-  const svgString = await node.exportAsync({ format: "SVG_STRING" });
-
-  return {
-    svgString: svgString,
-    name: node.name,
-    id: node.id
-    imageHash: image.hash,
-    scaleMode: scaleMode || "FILL"
-  return {
-    id: page.id,
-    name: page.name,
-    guides: (page.guides || []).map(guide => ({
-      axis: guide.axis,
-      offset: guide.offset
-    }))
-  // Feature detection for proposed API
-  if (!("annotations" in node)) {
-    throw new Error(
-      "Annotations API is not available in this Figma version. " +
-      "Please update Figma Desktop to the latest version. " +
-      "This feature requires the proposed API (enableProposedApi: true in manifest)."
-    );
-  }
-
-  const annotations = node.annotations || [];
-  annotations.push({ label: label });
-  node.annotations = annotations;
-
-  return {
-    id: node.id,
-    name: node.name,
-    annotationCount: annotations.length
-  };
-}
-
-// Get annotations from a node (proposed API)
-async function getAnnotation(params) {
-  const { nodeId } = params || {};
-
-  if (!nodeId) {
-    throw new Error("Missing nodeId parameter");
   if (!collectionId) {
     throw new Error("Missing collectionId parameter");
   }
@@ -4703,19 +4879,6 @@ async function getAnnotation(params) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
 
-  // Feature detection for proposed API
-  if (!("annotations" in node)) {
-    throw new Error(
-      "Annotations API is not available in this Figma version. " +
-      "Please update Figma Desktop to the latest version. " +
-      "This feature requires the proposed API (enableProposedApi: true in manifest)."
-    );
-  }
-
-  return {
-    id: node.id,
-    name: node.name,
-    annotations: node.annotations || []
   if (!("setExplicitVariableModeForCollection" in node)) {
     throw new Error(`Node type ${node.type} does not support variable mode switching`);
   }
