@@ -454,6 +454,57 @@ export function registerModificationTools(server: McpServer): void {
     }
   );
 
+  // Set Gradient Fill Tool
+  server.tool(
+    "set_gradient",
+    "Set a gradient fill on a node in Figma. Supports linear, radial, angular, and diamond gradients. Replaces all existing fills (same behavior as set_fill_color).",
+    {
+      nodeId: z.string().describe("The ID of the node to modify"),
+      type: z.enum(["GRADIENT_LINEAR", "GRADIENT_RADIAL", "GRADIENT_ANGULAR", "GRADIENT_DIAMOND"]).describe("Gradient type"),
+      stops: z.array(z.object({
+        position: z.number().min(0).max(1).describe("Stop position (0-1, where 0 is start and 1 is end)"),
+        color: z.object({
+          r: z.number().min(0).max(1).describe("Red (0-1)"),
+          g: z.number().min(0).max(1).describe("Green (0-1)"),
+          b: z.number().min(0).max(1).describe("Blue (0-1)"),
+          a: z.number().min(0).max(1).optional().describe("Alpha (0-1, defaults to 1)"),
+        }),
+      })).min(2).describe("Array of gradient color stops (minimum 2)"),
+      gradientTransform: z.array(z.array(z.number())).optional().describe("2x3 affine transform matrix [[a,b,tx],[c,d,ty]]. Defaults to left-to-right linear: [[1,0,0],[0,1,0]]"),
+    },
+    async ({ nodeId, type, stops, gradientTransform }) => {
+      try {
+        const result = await sendCommandToFigma("set_gradient", {
+          nodeId,
+          type,
+          stops: stops.map(s => ({
+            position: s.position,
+            color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a ?? 1 },
+          })),
+          gradientTransform: gradientTransform || [[1, 0, 0], [0, 1, 0]],
+        });
+        const typedResult = result as { name: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Applied ${type} gradient with ${stops.length} stops to node "${typedResult.name}"`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting gradient: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Rename Node Tool
   server.tool(
     "rename_node",

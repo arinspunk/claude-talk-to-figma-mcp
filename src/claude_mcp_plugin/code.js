@@ -215,6 +215,8 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "set_gradient":
+      return await setGradient(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3961,5 +3963,51 @@ async function setCurrentPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+
+// Set gradient fill on a node
+async function setGradient(params) {
+  const { nodeId, type, stops, gradientTransform } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("fills" in node)) {
+    throw new Error(`Node type ${node.type} does not support fills`);
+  }
+
+  if (!stops || !Array.isArray(stops) || stops.length < 2) {
+    throw new Error("Gradient requires at least 2 color stops");
+  }
+
+  const gradientStops = stops.map(stop => ({
+    position: stop.position,
+    color: {
+      r: stop.color.r,
+      g: stop.color.g,
+      b: stop.color.b,
+      a: stop.color.a !== undefined ? stop.color.a : 1,
+    },
+  }));
+
+  const gradientFill = {
+    type: type,
+    gradientStops: gradientStops,
+    gradientTransform: gradientTransform || [[1, 0, 0], [0, 1, 0]],
+  };
+
+  node.fills = [gradientFill];
+
+  return {
+    id: node.id,
+    name: node.name,
+    fills: node.fills
   };
 }
