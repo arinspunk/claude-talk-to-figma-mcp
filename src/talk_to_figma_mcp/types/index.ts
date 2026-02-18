@@ -102,3 +102,4 @@ export type FigmaCommand =
   | "reorder_node";
   | "duplicate_page";
   | "convert_to_frame";
+  | "set_gradient";

@@ -522,6 +522,36 @@ export function registerModificationTools(server: McpServer): void {
       try {
         const result = await sendCommandToFigma("convert_to_frame", { nodeId });
         const typedResult = result as { id: string; name: string; originalType: string; childCount: number };
+  // Set Gradient Fill Tool
+  server.tool(
+    "set_gradient",
+    "Set a gradient fill on a node in Figma. Supports linear, radial, angular, and diamond gradients. Replaces all existing fills (same behavior as set_fill_color).",
+    {
+      nodeId: z.string().describe("The ID of the node to modify"),
+      type: z.enum(["GRADIENT_LINEAR", "GRADIENT_RADIAL", "GRADIENT_ANGULAR", "GRADIENT_DIAMOND"]).describe("Gradient type"),
+      stops: z.array(z.object({
+        position: z.number().min(0).max(1).describe("Stop position (0-1, where 0 is start and 1 is end)"),
+        color: z.object({
+          r: z.number().min(0).max(1).describe("Red (0-1)"),
+          g: z.number().min(0).max(1).describe("Green (0-1)"),
+          b: z.number().min(0).max(1).describe("Blue (0-1)"),
+          a: z.number().min(0).max(1).optional().describe("Alpha (0-1, defaults to 1)"),
+        }),
+      })).min(2).describe("Array of gradient color stops (minimum 2)"),
+      gradientTransform: z.array(z.array(z.number())).optional().describe("2x3 affine transform matrix [[a,b,tx],[c,d,ty]]. Defaults to left-to-right linear: [[1,0,0],[0,1,0]]"),
+    },
+    async ({ nodeId, type, stops, gradientTransform }) => {
+      try {
+        const result = await sendCommandToFigma("set_gradient", {
+          nodeId,
+          type,
+          stops: stops.map(s => ({
+            position: s.position,
+            color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a ?? 1 },
+          })),
+          gradientTransform: gradientTransform || [[1, 0, 0], [0, 1, 0]],
+        });
+        const typedResult = result as { name: string };
         return {
           content: [
             {
@@ -530,6 +560,7 @@ export function registerModificationTools(server: McpServer): void {
               text: `Updated node "${typedResult.name}": ${changes.join(", ")}`,
               text: `Reordered node "${typedResult.name}" to index ${typedResult.newIndex} of ${typedResult.parentChildCount} siblings`,
               text: `Converted ${typedResult.originalType} "${typedResult.name}" to FRAME with ID: ${typedResult.id} (${typedResult.childCount} children preserved)`,
+              text: `Applied ${type} gradient with ${stops.length} stops to node "${typedResult.name}"`,
             },
           ],
         };
@@ -542,6 +573,7 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error setting node properties: ${error instanceof Error ? error.message : String(error)}`,
               text: `Error reordering node: ${error instanceof Error ? error.message : String(error)}`,
               text: `Error converting to frame: ${error instanceof Error ? error.message : String(error)}`,
+              text: `Error setting gradient: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
         };

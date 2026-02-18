@@ -225,6 +225,8 @@ async function handleCommand(command, params) {
       return await duplicatePage(params);
     case "convert_to_frame":
       return await convertToFrame(params);
+    case "set_gradient":
+      return await setGradient(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3986,6 +3988,9 @@ async function reorderNode(params) {
 // Convert a group or shape to a frame
 async function convertToFrame(params) {
   const { nodeId } = params || {};
+// Set gradient fill on a node
+async function setGradient(params) {
+  const { nodeId, type, stops, gradientTransform } = params || {};
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -4022,6 +4027,31 @@ async function convertToFrame(params) {
     }
     node.opacity = opacity;
   }
+  if (!("fills" in node)) {
+    throw new Error(`Node type ${node.type} does not support fills`);
+  }
+
+  if (!stops || !Array.isArray(stops) || stops.length < 2) {
+    throw new Error("Gradient requires at least 2 color stops");
+  }
+
+  const gradientStops = stops.map(stop => ({
+    position: stop.position,
+    color: {
+      r: stop.color.r,
+      g: stop.color.g,
+      b: stop.color.b,
+      a: stop.color.a !== undefined ? stop.color.a : 1,
+    },
+  }));
+
+  const gradientFill = {
+    type: type,
+    gradientStops: gradientStops,
+    gradientTransform: gradientTransform || [[1, 0, 0], [0, 1, 0]],
+  };
+
+  node.fills = [gradientFill];
 
   return {
     id: node.id,
@@ -4153,5 +4183,6 @@ async function duplicatePage(params) {
     name: frame.name,
     originalType: originalType,
     childCount: childCount
+    fills: node.fills
   };
 }
