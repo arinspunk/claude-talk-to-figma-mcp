@@ -101,3 +101,4 @@ export type FigmaCommand =
   | "set_node_properties";
   | "reorder_node";
   | "duplicate_page";
+  | "convert_to_frame";

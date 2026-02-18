@@ -511,6 +511,17 @@ export function registerModificationTools(server: McpServer): void {
           index,
         });
         const typedResult = result as { name: string; newIndex: number; parentChildCount: number };
+  // Convert to Frame Tool
+  server.tool(
+    "convert_to_frame",
+    "Convert a group or shape node into a frame in Figma. Preserves position, size, visual properties, and children. Useful for converting groups into auto-layout-capable frames.",
+    {
+      nodeId: z.string().describe("The ID of the node to convert to a frame"),
+    },
+    async ({ nodeId }) => {
+      try {
+        const result = await sendCommandToFigma("convert_to_frame", { nodeId });
+        const typedResult = result as { id: string; name: string; originalType: string; childCount: number };
         return {
           content: [
             {
@@ -518,6 +529,7 @@ export function registerModificationTools(server: McpServer): void {
               text: `Rotated node "${typedResult.name}" to ${typedResult.rotation}°`,
               text: `Updated node "${typedResult.name}": ${changes.join(", ")}`,
               text: `Reordered node "${typedResult.name}" to index ${typedResult.newIndex} of ${typedResult.parentChildCount} siblings`,
+              text: `Converted ${typedResult.originalType} "${typedResult.name}" to FRAME with ID: ${typedResult.id} (${typedResult.childCount} children preserved)`,
             },
           ],
         };
@@ -529,6 +541,7 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error rotating node: ${error instanceof Error ? error.message : String(error)}`,
               text: `Error setting node properties: ${error instanceof Error ? error.message : String(error)}`,
               text: `Error reordering node: ${error instanceof Error ? error.message : String(error)}`,
+              text: `Error converting to frame: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
         };

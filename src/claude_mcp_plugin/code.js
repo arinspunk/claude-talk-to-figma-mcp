@@ -223,6 +223,8 @@ async function handleCommand(command, params) {
       return await reorderNode(params);
     case "duplicate_page":
       return await duplicatePage(params);
+    case "convert_to_frame":
+      return await convertToFrame(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3981,6 +3983,9 @@ async function setNodeProperties(params) {
 // Reorder node within its parent (z-order)
 async function reorderNode(params) {
   const { nodeId, position, index } = params || {};
+// Convert a group or shape to a frame
+async function convertToFrame(params) {
+  const { nodeId } = params || {};
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -4092,5 +4097,61 @@ async function duplicatePage(params) {
     name: clonedPage.name,
     originalName: originalName,
     childCount: clonedPage.children.length
+  if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+    throw new Error(`Node is already a ${node.type}. No conversion needed.`);
+  }
+
+  if (node.type === "PAGE" || node.type === "DOCUMENT") {
+    throw new Error(`Cannot convert ${node.type} to a frame`);
+  }
+
+  const parent = node.parent;
+  if (!parent || !("children" in parent)) {
+    throw new Error("Node has no parent container");
+  }
+
+  const originalType = node.type;
+  const originalName = node.name;
+  const siblings = parent.children;
+  const originalIndex = siblings.indexOf(node);
+
+  // Create new frame
+  const frame = figma.createFrame();
+  frame.name = originalName;
+  frame.x = node.x;
+  frame.y = node.y;
+  frame.resize(node.width, node.height);
+
+  // Copy visual properties if available
+  if ("fills" in node) frame.fills = JSON.parse(JSON.stringify(node.fills));
+  if ("strokes" in node) frame.strokes = JSON.parse(JSON.stringify(node.strokes));
+  if ("strokeWeight" in node) frame.strokeWeight = node.strokeWeight;
+  if ("effects" in node) frame.effects = JSON.parse(JSON.stringify(node.effects));
+  if ("cornerRadius" in node) frame.cornerRadius = node.cornerRadius;
+  if ("opacity" in node) frame.opacity = node.opacity;
+  if ("rotation" in node) frame.rotation = node.rotation;
+  if ("clipsContent" in node) frame.clipsContent = node.clipsContent;
+
+  // Transfer children if the node has them (e.g., groups)
+  let childCount = 0;
+  if ("children" in node) {
+    const children = [...node.children];
+    childCount = children.length;
+    for (const child of children) {
+      frame.appendChild(child);
+    }
+  }
+
+  // Insert frame at the same position in parent
+  parent.insertChild(originalIndex, frame);
+
+  // Remove the original node
+  node.remove();
+
+  return {
+    id: frame.id,
+    name: frame.name,
+    originalType: originalType,
+    childCount: childCount
   };
 }
