@@ -217,6 +217,8 @@ async function handleCommand(command, params) {
       return await renameNode(params);
     case "rotate_node":
       return await rotateNode(params);
+    case "set_node_properties":
+      return await setNodeProperties(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3969,6 +3971,9 @@ async function setCurrentPage(params) {
 // Rotate a node
 async function rotateNode(params) {
   const { nodeId, angle, relative } = params || {};
+// Set node properties (visibility, lock, opacity)
+async function setNodeProperties(params) {
+  const { nodeId, visible, locked, opacity } = params || {};
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -3991,11 +3996,27 @@ async function rotateNode(params) {
     node.rotation = node.rotation + angle;
   } else {
     node.rotation = angle;
+  if (visible !== undefined) {
+    node.visible = visible;
+  }
+
+  if (locked !== undefined) {
+    node.locked = locked;
+  }
+
+  if (opacity !== undefined) {
+    if (!("opacity" in node)) {
+      throw new Error(`Node type ${node.type} does not support opacity`);
+    }
+    node.opacity = opacity;
   }
 
   return {
     id: node.id,
     name: node.name,
     rotation: node.rotation
+    visible: node.visible,
+    locked: node.locked,
+    opacity: "opacity" in node ? node.opacity : undefined
   };
 }

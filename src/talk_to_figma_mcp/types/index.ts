@@ -98,3 +98,4 @@ export type FigmaCommand =
   | "rename_node"
   | "set_selection_colors"
   | "rotate_node";
+  | "set_node_properties";

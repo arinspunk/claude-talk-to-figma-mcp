@@ -471,11 +471,35 @@ export function registerModificationTools(server: McpServer): void {
           relative: relative || false,
         });
         const typedResult = result as { name: string; rotation: number };
+  // Set Node Properties Tool (visibility, lock, opacity)
+  server.tool(
+    "set_node_properties",
+    "Set visibility, lock state, and/or opacity of a node in Figma. Only provided properties are changed; omitted properties remain unchanged.",
+    {
+      nodeId: z.string().describe("The ID of the node to modify"),
+      visible: z.boolean().optional().describe("Set node visibility (true = visible, false = hidden)"),
+      locked: z.boolean().optional().describe("Set node lock state (true = locked, false = unlocked)"),
+      opacity: z.number().min(0).max(1).optional().describe("Set node opacity (0 = fully transparent, 1 = fully opaque)"),
+    },
+    async ({ nodeId, visible, locked, opacity }) => {
+      try {
+        const result = await sendCommandToFigma("set_node_properties", {
+          nodeId,
+          visible,
+          locked,
+          opacity,
+        });
+        const typedResult = result as { name: string; visible: boolean; locked: boolean; opacity: number };
+        const changes: string[] = [];
+        if (visible !== undefined) changes.push(`visible=${typedResult.visible}`);
+        if (locked !== undefined) changes.push(`locked=${typedResult.locked}`);
+        if (opacity !== undefined) changes.push(`opacity=${typedResult.opacity}`);
         return {
           content: [
             {
               type: "text",
               text: `Rotated node "${typedResult.name}" to ${typedResult.rotation}°`,
+              text: `Updated node "${typedResult.name}": ${changes.join(", ")}`,
             },
           ],
         };
@@ -485,6 +509,7 @@ export function registerModificationTools(server: McpServer): void {
             {
               type: "text",
               text: `Error rotating node: ${error instanceof Error ? error.message : String(error)}`,
+              text: `Error setting node properties: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
         };
