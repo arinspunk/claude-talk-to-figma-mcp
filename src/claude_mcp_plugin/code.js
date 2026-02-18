@@ -215,6 +215,8 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "rotate_node":
+      return await rotateNode(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3961,5 +3963,39 @@ async function setCurrentPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+
+// Rotate a node
+async function rotateNode(params) {
+  const { nodeId, angle, relative } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (angle === undefined) {
+    throw new Error("Missing angle parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("rotation" in node)) {
+    throw new Error(`Node type ${node.type} does not support rotation`);
+  }
+
+  if (relative) {
+    node.rotation = node.rotation + angle;
+  } else {
+    node.rotation = angle;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    rotation: node.rotation
   };
 }

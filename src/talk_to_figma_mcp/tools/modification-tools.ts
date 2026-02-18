@@ -454,6 +454,44 @@ export function registerModificationTools(server: McpServer): void {
     }
   );
 
+  // Rotate Node Tool
+  server.tool(
+    "rotate_node",
+    "Rotate a node in Figma by a specified angle in degrees (clockwise). Use relative=true to add to the current rotation instead of setting an absolute value.",
+    {
+      nodeId: z.string().describe("The ID of the node to rotate"),
+      angle: z.number().describe("Rotation angle in degrees (clockwise)"),
+      relative: z.boolean().optional().describe("If true, add angle to current rotation instead of setting absolute value (default: false)"),
+    },
+    async ({ nodeId, angle, relative }) => {
+      try {
+        const result = await sendCommandToFigma("rotate_node", {
+          nodeId,
+          angle,
+          relative: relative || false,
+        });
+        const typedResult = result as { name: string; rotation: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Rotated node "${typedResult.name}" to ${typedResult.rotation}°`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error rotating node: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Rename Node Tool
   server.tool(
     "rename_node",
