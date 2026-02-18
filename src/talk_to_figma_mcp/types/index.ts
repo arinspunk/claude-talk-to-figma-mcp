@@ -104,3 +104,5 @@ export type FigmaCommand =
   | "convert_to_frame";
   | "set_gradient";
   | "boolean_operation";
+  | "set_svg"
+  | "get_svg";
