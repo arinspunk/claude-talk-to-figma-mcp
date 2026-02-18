@@ -107,3 +107,7 @@ export type FigmaCommand =
   | "set_svg"
   | "get_svg";
   | "set_image";
+  | "set_grid"
+  | "get_grid"
+  | "set_guide"
+  | "get_guide";

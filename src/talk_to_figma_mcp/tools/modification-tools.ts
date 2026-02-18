@@ -569,6 +569,34 @@ export function registerModificationTools(server: McpServer): void {
           scaleMode: scaleMode || "FILL",
         });
         const typedResult = result as { name: string; imageHash: string };
+  // Set Layout Grid Tool
+  server.tool(
+    "set_grid",
+    "Apply layout grids to a frame node in Figma. Supports columns, rows, and grid patterns.",
+    {
+      nodeId: z.string().describe("The ID of the frame node to apply grids to"),
+      grids: z.array(
+        z.object({
+          pattern: z.enum(["COLUMNS", "ROWS", "GRID"]).describe("Grid pattern type"),
+          count: z.number().optional().describe("Number of columns/rows (ignored for GRID)"),
+          sectionSize: z.number().optional().describe("Size of each section in pixels"),
+          gutterSize: z.number().optional().describe("Gutter size between sections in pixels"),
+          offset: z.number().optional().describe("Offset from the edge in pixels"),
+          alignment: z.enum(["MIN", "CENTER", "MAX", "STRETCH"]).optional().describe("Grid alignment"),
+          visible: z.boolean().optional().describe("Whether the grid is visible (default: true)"),
+          color: z.object({
+            r: z.number().min(0).max(1).describe("Red (0-1)"),
+            g: z.number().min(0).max(1).describe("Green (0-1)"),
+            b: z.number().min(0).max(1).describe("Blue (0-1)"),
+            a: z.number().min(0).max(1).describe("Alpha (0-1)")
+          }).optional().describe("Grid color")
+        })
+      ).describe("Array of layout grids to apply")
+    },
+    async ({ nodeId, grids }) => {
+      try {
+        const result = await sendCommandToFigma("set_grid", { nodeId, grids });
+        const typedResult = result as { name: string; gridCount: number };
         return {
           content: [
             {
@@ -579,6 +607,7 @@ export function registerModificationTools(server: McpServer): void {
               text: `Converted ${typedResult.originalType} "${typedResult.name}" to FRAME with ID: ${typedResult.id} (${typedResult.childCount} children preserved)`,
               text: `Applied ${type} gradient with ${stops.length} stops to node "${typedResult.name}"`,
               text: `Set image fill on node "${typedResult.name}" with scale mode ${scaleMode || "FILL"} (hash: ${typedResult.imageHash})`,
+              text: `Applied ${typedResult.gridCount} layout grid(s) to frame "${typedResult.name}"`,
             },
           ],
         };
@@ -593,6 +622,109 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error converting to frame: ${error instanceof Error ? error.message : String(error)}`,
               text: `Error setting gradient: ${error instanceof Error ? error.message : String(error)}`,
               text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}`,
+              text: `Error setting layout grids: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Get Layout Grid Tool
+  server.tool(
+    "get_grid",
+    "Read layout grids from a frame node in Figma",
+    {
+      nodeId: z.string().describe("The ID of the frame node to read grids from"),
+    },
+    async ({ nodeId }) => {
+      try {
+        const result = await sendCommandToFigma("get_grid", { nodeId });
+        const typedResult = result as { name: string; grids: any[] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ name: typedResult.name, grids: typedResult.grids }, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting layout grids: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Set Guide Tool
+  server.tool(
+    "set_guide",
+    "Set guides on a page in Figma. Replaces all existing guides on the page.",
+    {
+      pageId: z.string().describe("The ID of the page to add guides to"),
+      guides: z.array(
+        z.object({
+          axis: z.enum(["X", "Y"]).describe("Guide axis: X for vertical, Y for horizontal"),
+          offset: z.number().describe("Offset position of the guide in pixels")
+        })
+      ).describe("Array of guides to set on the page")
+    },
+    async ({ pageId, guides }) => {
+      try {
+        const result = await sendCommandToFigma("set_guide", { pageId, guides });
+        const typedResult = result as { name: string; guideCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Set ${typedResult.guideCount} guide(s) on page "${typedResult.name}"`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting guides: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Get Guide Tool
+  server.tool(
+    "get_guide",
+    "Read guides from a page in Figma",
+    {
+      pageId: z.string().describe("The ID of the page to read guides from"),
+    },
+    async ({ pageId }) => {
+      try {
+        const result = await sendCommandToFigma("get_guide", { pageId });
+        const typedResult = result as { name: string; guides: any[] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ name: typedResult.name, guides: typedResult.guides }, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting guides: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
         };
