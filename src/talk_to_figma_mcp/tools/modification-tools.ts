@@ -454,6 +454,38 @@ export function registerModificationTools(server: McpServer): void {
     }
   );
 
+  // Convert to Frame Tool
+  server.tool(
+    "convert_to_frame",
+    "Convert a group or shape node into a frame in Figma. Preserves position, size, visual properties, and children. Useful for converting groups into auto-layout-capable frames.",
+    {
+      nodeId: z.string().describe("The ID of the node to convert to a frame"),
+    },
+    async ({ nodeId }) => {
+      try {
+        const result = await sendCommandToFigma("convert_to_frame", { nodeId });
+        const typedResult = result as { id: string; name: string; originalType: string; childCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Converted ${typedResult.originalType} "${typedResult.name}" to FRAME with ID: ${typedResult.id} (${typedResult.childCount} children preserved)`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error converting to frame: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Rename Node Tool
   server.tool(
     "rename_node",
