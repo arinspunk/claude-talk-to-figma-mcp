@@ -454,6 +454,44 @@ export function registerModificationTools(server: McpServer): void {
     }
   );
 
+  // Set Image Fill Tool
+  server.tool(
+    "set_image",
+    "Set an image fill on a node from base64-encoded image data. Supports PNG, JPEG, GIF, WebP. Max ~5MB after decode.",
+    {
+      nodeId: z.string().describe("The ID of the node to apply the image fill to"),
+      imageData: z.string().max(7_000_000).describe("Base64-encoded image data (PNG, JPEG, GIF, or WebP). Max ~5MB after decode."),
+      scaleMode: z.enum(["FILL", "FIT", "CROP", "TILE"]).optional().describe("How the image is scaled within the node (default: FILL)"),
+    },
+    async ({ nodeId, imageData, scaleMode }) => {
+      try {
+        const result = await sendCommandToFigma("set_image", {
+          nodeId,
+          imageData,
+          scaleMode: scaleMode || "FILL",
+        });
+        const typedResult = result as { name: string; imageHash: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Set image fill on node "${typedResult.name}" with scale mode ${scaleMode || "FILL"} (hash: ${typedResult.imageHash})`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Rename Node Tool
   server.tool(
     "rename_node",

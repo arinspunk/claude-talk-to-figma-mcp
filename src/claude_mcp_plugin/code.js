@@ -215,6 +215,8 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "set_image":
+      return await setImage(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3961,5 +3963,59 @@ async function setCurrentPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+
+// Set image fill on a node from base64-encoded image data
+async function setImage(params) {
+  const { nodeId, imageData, scaleMode } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!imageData) {
+    throw new Error("Missing imageData parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (!("fills" in node)) {
+    throw new Error(`Node type ${node.type} does not support fills`);
+  }
+
+  // Validate base64 charset
+  if (!/^[A-Za-z0-9+/=]+$/.test(imageData)) {
+    throw new Error("Invalid base64 encoding. Ensure the string contains only valid base64 characters (no data URI prefix).");
+  }
+
+  // Decode base64 to Uint8Array
+  const binaryString = atob(imageData);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  // Check decoded size limit (5MB)
+  if (bytes.length > 5 * 1024 * 1024) {
+    throw new Error("Image exceeds 5MB limit. Use a smaller image or compress it first.");
+  }
+
+  // Create image in Figma and set as fill
+  const image = figma.createImage(bytes);
+  node.fills = [{
+    type: "IMAGE",
+    imageHash: image.hash,
+    scaleMode: scaleMode || "FILL",
+    visible: true,
+    opacity: 1
+  }];
+
+  return {
+    id: node.id,
+    name: node.name,
+    imageHash: image.hash,
+    scaleMode: scaleMode || "FILL"
   };
 }
