@@ -215,6 +215,8 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "reorder_node":
+      return await reorderNode(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3961,5 +3963,61 @@ async function setCurrentPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+
+// Reorder node within its parent (z-order)
+async function reorderNode(params) {
+  const { nodeId, position, index } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  const parent = node.parent;
+  if (!parent || !("children" in parent)) {
+    throw new Error("Node has no parent container or parent does not support children");
+  }
+
+  const siblings = parent.children;
+  const currentIndex = siblings.indexOf(node);
+
+  let targetIndex;
+
+  if (index !== undefined) {
+    targetIndex = Math.max(0, Math.min(index, siblings.length - 1));
+  } else if (position) {
+    switch (position) {
+      case "front":
+        targetIndex = siblings.length - 1;
+        break;
+      case "back":
+        targetIndex = 0;
+        break;
+      case "forward":
+        targetIndex = Math.min(currentIndex + 1, siblings.length - 1);
+        break;
+      case "backward":
+        targetIndex = Math.max(currentIndex - 1, 0);
+        break;
+      default:
+        throw new Error(`Invalid position: ${position}. Use front, back, forward, or backward.`);
+    }
+  } else {
+    throw new Error("Either position or index must be provided");
+  }
+
+  parent.insertChild(targetIndex, node);
+
+  return {
+    id: node.id,
+    name: node.name,
+    newIndex: targetIndex,
+    parentChildCount: siblings.length
   };
 }
