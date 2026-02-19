@@ -3994,8 +3994,17 @@ async function setAnnotation(params) {
   }
 
   // node.annotations is ReadonlyArray — must create a new array (not push)
-  const existing = node.annotations ? [...node.annotations] : [];
-  existing.push({ label: label });
+  // Deep-copy existing annotations and strip labelMarkdown (read-only computed field)
+  const existing = node.annotations
+    ? node.annotations.map(a => {
+        const copy = JSON.parse(JSON.stringify(a));
+        if (copy.label && copy.labelMarkdown) {
+          delete copy.labelMarkdown;
+        }
+        return copy;
+      })
+    : [];
+  existing.push({ label: label, properties: [] });
   node.annotations = existing;
 
   return {
