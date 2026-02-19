@@ -89,6 +89,15 @@ function updateSettings(settings) {
   });
 }
 
+// Helper: safe node lookup using figma.getNodeByIdAsync.
+// The original getNodeByIdAsync works fine — the bug was in ui.html's
+// sendErrorResponse which dropped error messages (no type/channel fields).
+// With that fixed, errors propagate correctly and timeouts are eliminated.
+async function getNodeByIdSafe(nodeId) {
+  if (!nodeId) return null;
+  return await figma.getNodeByIdAsync(nodeId);
+}
+
 // Handle commands from UI
 async function handleCommand(command, params) {
   switch (command) {
@@ -302,7 +311,7 @@ async function getSelection() {
 }
 
 async function getNodeInfo(nodeId) {
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
 
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
@@ -319,7 +328,7 @@ async function getNodesInfo(nodeIds) {
   try {
     // Load all nodes in parallel
     const nodes = await Promise.all(
-      nodeIds.map((id) => figma.getNodeByIdAsync(id))
+      nodeIds.map((id) => getNodeByIdSafe(id))
     );
 
     // Filter out any null values (nodes that weren't found)
@@ -362,7 +371,7 @@ async function createRectangle(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -439,7 +448,7 @@ async function createFrame(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -545,7 +554,7 @@ async function createText(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -585,7 +594,7 @@ async function setFillColor(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -645,7 +654,7 @@ async function setStrokeColor(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -710,7 +719,7 @@ async function setSelectionColors(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -820,7 +829,7 @@ async function moveNode(params) {
     throw new Error("Missing x or y parameters");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -851,7 +860,7 @@ async function resizeNode(params) {
     throw new Error("Missing width or height parameters");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -877,7 +886,7 @@ async function deleteNode(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -1073,7 +1082,7 @@ async function exportNodeAsImage(params) {
   console.log(`[exportNodeAsImage] Starting export for node ${nodeId}, scale: ${scale}, format: ${format}`);
   const startTime = Date.now();
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -1233,7 +1242,7 @@ async function setCornerRadius(params) {
     throw new Error("Missing radius parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -1284,7 +1293,7 @@ async function setTextContent(params) {
     throw new Error("Missing text parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -1555,7 +1564,7 @@ async function cloneNode(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -1593,7 +1602,7 @@ async function scanTextNodes(params) {
   console.log(`Starting to scan text nodes from node ID: ${params.nodeId}`);
   const { nodeId, useChunking = true, chunkSize = 10, commandId = generateCommandId() } = params || {};
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
 
   if (!node) {
     console.error(`Node with ID ${nodeId} not found`);
@@ -2089,7 +2098,7 @@ async function setMultipleTextContents(params) {
         console.log(`Attempting to replace text in node: ${replacement.nodeId}`);
 
         // Get the text node to update (just to check it exists and get original text)
-        const textNode = await figma.getNodeByIdAsync(replacement.nodeId);
+        const textNode = await getNodeByIdSafe(replacement.nodeId);
 
         if (!textNode) {
           console.error(`Text node not found: ${replacement.nodeId}`);
@@ -2266,7 +2275,7 @@ async function setAutoLayout(params) {
     throw new Error("Missing layoutMode parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2336,7 +2345,7 @@ async function setFontName(params) {
     throw new Error("Missing nodeId or font family");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2364,7 +2373,7 @@ async function setFontSize(params) {
     throw new Error("Missing nodeId or fontSize");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2408,7 +2417,7 @@ async function setFontWeight(params) {
     }
   };
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2439,7 +2448,7 @@ async function setLetterSpacing(params) {
     throw new Error("Missing nodeId or letterSpacing");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2467,7 +2476,7 @@ async function setLineHeight(params) {
     throw new Error("Missing nodeId or lineHeight");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2495,7 +2504,7 @@ async function setParagraphSpacing(params) {
     throw new Error("Missing nodeId or paragraphSpacing");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2528,7 +2537,7 @@ async function setTextCase(params) {
     throw new Error("Invalid textCase value. Must be one of: ORIGINAL, UPPER, LOWER, TITLE");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2561,7 +2570,7 @@ async function setTextDecoration(params) {
     throw new Error("Invalid textDecoration value. Must be one of: NONE, UNDERLINE, STRIKETHROUGH");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2604,7 +2613,7 @@ async function setTextAlign(params) {
     throw new Error("Must provide textAlignHorizontal or textAlignVertical");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2650,7 +2659,7 @@ async function getStyledTextSegments(params) {
     throw new Error(`Invalid property. Must be one of: ${validProperties.join(", ")}`);
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2797,7 +2806,7 @@ async function setEffects(params) {
     throw new Error("Missing or invalid effects parameter. Must be an array.");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2877,7 +2886,7 @@ async function setEffectStyleId(params) {
 
     // Get node and validate in a promise
     const nodePromise = (async () => {
-      const node = await figma.getNodeByIdAsync(nodeId);
+      const node = await getNodeByIdSafe(nodeId);
       if (!node) {
         throw new Error(`Node not found with ID: ${nodeId}`);
       }
@@ -2961,7 +2970,7 @@ async function setTextStyleId(params) {
 
     // Get node and validate in a promise
     const nodePromise = (async () => {
-      const node = await figma.getNodeByIdAsync(nodeId);
+      const node = await getNodeByIdSafe(nodeId);
       if (!node) {
         throw new Error(`Node not found with ID: ${nodeId}`);
       }
@@ -3039,7 +3048,7 @@ async function groupNodes(params) {
     // Get all nodes to be grouped
     const nodesToGroup = [];
     for (const nodeId of nodeIds) {
-      const node = await figma.getNodeByIdAsync(nodeId);
+      const node = await getNodeByIdSafe(nodeId);
       if (!node) {
         throw new Error(`Node not found with ID: ${nodeId}`);
       }
@@ -3082,7 +3091,7 @@ async function ungroupNodes(params) {
   }
 
   try {
-    const node = await figma.getNodeByIdAsync(nodeId);
+    const node = await getNodeByIdSafe(nodeId);
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
     }
@@ -3118,7 +3127,7 @@ async function flattenNode(params) {
   }
 
   try {
-    const node = await figma.getNodeByIdAsync(nodeId);
+    const node = await getNodeByIdSafe(nodeId);
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
     }
@@ -3196,12 +3205,12 @@ async function insertChild(params) {
 
   try {
     // Get the parent and child nodes
-    const parent = await figma.getNodeByIdAsync(parentId);
+    const parent = await getNodeByIdSafe(parentId);
     if (!parent) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
 
-    const child = await figma.getNodeByIdAsync(childId);
+    const child = await getNodeByIdSafe(childId);
     if (!child) {
       throw new Error(`Child node not found with ID: ${childId}`);
     }
@@ -3293,7 +3302,7 @@ async function createEllipse(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -3377,7 +3386,7 @@ async function createPolygon(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -3472,7 +3481,7 @@ async function createStar(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -3567,7 +3576,7 @@ async function createVector(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -3666,7 +3675,7 @@ async function createLine(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -3706,7 +3715,7 @@ async function renameNode(params) {
     throw new Error("Missing name parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -3734,7 +3743,7 @@ async function createComponentFromNode(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -3856,7 +3865,7 @@ async function createComponentSet(params) {
 
   const components = [];
   for (const id of componentIds) {
-    const node = await figma.getNodeByIdAsync(id);
+    const node = await getNodeByIdSafe(id);
     if (!node) {
       throw new Error(`Node not found with ID: ${id}`);
     }
@@ -3899,7 +3908,7 @@ async function setInstanceVariant(params) {
     throw new Error("Properties object cannot be empty");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4046,7 +4055,7 @@ async function rotateNode(params) {
     throw new Error("Missing angle parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4076,7 +4085,7 @@ async function setNodeProperties(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4113,7 +4122,7 @@ async function reorderNode(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4199,7 +4208,7 @@ async function convertToFrame(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4241,6 +4250,7 @@ async function convertToFrame(params) {
 
   // Transfer children if the node has them (e.g., groups)
   let childCount = 0;
+  const isGroup = node.type === "GROUP";
   if ("children" in node) {
     const children = [...node.children];
     childCount = children.length;
@@ -4249,11 +4259,26 @@ async function convertToFrame(params) {
     }
   }
 
-  // Insert frame at the same position in parent
-  parent.insertChild(originalIndex, frame);
+  // Groups auto-delete when all children are moved out, so check if node still exists
+  // Accessing .parent on a deleted node throws in Figma, so use try/catch
+  let nodeStillExists = true;
+  if (isGroup) {
+    try {
+      nodeStillExists = node.parent !== null;
+    } catch (e) {
+      nodeStillExists = false;
+    }
+  }
 
-  // Remove the original node
-  node.remove();
+  // Insert frame at the correct position in parent
+  // If the group was auto-deleted, originalIndex may be stale — recalculate
+  const insertIndex = nodeStillExists ? originalIndex : Math.min(originalIndex, parent.children.length);
+  parent.insertChild(insertIndex, frame);
+
+  // Remove the original node if it still exists
+  if (nodeStillExists) {
+    try { node.remove(); } catch (e) { /* already removed */ }
+  }
 
   return {
     id: frame.id,
@@ -4271,7 +4296,7 @@ async function setGradient(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4324,7 +4349,7 @@ async function booleanOperation(params) {
   // Resolve all nodes
   const nodes = [];
   for (const id of nodeIds) {
-    const node = await figma.getNodeByIdAsync(id);
+    const node = await getNodeByIdSafe(id);
     if (!node) {
       throw new Error(`Node not found with ID: ${id}`);
     }
@@ -4379,8 +4404,9 @@ function sanitizeSvg(svgString) {
   let clean = svgString;
   // Strip <script> tags
   clean = clean.replace(/<script[\s\S]*?<\/script>/gi, '');
-  // Strip event handlers (onclick, onload, etc.)
-  clean = clean.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
+  // Strip event handlers (onclick, onload, etc.) — separate regexes per quote type to handle mixed quotes
+  clean = clean.replace(/\bon\w+\s*=\s*"[^"]*"/gi, '');
+  clean = clean.replace(/\bon\w+\s*=\s*'[^']*'/gi, '');
   // Strip external resource references
   clean = clean.replace(/xlink:href\s*=\s*["']https?:\/\/[^"']*["']/gi, '');
   clean = clean.replace(/href\s*=\s*["']https?:\/\/[^"']*["']/gi, '');
@@ -4413,7 +4439,7 @@ async function setSvg(params) {
 
   // If parentId is provided, move into that parent
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -4440,7 +4466,7 @@ async function getSvg(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4469,7 +4495,7 @@ async function setImage(params) {
     throw new Error("Missing imageData parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4519,7 +4545,7 @@ async function setGrid(params) {
     throw new Error("Missing or invalid grids parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4533,11 +4559,17 @@ async function setGrid(params) {
       visible: grid.visible !== undefined ? grid.visible : true
     };
 
-    if (grid.sectionSize !== undefined) layoutGrid.sectionSize = grid.sectionSize;
-    if (grid.count !== undefined) layoutGrid.count = grid.count;
-    if (grid.gutterSize !== undefined) layoutGrid.gutterSize = grid.gutterSize;
-    if (grid.offset !== undefined) layoutGrid.offset = grid.offset;
-    if (grid.alignment !== undefined) layoutGrid.alignment = grid.alignment;
+    // Ensure required fields have defaults per pattern type to prevent Figma from hanging
+    if (grid.pattern === "GRID") {
+      layoutGrid.sectionSize = grid.sectionSize !== undefined ? grid.sectionSize : 10;
+    } else {
+      // COLUMNS and ROWS require count, alignment, gutterSize, offset (NO sectionSize)
+      layoutGrid.count = grid.count !== undefined ? grid.count : 5;
+      layoutGrid.alignment = grid.alignment !== undefined ? grid.alignment : "STRETCH";
+      layoutGrid.gutterSize = grid.gutterSize !== undefined ? grid.gutterSize : 10;
+      layoutGrid.offset = grid.offset !== undefined ? grid.offset : 0;
+    }
+
     if (grid.color) {
       layoutGrid.color = {
         r: grid.color.r,
@@ -4567,7 +4599,7 @@ async function getGrid(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4653,7 +4685,7 @@ async function setAnnotation(params) {
     throw new Error("Missing label parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4666,9 +4698,19 @@ async function setAnnotation(params) {
     );
   }
 
-  // node.annotations is ReadonlyArray — must create a new array (not push)
-  const existing = node.annotations ? [...node.annotations] : [];
-  existing.push({ label: label });
+  // node.annotations is ReadonlyArray — must create a new array with deep copies
+  // Strip labelMarkdown from copies since Figma auto-generates it from label
+  // and rejects annotations that have both label + labelMarkdown
+  const existing = node.annotations
+    ? node.annotations.map(a => {
+        const copy = JSON.parse(JSON.stringify(a));
+        if (copy.label && copy.labelMarkdown) {
+          delete copy.labelMarkdown;
+        }
+        return copy;
+      })
+    : [];
+  existing.push({ label: label, properties: [] });
   node.annotations = existing;
 
   return {
@@ -4686,7 +4728,7 @@ async function getAnnotation(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4854,7 +4896,7 @@ async function applyVariableToNode(params) {
     throw new Error("Missing field parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -4869,7 +4911,27 @@ async function applyVariableToNode(params) {
     throw new Error(`Node type ${node.type} does not support variable bindings`);
   }
 
-  node.setBoundVariable(field, variable);
+  // Handle paint-level bindings (fills/N/color, strokes/N/color)
+  const paintMatch = field.match(/^(fills|strokes)\/(\d+)\/color$/);
+  if (paintMatch) {
+    const paintProp = paintMatch[1];
+    const paintIndex = parseInt(paintMatch[2], 10);
+
+    if (!(paintProp in node)) {
+      throw new Error(`Node does not have ${paintProp} property`);
+    }
+    const paints = [...node[paintProp]];
+    if (paintIndex >= paints.length) {
+      throw new Error(`${paintProp} index ${paintIndex} out of range (node has ${paints.length} ${paintProp})`);
+    }
+    const paint = Object.assign({}, paints[paintIndex]);
+    paint.boundVariables = Object.assign({}, paint.boundVariables || {});
+    paint.boundVariables.color = { type: "VARIABLE_ALIAS", id: variable.id };
+    paints[paintIndex] = paint;
+    node[paintProp] = paints;
+  } else {
+    node.setBoundVariable(field, variable);
+  }
 
   return {
     nodeId: node.id,
@@ -4900,7 +4962,7 @@ async function switchVariableMode(params) {
     throw new Error("Missing modeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
