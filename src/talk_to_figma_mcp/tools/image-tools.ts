@@ -40,14 +40,7 @@ export function registerImageTools(server: McpServer): void {
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-        };
+        throw new Error(`Error setting image fill: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   );
@@ -133,14 +126,7 @@ export function registerImageTools(server: McpServer): void {
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error replacing image fill: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-        };
+        throw new Error(`Error replacing image fill: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   );
@@ -235,14 +221,7 @@ export function registerImageTools(server: McpServer): void {
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error applying image transform: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-        };
+        throw new Error(`Error applying image transform: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   );
@@ -287,14 +266,7 @@ export function registerImageTools(server: McpServer): void {
           ],
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error setting image filters: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-        };
+        throw new Error(`Error setting image filters: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   );
