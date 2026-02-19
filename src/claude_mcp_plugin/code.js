@@ -3997,11 +3997,15 @@ async function setGrid(params) {
       visible: grid.visible !== undefined ? grid.visible : true
     };
 
-    if (grid.sectionSize !== undefined) layoutGrid.sectionSize = grid.sectionSize;
-    if (grid.count !== undefined) layoutGrid.count = grid.count;
-    if (grid.gutterSize !== undefined) layoutGrid.gutterSize = grid.gutterSize;
-    if (grid.offset !== undefined) layoutGrid.offset = grid.offset;
-    if (grid.alignment !== undefined) layoutGrid.alignment = grid.alignment;
+    if (grid.pattern === "GRID") {
+      layoutGrid.sectionSize = grid.sectionSize !== undefined ? grid.sectionSize : 10;
+    } else {
+      // COLUMNS / ROWS
+      layoutGrid.count = grid.count !== undefined ? grid.count : 5;
+      layoutGrid.alignment = grid.alignment !== undefined ? grid.alignment : "STRETCH";
+      layoutGrid.gutterSize = grid.gutterSize !== undefined ? grid.gutterSize : 10;
+      layoutGrid.offset = grid.offset !== undefined ? grid.offset : 0;
+    }
     if (grid.color) {
       layoutGrid.color = {
         r: grid.color.r,
