@@ -457,7 +457,7 @@ export function registerModificationTools(server: McpServer): void {
   // Rotate Node Tool
   server.tool(
     "rotate_node",
-    "Rotate a node in Figma by a specified angle in degrees (clockwise). Use relative=true to add to the current rotation instead of setting an absolute value.",
+    "Rotate a node in Figma by a specified angle in degrees (clockwise). Use relative=true to add to the current rotation instead of setting an absolute value. Note: locked nodes can still be rotated — the Plugin API bypasses the UI lock by design.",
     {
       nodeId: z.string().describe("The ID of the node to rotate"),
       angle: z.number().describe("Rotation angle in degrees (clockwise)"),
