@@ -27,11 +27,11 @@ export function registerModificationTools(server: McpServer): void {
         if (r === undefined || g === undefined || b === undefined) {
           throw new Error("RGB components (r, g, b) are required and cannot be undefined");
         }
-        
+
         // Apply default values safely - preserves opacity 0 for transparency
         const colorInput: Color = { r, g, b, a };
         const colorWithDefaults = applyColorDefaults(colorInput);
-        
+
         const result = await sendCommandToFigma("set_fill_color", {
           nodeId,
           color: colorWithDefaults,
@@ -76,12 +76,12 @@ export function registerModificationTools(server: McpServer): void {
         if (r === undefined || g === undefined || b === undefined) {
           throw new Error("RGB components (r, g, b) are required and cannot be undefined");
         }
-        
+
         const colorInput: Color = { r, g, b, a };
         const colorWithDefaults = applyColorDefaults(colorInput);
-        
+
         const strokeWeightWithDefault = applyDefault(strokeWeight, FIGMA_DEFAULTS.stroke.weight);
-        
+
         const result = await sendCommandToFigma("set_stroke_color", {
           nodeId,
           color: colorWithDefaults,
@@ -321,23 +321,23 @@ export function registerModificationTools(server: McpServer): void {
       layoutWrap: z.enum(["WRAP", "NO_WRAP"]).optional().describe("Whether items wrap to new lines"),
       strokesIncludedInLayout: z.boolean().optional().describe("Whether strokes are included in layout calculations")
     },
-    async ({ nodeId, layoutMode, paddingTop, paddingBottom, paddingLeft, paddingRight, 
+    async ({ nodeId, layoutMode, paddingTop, paddingBottom, paddingLeft, paddingRight,
              itemSpacing, primaryAxisAlignItems, counterAxisAlignItems, layoutWrap, strokesIncludedInLayout }) => {
       try {
-        const result = await sendCommandToFigma("set_auto_layout", { 
-          nodeId, 
-          layoutMode, 
-          paddingTop, 
-          paddingBottom, 
-          paddingLeft, 
-          paddingRight, 
-          itemSpacing, 
-          primaryAxisAlignItems, 
-          counterAxisAlignItems, 
-          layoutWrap, 
-          strokesIncludedInLayout 
+        const result = await sendCommandToFigma("set_auto_layout", {
+          nodeId,
+          layoutMode,
+          paddingTop,
+          paddingBottom,
+          paddingLeft,
+          paddingRight,
+          itemSpacing,
+          primaryAxisAlignItems,
+          counterAxisAlignItems,
+          layoutWrap,
+          strokesIncludedInLayout
         });
-        
+
         const typedResult = result as { name: string };
         return {
           content: [
@@ -392,9 +392,9 @@ export function registerModificationTools(server: McpServer): void {
           nodeId,
           effects
         });
-        
+
         const typedResult = result as { name: string, effects: any[] };
-        
+
         return {
           content: [
             {
@@ -430,9 +430,9 @@ export function registerModificationTools(server: McpServer): void {
           nodeId,
           effectStyleId
         });
-        
+
         const typedResult = result as { name: string, effectStyleId: string };
-        
+
         return {
           content: [
             {
@@ -449,6 +449,463 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error setting effect style: ${error instanceof Error ? error.message : String(error)}`
             }
           ]
+        };
+      }
+    }
+  );
+
+  // Rotate Node Tool
+  server.tool(
+    "rotate_node",
+    "Rotate a node in Figma by a specified angle in degrees (clockwise). Use relative=true to add to the current rotation instead of setting an absolute value. Note: locked nodes can still be rotated — the Plugin API bypasses the UI lock by design.",
+    {
+      nodeId: z.string().describe("The ID of the node to rotate"),
+      angle: z.number().describe("Rotation angle in degrees (clockwise)"),
+      relative: z.boolean().optional().describe("If true, add angle to current rotation instead of setting absolute value (default: false)"),
+    },
+    async ({ nodeId, angle, relative }) => {
+      try {
+        const result = await sendCommandToFigma("rotate_node", {
+          nodeId,
+          angle,
+          relative: relative || false,
+        });
+        const typedResult = result as { name: string; rotation: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Rotated node "${typedResult.name}" to ${typedResult.rotation}°`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error rotating node: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Set Node Properties Tool (visibility, lock, opacity)
+  server.tool(
+    "set_node_properties",
+    "Set visibility, lock state, and/or opacity of a node in Figma. Only provided properties are changed; omitted properties remain unchanged.",
+    {
+      nodeId: z.string().describe("The ID of the node to modify"),
+      visible: z.boolean().optional().describe("Set node visibility (true = visible, false = hidden)"),
+      locked: z.boolean().optional().describe("Set node lock state (true = locked, false = unlocked)"),
+      opacity: z.number().min(0).max(1).optional().describe("Set node opacity (0 = fully transparent, 1 = fully opaque)"),
+    },
+    async ({ nodeId, visible, locked, opacity }) => {
+      try {
+        const result = await sendCommandToFigma("set_node_properties", {
+          nodeId,
+          visible,
+          locked,
+          opacity,
+        });
+        const typedResult = result as { name: string; visible: boolean; locked: boolean; opacity: number };
+        const changes: string[] = [];
+        if (visible !== undefined) changes.push(`visible=${typedResult.visible}`);
+        if (locked !== undefined) changes.push(`locked=${typedResult.locked}`);
+        if (opacity !== undefined) changes.push(`opacity=${typedResult.opacity}`);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Updated node "${typedResult.name}": ${changes.join(", ")}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting node properties: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Reorder Node Tool (z-order within same parent)
+  server.tool(
+    "reorder_node",
+    "Change the z-order (layer order) of a node within its parent. Distinct from insert_child which re-parents a node — reorder_node changes position within the same parent.",
+    {
+      nodeId: z.string().describe("The ID of the node to reorder"),
+      position: z.enum(["front", "back", "forward", "backward"]).optional().describe("Move to front/back or one step forward/backward"),
+      index: z.number().optional().describe("Direct index position within parent's children (0 = bottom). Overrides position if both provided."),
+    },
+    async ({ nodeId, position, index }) => {
+      try {
+        const result = await sendCommandToFigma("reorder_node", {
+          nodeId,
+          position,
+          index,
+        });
+        const typedResult = result as { name: string; newIndex: number; parentChildCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Reordered node "${typedResult.name}" to index ${typedResult.newIndex} of ${typedResult.parentChildCount} siblings`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error reordering node: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Convert to Frame Tool
+  server.tool(
+    "convert_to_frame",
+    "Convert a group or shape node into a frame in Figma. Preserves position, size, visual properties, and children. Useful for converting groups into auto-layout-capable frames.",
+    {
+      nodeId: z.string().describe("The ID of the node to convert to a frame"),
+    },
+    async ({ nodeId }) => {
+      try {
+        const result = await sendCommandToFigma("convert_to_frame", { nodeId });
+        const typedResult = result as { id: string; name: string; originalType: string; childCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Converted ${typedResult.originalType} "${typedResult.name}" to FRAME with ID: ${typedResult.id} (${typedResult.childCount} children preserved)`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error converting to frame: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Set Gradient Fill Tool
+  server.tool(
+    "set_gradient",
+    "Set a gradient fill on a node in Figma. Supports linear, radial, angular, and diamond gradients. Replaces all existing fills (same behavior as set_fill_color).",
+    {
+      nodeId: z.string().describe("The ID of the node to modify"),
+      type: z.enum(["GRADIENT_LINEAR", "GRADIENT_RADIAL", "GRADIENT_ANGULAR", "GRADIENT_DIAMOND"]).describe("Gradient type"),
+      stops: z.array(z.object({
+        position: z.number().min(0).max(1).describe("Stop position (0-1, where 0 is start and 1 is end)"),
+        color: z.object({
+          r: z.number().min(0).max(1).describe("Red (0-1)"),
+          g: z.number().min(0).max(1).describe("Green (0-1)"),
+          b: z.number().min(0).max(1).describe("Blue (0-1)"),
+          a: z.number().min(0).max(1).optional().describe("Alpha (0-1, defaults to 1)"),
+        }),
+      })).min(2).describe("Array of gradient color stops (minimum 2)"),
+      gradientTransform: z.array(z.array(z.number())).optional().describe("2x3 affine transform matrix [[a,b,tx],[c,d,ty]]. Defaults to left-to-right linear: [[1,0,0],[0,1,0]]"),
+    },
+    async ({ nodeId, type, stops, gradientTransform }) => {
+      try {
+        const result = await sendCommandToFigma("set_gradient", {
+          nodeId,
+          type,
+          stops: stops.map(s => ({
+            position: s.position,
+            color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a ?? 1 },
+          })),
+          gradientTransform: gradientTransform || [[1, 0, 0], [0, 1, 0]],
+        });
+        const typedResult = result as { name: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Applied ${type} gradient with ${stops.length} stops to node "${typedResult.name}"`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting gradient: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Set Image Fill Tool
+  server.tool(
+    "set_image",
+    "Set an image fill on a node from base64-encoded image data. Supports PNG, JPEG, GIF, WebP. Max ~5MB after decode.",
+    {
+      nodeId: z.string().describe("The ID of the node to apply the image fill to"),
+      imageData: z.string().max(7_000_000).describe("Base64-encoded image data (PNG, JPEG, GIF, or WebP). Max ~5MB after decode."),
+      scaleMode: z.enum(["FILL", "FIT", "CROP", "TILE"]).optional().describe("How the image is scaled within the node (default: FILL)"),
+    },
+    async ({ nodeId, imageData, scaleMode }) => {
+      try {
+        const result = await sendCommandToFigma("set_image", {
+          nodeId,
+          imageData,
+          scaleMode: scaleMode || "FILL",
+        });
+        const typedResult = result as { name: string; imageHash: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Set image fill on node "${typedResult.name}" with scale mode ${scaleMode || "FILL"} (hash: ${typedResult.imageHash})`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Set Layout Grid Tool
+  server.tool(
+    "set_grid",
+    "Apply layout grids to a frame node in Figma. Supports columns, rows, and grid patterns.",
+    {
+      nodeId: z.string().describe("The ID of the frame node to apply grids to"),
+      grids: z.array(
+        z.object({
+          pattern: z.enum(["COLUMNS", "ROWS", "GRID"]).describe("Grid pattern type"),
+          count: z.number().optional().describe("Number of columns/rows (ignored for GRID)"),
+          sectionSize: z.number().optional().describe("Size of each section in pixels"),
+          gutterSize: z.number().optional().describe("Gutter size between sections in pixels"),
+          offset: z.number().optional().describe("Offset from the edge in pixels"),
+          alignment: z.enum(["MIN", "CENTER", "MAX", "STRETCH"]).optional().describe("Grid alignment"),
+          visible: z.boolean().optional().describe("Whether the grid is visible (default: true)"),
+          color: z.object({
+            r: z.number().min(0).max(1).describe("Red (0-1)"),
+            g: z.number().min(0).max(1).describe("Green (0-1)"),
+            b: z.number().min(0).max(1).describe("Blue (0-1)"),
+            a: z.number().min(0).max(1).describe("Alpha (0-1)")
+          }).optional().describe("Grid color")
+        })
+      ).describe("Array of layout grids to apply")
+    },
+    async ({ nodeId, grids }) => {
+      try {
+        const result = await sendCommandToFigma("set_grid", { nodeId, grids });
+        const typedResult = result as { name: string; gridCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Applied ${typedResult.gridCount} layout grid(s) to frame "${typedResult.name}"`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting layout grids: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Get Layout Grid Tool
+  server.tool(
+    "get_grid",
+    "Read layout grids from a frame node in Figma",
+    {
+      nodeId: z.string().describe("The ID of the frame node to read grids from"),
+    },
+    async ({ nodeId }) => {
+      try {
+        const result = await sendCommandToFigma("get_grid", { nodeId });
+        const typedResult = result as { name: string; grids: any[] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ name: typedResult.name, grids: typedResult.grids }, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting layout grids: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Set Guide Tool
+  server.tool(
+    "set_guide",
+    "Set guides on a page in Figma. Replaces all existing guides on the page.",
+    {
+      pageId: z.string().describe("The ID of the page to add guides to"),
+      guides: z.array(
+        z.object({
+          axis: z.enum(["X", "Y"]).describe("Guide axis: X for vertical, Y for horizontal"),
+          offset: z.number().describe("Offset position of the guide in pixels")
+        })
+      ).describe("Array of guides to set on the page")
+    },
+    async ({ pageId, guides }) => {
+      try {
+        const result = await sendCommandToFigma("set_guide", { pageId, guides });
+        const typedResult = result as { name: string; guideCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Set ${typedResult.guideCount} guide(s) on page "${typedResult.name}"`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting guides: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Get Guide Tool
+  server.tool(
+    "get_guide",
+    "Read guides from a page in Figma",
+    {
+      pageId: z.string().describe("The ID of the page to read guides from"),
+    },
+    async ({ pageId }) => {
+      try {
+        const result = await sendCommandToFigma("get_guide", { pageId });
+        const typedResult = result as { name: string; guides: any[] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ name: typedResult.name, guides: typedResult.guides }, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting guides: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Set Annotation Tool
+  server.tool(
+    "set_annotation",
+    "Add an annotation label to a node in Figma. Uses the proposed Annotations API — requires Figma Desktop with enableProposedApi.",
+    {
+      nodeId: z.string().describe("The ID of the node to annotate"),
+      label: z.string().describe("The annotation label text"),
+    },
+    async ({ nodeId, label }) => {
+      try {
+        const result = await sendCommandToFigma("set_annotation", { nodeId, label });
+        const typedResult = result as { name: string; annotationCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Added annotation "${label}" to node "${typedResult.name}" (${typedResult.annotationCount} total annotations)`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting annotation: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Get Annotation Tool
+  server.tool(
+    "get_annotation",
+    "Read annotations from a node in Figma. Uses the proposed Annotations API.",
+    {
+      nodeId: z.string().describe("The ID of the node to read annotations from"),
+    },
+    async ({ nodeId }) => {
+      try {
+        const result = await sendCommandToFigma("get_annotation", { nodeId });
+        const typedResult = result as { name: string; annotations: any[] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ name: typedResult.name, annotations: typedResult.annotations }, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting annotations: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
         };
       }
     }
