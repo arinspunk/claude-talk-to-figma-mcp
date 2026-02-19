@@ -517,7 +517,7 @@ export function registerDocumentTools(server: McpServer): void {
   // Set Current Page Tool
   server.tool(
     "set_current_page",
-    "Switch to a specific page in the Figma document",
+    "DEPRECATED — this stateful command is blocked by the relay server. Instead, pass the target page's node ID as parentId on creation commands (e.g., create_rectangle, create_frame). Use get_pages to discover page IDs.",
     {
       pageId: z.string().describe("ID of the page to switch to"),
     },
