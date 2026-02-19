@@ -4130,11 +4130,28 @@ async function applyVariableToNode(params) {
   }
 
   // Apply the variable binding
-  if (!("setBoundVariable" in node)) {
-    throw new Error(`Node type ${node.type} does not support variable bindings`);
+  if (field === "fills" || field === "fillColor") {
+    // For fill color bindings, we need to shallow-copy the paints array
+    if (!("fills" in node)) {
+      throw new Error(`Node type ${node.type} does not support fills`);
+    }
+    const paints = node.fills;
+    const paintIndex = 0;
+    if (!paints || paints.length === 0) {
+      throw new Error("Node has no fills to bind a variable to");
+    }
+    const paint = Object.assign({}, paints[paintIndex]);
+    paint.boundVariables = Object.assign({}, paint.boundVariables || {});
+    paint.boundVariables.color = { type: "VARIABLE_ALIAS", id: variable.id };
+    const newPaints = [...paints];
+    newPaints[paintIndex] = paint;
+    node.fills = newPaints;
+  } else {
+    if (!("setBoundVariable" in node)) {
+      throw new Error(`Node type ${node.type} does not support variable bindings`);
+    }
+    node.setBoundVariable(field, variable);
   }
-
-  node.setBoundVariable(field, variable);
 
   return {
     nodeId: node.id,
