@@ -4027,8 +4027,19 @@ async function convertToFrame(params) {
   // Insert frame at the same position in parent
   parent.insertChild(originalIndex, frame);
 
-  // Remove the original node
-  node.remove();
+  // Remove the original node (GROUP nodes may auto-remove when children are moved)
+  const isGroup = originalType === "GROUP";
+  let nodeStillExists = true;
+  if (isGroup) {
+    try {
+      nodeStillExists = node.parent !== null;
+    } catch (e) {
+      nodeStillExists = false;
+    }
+  }
+  if (nodeStillExists) {
+    node.remove();
+  }
 
   return {
     id: frame.id,
