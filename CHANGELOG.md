@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Documentation**: `set_annotation`, `get_annotation`.
   - **Variables**: `get_variables`, `set_variable`, `apply_variable_to_node`, `switch_variable_mode`.
   - **Pages**: `duplicate_page`.
+  (Thanks to [ehs208](https://github.com/ehs208) - [PR #76](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/76))
 - **🌓 Dark Mode**: Added a dark and light mode toggle to the plugin UI for better integration with Figma's themes.
 - **📋 Enhanced Clipboard**: The plugin now copies the full connection instruction instead of just the channel name, making it easier to paste into Claude.
 
