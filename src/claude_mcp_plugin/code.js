@@ -4845,34 +4845,56 @@ async function setVariable(params) {
   // Determine mode
   const targetModeId = modeId || collection.modes[0].modeId;
 
+  // Attempt to parse value based on resolvedType if it's a string (MCP/WS serialization fix)
+  let finalValue = value;
+  if (typeof value === "string") {
+    if (resolvedType === "FLOAT") {
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed)) finalValue = parsed;
+    } else if (resolvedType === "BOOLEAN") {
+      if (value.toLowerCase() === "true") finalValue = true;
+      if (value.toLowerCase() === "false") finalValue = false;
+    } else if (resolvedType === "COLOR") {
+      try {
+        // Try to parse JSON if it's a stringified object
+        if (value.startsWith("{")) {
+          finalValue = JSON.parse(value);
+        }
+      } catch (e) {
+        // Fallback to original value if parsing fails
+      }
+    }
+  }
+
   // Validate value type matches resolvedType
   if (resolvedType === "COLOR") {
-    if (typeof value !== "object" || value.r === undefined) {
-      throw new Error("Value does not match resolvedType. Expected COLOR object {r, g, b, a}, got " + typeof value);
+    if (typeof finalValue !== "object" || finalValue === null || finalValue.r === undefined) {
+      throw new Error("Value does not match resolvedType. Expected COLOR object {r, g, b, a}, got " + typeof finalValue);
     }
   } else if (resolvedType === "FLOAT") {
-    if (typeof value !== "number") {
-      throw new Error("Value does not match resolvedType. Expected FLOAT (number), got " + typeof value);
+    if (typeof finalValue !== "number") {
+      throw new Error("Value does not match resolvedType. Expected FLOAT (number), got " + typeof finalValue);
     }
   } else if (resolvedType === "STRING") {
-    if (typeof value !== "string") {
-      throw new Error("Value does not match resolvedType. Expected STRING, got " + typeof value);
+    if (typeof finalValue !== "string") {
+      throw new Error("Value does not match resolvedType. Expected STRING, got " + typeof finalValue);
     }
   } else if (resolvedType === "BOOLEAN") {
-    if (typeof value !== "boolean") {
-      throw new Error("Value does not match resolvedType. Expected BOOLEAN, got " + typeof value);
+    if (typeof finalValue !== "boolean") {
+      throw new Error("Value does not match resolvedType. Expected BOOLEAN, got " + typeof finalValue);
     }
   }
 
   // Set value for mode
-  variable.setValueForMode(targetModeId, value);
+  variable.setValueForMode(targetModeId, finalValue);
 
   return {
     variableId: variable.id,
     variableName: variable.name,
     collectionId: collection.id,
     collectionName: collection.name,
-    resolvedType: variable.resolvedType
+    resolvedType: variable.resolvedType,
+    value: finalValue
   };
 }
 
