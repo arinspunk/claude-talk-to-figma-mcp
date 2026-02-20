@@ -5049,20 +5049,18 @@ async function getFigJamElements() {
 
       switch (node.type) {
         case "STICKY":
-          results.stickies.push({
-            ...base,
+          results.stickies.push(Object.assign({}, base, {
             width: node.width,
             height: node.height,
             text: node.text ? node.text.characters : "",
             fills: node.fills,
             isWide: node.isWide,
             authorName: node.authorName,
-          });
+          }));
           break;
 
         case "CONNECTOR":
-          results.connectors.push({
-            ...base,
+          results.connectors.push(Object.assign({}, base, {
             connectorStart: node.connectorStart,
             connectorEnd: node.connectorEnd,
             connectorLineType: node.connectorLineType,
@@ -5070,37 +5068,34 @@ async function getFigJamElements() {
             connectorEndStrokeCap: node.connectorEndStrokeCap,
             strokeWeight: node.strokeWeight,
             strokes: node.strokes,
-          });
+          }));
           break;
 
         case "SHAPE_WITH_TEXT":
-          results.shapesWithText.push({
-            ...base,
+          results.shapesWithText.push(Object.assign({}, base, {
             width: node.width,
             height: node.height,
             shapeType: node.shapeType,
             text: node.text ? node.text.characters : "",
             fills: node.fills,
-          });
+          }));
           break;
 
         case "SECTION":
-          results.sections.push({
-            ...base,
+          results.sections.push(Object.assign({}, base, {
             width: node.width,
             height: node.height,
             fills: node.fills,
             childCount: "children" in node ? node.children.length : 0,
-          });
+          }));
           break;
 
         case "STAMP":
-          results.stamps.push({
-            ...base,
+          results.stamps.push(Object.assign({}, base, {
             width: node.width,
             height: node.height,
             authorName: node.authorName,
-          });
+          }));
           break;
       }
     }
