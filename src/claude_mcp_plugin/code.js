@@ -5152,35 +5152,47 @@ async function createSticky(params) {
   }
 
   const sticky = figma.createSticky();
-  sticky.x = x;
-  sticky.y = y;
-  sticky.isWide = isWide;
-  sticky.fills = stickyColorToFill(color);
 
-  if (name) {
-    sticky.name = name;
-  }
-
-  // Set text via the text sub-layer (only if non-empty, consistent with
-  // createShapeWithText — unconditional font loading on an empty sticky can
-  // throw in the plugin sandbox).
-  if (text) {
-    await figma.loadFontAsync(sticky.text.fontName);
-    sticky.text.characters = text;
-  }
-
+  // Append to the scene graph first — some FigJam node properties (including
+  // fills on StickyNode) can only be mutated once the node is part of the page.
   if (parentId) {
     const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
-      throw new Error(`Parent node not found with ID: ${parentId}`);
+      throw new Error("Parent node not found with ID: " + parentId);
     }
     if (!("appendChild" in parentNode)) {
-      throw new Error(`Parent node does not support children: ${parentId}`);
+      throw new Error("Parent node does not support children: " + parentId);
     }
     parentNode.appendChild(sticky);
   } else {
     figma.currentPage.appendChild(sticky);
   }
+
+  sticky.x = x;
+  sticky.y = y;
+  sticky.isWide = isWide;
+
+  if (name) {
+    sticky.name = name;
+  }
+
+  // Fills on StickyNode can behave differently across FigJam API versions.
+  // Try to apply color; if it fails the sticky is still created (default yellow).
+  try {
+    sticky.fills = stickyColorToFill(color);
+  } catch (fillErr) {
+    console.warn("create_sticky: could not apply color '" + color + "':", fillErr);
+  }
+
+  // Set text only if non-empty — unconditional font loading on a fresh sticky
+  // can throw in the plugin sandbox.
+  if (text) {
+    await figma.loadFontAsync(sticky.text.fontName);
+    sticky.text.characters = text;
+  }
+
+  var resultFills;
+  try { resultFills = sticky.fills; } catch (e) { resultFills = []; }
 
   return {
     id: sticky.id,
@@ -5190,9 +5202,9 @@ async function createSticky(params) {
     y: sticky.y,
     width: sticky.width,
     height: sticky.height,
-    text: sticky.text.characters,
+    text: sticky.text ? sticky.text.characters : "",
     isWide: sticky.isWide,
-    fills: sticky.fills,
+    fills: resultFills,
     parentId: sticky.parent ? sticky.parent.id : undefined,
   };
 }
