@@ -115,9 +115,12 @@ export function connectToFigma(port: number = defaultPort) {
           const request = pendingRequests.get(myResponse.id)!;
           clearTimeout(request.timeout);
 
-          if (myResponse.error) {
-            logger.error(`Error from Figma: ${myResponse.error}`);
-            request.reject(new Error(myResponse.error));
+          // Check for error at root level or nested inside result
+          const error = myResponse.error ?? (myResponse.result && myResponse.result.error);
+
+          if (error) {
+            logger.error(`Error from Figma: ${error}`);
+            request.reject(new Error(String(error)));
           } else {
             request.resolve(myResponse.result ?? myResponse);
           }
