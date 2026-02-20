@@ -5152,9 +5152,9 @@ async function createSticky(params) {
   }
 
   const sticky = figma.createSticky();
-
-  // Append to the scene graph first — some FigJam node properties (including
-  // fills on StickyNode) can only be mutated once the node is part of the page.
+  // figma.createSticky() auto-appends to figma.currentPage — no explicit
+  // appendChild needed for the default case.  If a specific parent was
+  // requested, move the sticky into it (this re-parents, not double-appends).
   if (parentId) {
     const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
@@ -5164,31 +5164,24 @@ async function createSticky(params) {
       throw new Error("Parent node does not support children: " + parentId);
     }
     parentNode.appendChild(sticky);
-  } else {
-    figma.currentPage.appendChild(sticky);
   }
 
-  sticky.x = x;
-  sticky.y = y;
-  sticky.isWide = isWide;
-
-  if (name) {
-    sticky.name = name;
-  }
-
-  // Fills on StickyNode can behave differently across FigJam API versions.
-  // Try to apply color; if it fails the sticky is still created (default yellow).
   try {
-    sticky.fills = stickyColorToFill(color);
-  } catch (fillErr) {
-    console.warn("create_sticky: could not apply color '" + color + "':", fillErr);
-  }
-
-  // Set text only if non-empty — unconditional font loading on a fresh sticky
-  // can throw in the plugin sandbox.
-  if (text) {
-    await figma.loadFontAsync(sticky.text.fontName);
-    sticky.text.characters = text;
+    sticky.x = x;
+    sticky.y = y;
+    try { sticky.isWide = isWide; } catch (e) { /* isWide may not be settable in all FigJam versions */ }
+    if (name) { sticky.name = name; }
+    try {
+      sticky.fills = stickyColorToFill(color);
+    } catch (fillErr) {
+      console.warn("create_sticky: could not apply color '" + color + "':", fillErr);
+    }
+    if (text) {
+      await figma.loadFontAsync(sticky.text.fontName);
+      sticky.text.characters = text;
+    }
+  } catch (propErr) {
+    throw new Error("create_sticky failed: " + propErr.message);
   }
 
   var resultFills;
