@@ -5015,21 +5015,25 @@ async function switchVariableMode(params) {
  * These match the default colour palette shown in FigJam.
  */
 function stickyColorToFill(color) {
-  const palette = {
-    yellow:  { r: 1.000, g: 0.918, b: 0.298 },
-    pink:    { r: 0.961, g: 0.545, b: 0.820 },
-    green:   { r: 0.553, g: 0.925, b: 0.678 },
-    blue:    { r: 0.447, g: 0.745, b: 0.992 },
-    purple:  { r: 0.741, g: 0.596, b: 0.988 },
-    red:     { r: 1.000, g: 0.482, b: 0.478 },
-    orange:  { r: 1.000, g: 0.729, b: 0.365 },
-    teal:    { r: 0.357, g: 0.894, b: 0.855 },
-    gray:    { r: 0.780, g: 0.780, b: 0.780 },
-    white:   { r: 1.000, g: 1.000, b: 1.000 },
+  // Values stored as arrays to avoid passing const-object references into
+  // Figma's paint normaliser, which may try to extend the color object and
+  // throw "object is not extensible" in the plugin sandbox.
+  var palette = {
+    yellow:  [1.000, 0.918, 0.298],
+    pink:    [0.961, 0.545, 0.820],
+    green:   [0.553, 0.925, 0.678],
+    blue:    [0.447, 0.745, 0.992],
+    purple:  [0.741, 0.596, 0.988],
+    red:     [1.000, 0.482, 0.478],
+    orange:  [1.000, 0.729, 0.365],
+    teal:    [0.357, 0.894, 0.855],
+    gray:    [0.780, 0.780, 0.780],
+    white:   [1.000, 1.000, 1.000],
   };
 
-  const rgb = palette[color] || palette["yellow"];
-  return [{ type: "SOLID", color: rgb, opacity: 1 }];
+  var rgb = palette[color] || palette["yellow"];
+  // Always construct a fresh color object so Figma can freely extend it.
+  return [{ type: "SOLID", color: { r: rgb[0], g: rgb[1], b: rgb[2] }, opacity: 1, visible: true, blendMode: "NORMAL" }];
 }
 
 /**
@@ -5157,9 +5161,13 @@ async function createSticky(params) {
     sticky.name = name;
   }
 
-  // Set text via the text sub-layer
-  await figma.loadFontAsync(sticky.text.fontName);
-  sticky.text.characters = text;
+  // Set text via the text sub-layer (only if non-empty, consistent with
+  // createShapeWithText — unconditional font loading on an empty sticky can
+  // throw in the plugin sandbox).
+  if (text) {
+    await figma.loadFontAsync(sticky.text.fontName);
+    sticky.text.characters = text;
+  }
 
   if (parentId) {
     const parentNode = await getNodeByIdSafe(parentId);
