@@ -8,6 +8,11 @@ import { FigmaCommand, FigmaResponse, CommandProgressUpdate, PendingRequest, Pro
 let ws: WebSocket | null = null;
 let currentChannel: string | null = null;
 
+// Stable session ID for this MCP process — survives reconnections.
+// Sent in join messages so the server can deduplicate reconnecting agents
+// (e.g., after context compaction) instead of counting them as separate agents.
+const SESSION_ID = `mcp_${process.pid}_${Date.now()}`;
+
 // Map of pending requests for promise tracking
 const pendingRequests = new Map<string, PendingRequest>();
 
@@ -58,6 +63,25 @@ export function connectToFigma(port: number = defaultPort) {
     ws.on("message", (data: any) => {
       try {
         const json = JSON.parse(data) as ProgressMessage;
+
+        // Handle queue position updates from server-side command queue
+        if ((json as any).type === 'queue_position') {
+          const queueRequestId = (json as any).id;
+          if (queueRequestId && pendingRequests.has(queueRequestId)) {
+            const request = pendingRequests.get(queueRequestId)!;
+            request.lastActivity = Date.now();
+            // Reset timeout — command is queued and will be processed eventually
+            clearTimeout(request.timeout);
+            request.timeout = setTimeout(() => {
+              if (pendingRequests.has(queueRequestId)) {
+                logger.error(`Request ${queueRequestId} timed out while queued`);
+                pendingRequests.delete(queueRequestId);
+                request.reject(new Error('Request to Figma timed out while queued'));
+              }
+            }, 300000); // 5 min timeout while queued
+          }
+          return;
+        }
 
         // Handle progress updates
         if (json.type === 'progress_update') {
@@ -214,7 +238,7 @@ export function getCurrentChannel(): string | null {
 export function sendCommandToFigma(
   command: FigmaCommand,
   params: unknown = {},
-  timeoutMs: number = 60000
+  timeoutMs: number = 300000
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     // If not connected, try to connect first
@@ -236,7 +260,7 @@ export function sendCommandToFigma(
       id,
       type: command === "join" ? "join" : "message",
       ...(command === "join"
-        ? { channel: (params as any).channel }
+        ? { channel: (params as any).channel, sessionId: SESSION_ID }
         : { channel: currentChannel }),
       message: {
         id,

@@ -975,7 +975,7 @@ async function getLocalComponents() {
 // }
 
 async function createComponentInstance(params) {
-  const { componentKey, x = 0, y = 0 } = params || {};
+  const { componentKey, x = 0, y = 0, parentId } = params || {};
 
   if (!componentKey) {
     throw new Error("Missing componentKey parameter");
@@ -1038,9 +1038,21 @@ async function createComponentInstance(params) {
       instance.x = x;
       instance.y = y;
 
-      figma.currentPage.appendChild(instance);
+      // Add to parent (explicit parentId or currentPage fallback)
+      if (parentId) {
+        const parentNode = await getNodeByIdSafe(parentId);
+        if (!parentNode) {
+          throw new Error(`Parent node not found with ID: ${parentId}`);
+        }
+        if (!("appendChild" in parentNode)) {
+          throw new Error(`Parent node does not support children: ${parentId}`);
+        }
+        parentNode.appendChild(instance);
+      } else {
+        figma.currentPage.appendChild(instance);
+      }
 
-      console.log(`Component instance created and added to page successfully`);
+      console.log(`Component instance created and added to ${parentId ? 'parent ' + parentId : 'page'} successfully`);
 
       return {
         id: instance.id,
@@ -3875,8 +3887,21 @@ async function createComponentSet(params) {
     components.push(node);
   }
 
+  // Determine parent container
+  let container = figma.currentPage;
+  if (params.parentId) {
+    const parentNode = await getNodeByIdSafe(params.parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${params.parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${params.parentId}`);
+    }
+    container = parentNode;
+  }
+
   // Combine components into a component set
-  const componentSet = figma.combineAsVariants(components, figma.currentPage);
+  const componentSet = figma.combineAsVariants(components, container);
 
   if (name) {
     componentSet.name = name;

@@ -16,13 +16,15 @@ export function registerComponentTools(server: McpServer): void {
       componentKey: z.string().describe("Key of the component to instantiate"),
       x: z.number().describe("X position"),
       y: z.number().describe("Y position"),
+      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
-    async ({ componentKey, x, y }) => {
+    async ({ componentKey, x, y, parentId }) => {
       try {
         const result = await sendCommandToFigma("create_component_instance", {
           componentKey,
           x,
           y,
+          parentId,
         });
         const typedResult = result as any;
         return {
@@ -89,12 +91,14 @@ export function registerComponentTools(server: McpServer): void {
     {
       componentIds: z.array(z.string()).describe("Array of component node IDs to combine into a component set"),
       name: z.string().optional().describe("Optional name for the component set"),
+      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
-    async ({ componentIds, name }) => {
+    async ({ componentIds, name, parentId }) => {
       try {
         const result = await sendCommandToFigma("create_component_set", {
           componentIds,
           name,
+          parentId,
         });
         const typedResult = result as { id: string; name: string; key: string; variantCount: number };
         return {
