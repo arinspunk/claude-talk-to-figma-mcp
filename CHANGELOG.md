@@ -9,8 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+- **🛠️ 20 New Tools**: Massive expansion of Figma capabilities including:
+  - **Transformation**: `rotate_node`, `reorder_node`, `convert_to_frame`.
+  - **Properties**: `set_node_properties` (visibility, lock, opacity).
+  - **Visuals**: `set_gradient`, `boolean_operation`, `set_svg`, `get_svg`, `set_image`.
+  - **Layout & Guides**: `set_grid`, `get_grid`, `set_guide`, `get_guide`.
+  - **Documentation**: `set_annotation`, `get_annotation`.
+  - **Variables**: `get_variables`, `set_variable`, `apply_variable_to_node`, `switch_variable_mode`.
+  - **Pages**: `duplicate_page`.
+- **🌓 Dark Mode**: Added a dark and light mode toggle to the plugin UI for better integration with Figma's themes.
+- **📋 Enhanced Clipboard**: The plugin now copies the full connection instruction instead of just the channel name, making it easier to paste into Claude.
+
 ### Fixed
 - **⚡ Error propagation**: Error responses from Figma now resolve immediately instead of waiting for the 60s timeout. The WebSocket message handler in `websocket.ts` now robustly checks for errors at both the root level (`myResponse.error`) and nested inside the result (`myResponse.result.error`).
+- **🎨 UI Refinement**: Adjusted plugin dimensions and mode selector opacity for a cleaner look. Structured the UI script into a class for better maintainability.
 
 ## [0.8.2] - 2026-02-15
 
