@@ -5040,16 +5040,17 @@ function stickyColorToFill(color) {
   // Values stored as arrays to avoid passing const-object references into
   // Figma's paint normaliser, which may try to extend the color object and
   // throw "object is not extensible" in the plugin sandbox.
+  // Values sampled from native FigJam stickies via the plugin API.
   var palette = {
-    yellow:  [1.000, 0.918, 0.298],
-    pink:    [0.961, 0.545, 0.820],
-    green:   [0.553, 0.925, 0.678],
-    blue:    [0.447, 0.745, 0.992],
-    purple:  [0.741, 0.596, 0.988],
-    red:     [1.000, 0.482, 0.478],
-    orange:  [1.000, 0.729, 0.365],
-    teal:    [0.357, 0.894, 0.855],
-    gray:    [0.780, 0.780, 0.780],
+    yellow:  [1.000, 0.886, 0.600],
+    pink:    [1.000, 0.659, 0.859],
+    green:   [0.702, 0.937, 0.741],
+    blue:    [0.659, 0.855, 1.000],
+    purple:  [0.827, 0.741, 1.000],
+    red:     [1.000, 0.686, 0.639],
+    orange:  [1.000, 0.827, 0.659],
+    teal:    [0.702, 0.957, 0.937],
+    gray:    [0.902, 0.902, 0.902],
     white:   [1.000, 1.000, 1.000],
   };
 
@@ -5194,9 +5195,15 @@ async function createSticky(params) {
     try { sticky.isWide = isWide; } catch (e) { /* isWide may not be settable in all FigJam versions */ }
     if (name) { sticky.name = name; }
     try {
-      sticky.fills = stickyColorToFill(color);
-    } catch (fillErr) {
-      console.warn("create_sticky: could not apply color '" + color + "':", fillErr);
+      // Prefer the native NodeColor API (uses FigJam's exact palette colours).
+      // Fall back to manual fills if the property isn't settable.
+      sticky.color = color.toUpperCase();
+    } catch (e) {
+      try {
+        sticky.fills = stickyColorToFill(color);
+      } catch (fillErr) {
+        console.warn("create_sticky: could not apply color '" + color + "':", fillErr);
+      }
     }
     if (text) {
       await figma.loadFontAsync(sticky.text.fontName);
