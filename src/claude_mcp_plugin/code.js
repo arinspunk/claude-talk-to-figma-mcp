@@ -264,6 +264,19 @@ async function handleCommand(command, params) {
       return await applyVariableToNode(params);
     case "switch_variable_mode":
       return await switchVariableMode(params);
+    // ── FigJam commands ──────────────────────────────────────────────────
+    case "get_figjam_elements":
+      return await getFigJamElements();
+    case "create_sticky":
+      return await createSticky(params);
+    case "set_sticky_text":
+      return await setStickyText(params);
+    case "create_shape_with_text":
+      return await createShapeWithText(params);
+    case "create_connector":
+      return await createConnector(params);
+    case "create_section":
+      return await createSection(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -4990,5 +5003,452 @@ async function switchVariableMode(params) {
     collectionName: collection.name,
     modeId: mode.modeId,
     modeName: mode.name
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FigJam-specific command implementations
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Map a colour name to an RGBA fill paint object.
+ * These match the default colour palette shown in FigJam.
+ */
+function stickyColorToFill(color) {
+  const palette = {
+    yellow:  { r: 1.000, g: 0.918, b: 0.298 },
+    pink:    { r: 0.961, g: 0.545, b: 0.820 },
+    green:   { r: 0.553, g: 0.925, b: 0.678 },
+    blue:    { r: 0.447, g: 0.745, b: 0.992 },
+    purple:  { r: 0.741, g: 0.596, b: 0.988 },
+    red:     { r: 1.000, g: 0.482, b: 0.478 },
+    orange:  { r: 1.000, g: 0.729, b: 0.365 },
+    teal:    { r: 0.357, g: 0.894, b: 0.855 },
+    gray:    { r: 0.780, g: 0.780, b: 0.780 },
+    white:   { r: 1.000, g: 1.000, b: 1.000 },
+  };
+
+  const rgb = palette[color] || palette["yellow"];
+  return [{ type: "SOLID", color: rgb, opacity: 1 }];
+}
+
+/**
+ * Collect all FigJam-specific nodes on the current page.
+ * Walks the full node tree and returns stickies, connectors,
+ * shapes-with-text, sections and stamps.
+ */
+async function getFigJamElements() {
+  await figma.currentPage.loadAsync();
+
+  const figjamTypes = new Set(["STICKY", "CONNECTOR", "SHAPE_WITH_TEXT", "SECTION", "STAMP"]);
+  const results = { stickies: [], connectors: [], shapesWithText: [], sections: [], stamps: [] };
+
+  function walk(node) {
+    if (figjamTypes.has(node.type)) {
+      const base = { id: node.id, name: node.name, type: node.type, x: node.x, y: node.y };
+
+      switch (node.type) {
+        case "STICKY":
+          results.stickies.push({
+            ...base,
+            width: node.width,
+            height: node.height,
+            text: node.text ? node.text.characters : "",
+            fills: node.fills,
+            isWide: node.isWide,
+            authorName: node.authorName,
+          });
+          break;
+
+        case "CONNECTOR":
+          results.connectors.push({
+            ...base,
+            connectorStart: node.connectorStart,
+            connectorEnd: node.connectorEnd,
+            connectorLineType: node.connectorLineType,
+            connectorStartStrokeCap: node.connectorStartStrokeCap,
+            connectorEndStrokeCap: node.connectorEndStrokeCap,
+            strokeWeight: node.strokeWeight,
+            strokes: node.strokes,
+          });
+          break;
+
+        case "SHAPE_WITH_TEXT":
+          results.shapesWithText.push({
+            ...base,
+            width: node.width,
+            height: node.height,
+            shapeType: node.shapeType,
+            text: node.text ? node.text.characters : "",
+            fills: node.fills,
+          });
+          break;
+
+        case "SECTION":
+          results.sections.push({
+            ...base,
+            width: node.width,
+            height: node.height,
+            fills: node.fills,
+            childCount: "children" in node ? node.children.length : 0,
+          });
+          break;
+
+        case "STAMP":
+          results.stamps.push({
+            ...base,
+            width: node.width,
+            height: node.height,
+            authorName: node.authorName,
+          });
+          break;
+      }
+    }
+
+    // Recurse into children (sections, frames, groups, etc.)
+    if ("children" in node) {
+      for (const child of node.children) {
+        walk(child);
+      }
+    }
+  }
+
+  for (const child of figma.currentPage.children) {
+    walk(child);
+  }
+
+  return {
+    pageId: figma.currentPage.id,
+    pageName: figma.currentPage.name,
+    totalElements:
+      results.stickies.length +
+      results.connectors.length +
+      results.shapesWithText.length +
+      results.sections.length +
+      results.stamps.length,
+    stickies: results.stickies,
+    connectors: results.connectors,
+    shapesWithText: results.shapesWithText,
+    sections: results.sections,
+    stamps: results.stamps,
+  };
+}
+
+/**
+ * Create a sticky note in FigJam.
+ */
+async function createSticky(params) {
+  const {
+    x = 0,
+    y = 0,
+    text = "",
+    color = "yellow",
+    isWide = false,
+    name,
+    parentId,
+  } = params || {};
+
+  if (!figma.createSticky) {
+    throw new Error("createSticky is not available. This command requires a FigJam document.");
+  }
+
+  const sticky = figma.createSticky();
+  sticky.x = x;
+  sticky.y = y;
+  sticky.isWide = isWide;
+  sticky.fills = stickyColorToFill(color);
+
+  if (name) {
+    sticky.name = name;
+  }
+
+  // Set text via the text sub-layer
+  await figma.loadFontAsync(sticky.text.fontName);
+  sticky.text.characters = text;
+
+  if (parentId) {
+    const parentNode = await getNodeByIdSafe(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    parentNode.appendChild(sticky);
+  } else {
+    figma.currentPage.appendChild(sticky);
+  }
+
+  return {
+    id: sticky.id,
+    name: sticky.name,
+    type: sticky.type,
+    x: sticky.x,
+    y: sticky.y,
+    width: sticky.width,
+    height: sticky.height,
+    text: sticky.text.characters,
+    isWide: sticky.isWide,
+    fills: sticky.fills,
+    parentId: sticky.parent ? sticky.parent.id : undefined,
+  };
+}
+
+/**
+ * Update the text on an existing sticky note.
+ */
+async function setStickyText(params) {
+  const { nodeId, text } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (text === undefined || text === null) {
+    throw new Error("Missing text parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (node.type !== "STICKY") {
+    throw new Error(`Node ${nodeId} is not a sticky note (type: ${node.type})`);
+  }
+
+  await figma.loadFontAsync(node.text.fontName);
+  node.text.characters = text;
+
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    text: node.text.characters,
+  };
+}
+
+/**
+ * Create a FigJam shape with text.
+ */
+async function createShapeWithText(params) {
+  const {
+    x = 0,
+    y = 0,
+    width = 200,
+    height = 200,
+    shapeType = "ROUNDED_RECTANGLE",
+    text = "",
+    fillColor,
+    name,
+    parentId,
+  } = params || {};
+
+  if (!figma.createShapeWithText) {
+    throw new Error("createShapeWithText is not available. This command requires a FigJam document.");
+  }
+
+  const shape = figma.createShapeWithText();
+  shape.x = x;
+  shape.y = y;
+  shape.resize(width, height);
+  shape.shapeType = shapeType;
+
+  if (name) {
+    shape.name = name;
+  }
+
+  // Set fill color if provided
+  if (fillColor) {
+    shape.fills = [
+      {
+        type: "SOLID",
+        color: {
+          r: parseFloat(fillColor.r) || 0,
+          g: parseFloat(fillColor.g) || 0,
+          b: parseFloat(fillColor.b) || 0,
+        },
+        opacity: fillColor.a !== undefined ? parseFloat(fillColor.a) : 1,
+      },
+    ];
+  }
+
+  // Set text via the text sub-layer
+  if (text) {
+    await figma.loadFontAsync(shape.text.fontName);
+    shape.text.characters = text;
+  }
+
+  if (parentId) {
+    const parentNode = await getNodeByIdSafe(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    parentNode.appendChild(shape);
+  } else {
+    figma.currentPage.appendChild(shape);
+  }
+
+  return {
+    id: shape.id,
+    name: shape.name,
+    type: shape.type,
+    shapeType: shape.shapeType,
+    x: shape.x,
+    y: shape.y,
+    width: shape.width,
+    height: shape.height,
+    text: shape.text.characters,
+    fills: shape.fills,
+    parentId: shape.parent ? shape.parent.id : undefined,
+  };
+}
+
+/**
+ * Create a connector (arrow/line) between two nodes or canvas positions.
+ *
+ * The Figma plugin API requires connectorStart / connectorEnd to be one of:
+ *   - { endpointNodeId, magnet } when connecting to an existing node
+ *   - { position: { x, y } }   when connecting to a canvas position
+ */
+async function createConnector(params) {
+  const {
+    startNodeId,
+    startX,
+    startY,
+    endNodeId,
+    endX,
+    endY,
+    connectorLineType = "ELBOWED",
+    startStrokeCap = "NONE",
+    endStrokeCap = "ARROW",
+    strokeColor,
+    strokeWeight,
+    name,
+  } = params || {};
+
+  if (!figma.createConnector) {
+    throw new Error("createConnector is not available. This command requires a FigJam document.");
+  }
+
+  const connector = figma.createConnector();
+
+  // ── Start endpoint ────────────────────────────────────────────────────────
+  if (startNodeId) {
+    const startNode = await getNodeByIdSafe(startNodeId);
+    if (!startNode) {
+      throw new Error(`Start node not found with ID: ${startNodeId}`);
+    }
+    connector.connectorStart = { endpointNodeId: startNodeId, magnet: "AUTO" };
+  } else if (startX !== undefined && startY !== undefined) {
+    connector.connectorStart = { position: { x: startX, y: startY } };
+  } else {
+    throw new Error("Either startNodeId or both startX and startY must be provided");
+  }
+
+  // ── End endpoint ──────────────────────────────────────────────────────────
+  if (endNodeId) {
+    const endNode = await getNodeByIdSafe(endNodeId);
+    if (!endNode) {
+      throw new Error(`End node not found with ID: ${endNodeId}`);
+    }
+    connector.connectorEnd = { endpointNodeId: endNodeId, magnet: "AUTO" };
+  } else if (endX !== undefined && endY !== undefined) {
+    connector.connectorEnd = { position: { x: endX, y: endY } };
+  } else {
+    throw new Error("Either endNodeId or both endX and endY must be provided");
+  }
+
+  connector.connectorLineType = connectorLineType;
+  connector.connectorStartStrokeCap = startStrokeCap;
+  connector.connectorEndStrokeCap = endStrokeCap;
+
+  if (strokeColor) {
+    connector.strokes = [
+      {
+        type: "SOLID",
+        color: {
+          r: parseFloat(strokeColor.r) || 0,
+          g: parseFloat(strokeColor.g) || 0,
+          b: parseFloat(strokeColor.b) || 0,
+        },
+        opacity: strokeColor.a !== undefined ? parseFloat(strokeColor.a) : 1,
+      },
+    ];
+  }
+
+  if (strokeWeight !== undefined) {
+    connector.strokeWeight = strokeWeight;
+  }
+
+  if (name) {
+    connector.name = name;
+  }
+
+  figma.currentPage.appendChild(connector);
+
+  return {
+    id: connector.id,
+    name: connector.name,
+    type: connector.type,
+    connectorStart: connector.connectorStart,
+    connectorEnd: connector.connectorEnd,
+    connectorLineType: connector.connectorLineType,
+    connectorStartStrokeCap: connector.connectorStartStrokeCap,
+    connectorEndStrokeCap: connector.connectorEndStrokeCap,
+    strokeWeight: connector.strokeWeight,
+    strokes: connector.strokes,
+  };
+}
+
+/**
+ * Create a FigJam section.
+ */
+async function createSection(params) {
+  const {
+    x = 0,
+    y = 0,
+    width = 800,
+    height = 600,
+    name = "Section",
+    fillColor,
+  } = params || {};
+
+  if (!figma.createSection) {
+    throw new Error("createSection is not available. This command requires a FigJam document.");
+  }
+
+  const section = figma.createSection();
+  section.x = x;
+  section.y = y;
+  section.resizeWithoutConstraints(width, height);
+  section.name = name;
+
+  if (fillColor) {
+    section.fills = [
+      {
+        type: "SOLID",
+        color: {
+          r: parseFloat(fillColor.r) || 0,
+          g: parseFloat(fillColor.g) || 0,
+          b: parseFloat(fillColor.b) || 0,
+        },
+        opacity: fillColor.a !== undefined ? parseFloat(fillColor.a) : 1,
+      },
+    ];
+  }
+
+  figma.currentPage.appendChild(section);
+
+  return {
+    id: section.id,
+    name: section.name,
+    type: section.type,
+    x: section.x,
+    y: section.y,
+    width: section.width,
+    height: section.height,
+    fills: section.fills,
   };
 }
