@@ -82,6 +82,17 @@ Complete reference of the tools Claude can use to interact with Figma.
 | `create_component_instance` | Use components | Consistent UI elements |
 | `set_instance_variant` | Change variant properties | Switch button states |
 
+## FigJam tools
+
+| Command | Purpose | Usage example |
+|---------|---------|---------------|
+| `get_figjam_elements` | Read board contents | Inspect stickies, connectors, shapes, sections, stamps |
+| `create_sticky` | Create sticky note | Add ideas, comments, or labels to a board |
+| `set_sticky_text` | Update sticky text | Edit existing sticky content |
+| `create_shape_with_text` | Create labeled shape | Flowchart nodes, process boxes, decision diamonds |
+| `create_connector` | Draw connector arrow | Link stickies or shapes with flow arrows |
+| `create_section` | Create section region | Group and organise content areas on the board |
+
 ## Effective prompt examples
 
 ```
