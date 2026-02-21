@@ -36,6 +36,47 @@ This single command will:
 
 ---
 
+## Alternative: Using Docker
+
+If you prefer Docker or need to run the WebSocket server in a team environment, you can use Docker instead of the standard installation method.
+
+### Prerequisites
+
+- [Docker](https://www.docker.com/get-started) installed and running
+
+### Steps
+
+#### 1. Clone and build
+
+```bash
+git clone https://github.com/arinspunk/claude-talk-to-figma-mcp.git
+cd claude-talk-to-figma-mcp
+docker build -t figma-websocket .
+```
+
+#### 2. Run the WebSocket server
+
+```bash
+docker run -d -p 3055:3055 --name figma-ws figma-websocket
+```
+
+*Verify the server is running at: `http://localhost:3055/status`*
+
+#### 3. Install the plugin and configure MCP
+
+Follow the same steps as the standard installation:
+- [Setup Figma Plugin](#2-setup-figma-plugin)
+- [Configure your Agentic Tool](#3-configure-your-agentic-tool)
+
+### Use cases
+
+Docker is especially useful for:
+- **Team environments** - Run a shared WebSocket server on a cloud instance
+- **Isolated dependencies** - Avoid installing Bun/Node.js locally
+- **Reproducible deployments** - Consistent environment across different machines
+
+---
+
 ## 2. Setup Figma Plugin
 
 1. In Figma Desktop: **Menu → Plugins → Development → Import plugin from manifest...**

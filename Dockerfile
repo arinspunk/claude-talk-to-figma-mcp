@@ -4,13 +4,18 @@ FROM oven/bun:latest
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
+# Copy package files
 COPY package*.json ./
 
+# Install dependencies
 RUN bun install
 
-# Expose the port on which the API will listen
+# Copy source code
+COPY src ./src
+COPY tsconfig.json ./
+
+# Expose WebSocket port
 EXPOSE 3055
 
-# Run the server when the container launches
-CMD ["bun", "src/talk_to_figma_mcp/server.ts"]
+# Run TypeScript directly with Bun
+CMD ["bun", "run", "src/socket.ts"]

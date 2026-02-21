@@ -130,6 +130,10 @@ To use the MCP again in day-to-day work, you don't need to repeat the entire pro
 2. **Open the plugin in Figma**: You'll find it in your recent plugins list.
 3. **Connect the AI**: Copy the channel ID and tell your agent: `Connect to Figma, channel {your-ID}`.
 
+## 🐳 Alternative: Using Docker
+
+If you prefer Docker or need to run the WebSocket server in a team environment, see the [Docker installation guide](INSTALLATION.md#alternative-using-docker) in the detailed installation documentation.
+
 ## 🛠️ Capabilities
 
 **Design analysis**
