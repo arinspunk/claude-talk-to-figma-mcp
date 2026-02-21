@@ -2,6 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma, joinChannel } from "../utils/websocket.js";
 import { filterFigmaNode } from "../utils/figma-helpers.js";
+import { coerceJson } from "../utils/schema-helpers";
 
 /**
  * Register document-related tools to the MCP server
@@ -102,7 +103,7 @@ export function registerDocumentTools(server: McpServer): void {
     "get_nodes_info",
     "Get detailed information about multiple nodes in Figma",
     {
-      nodeIds: z.array(z.string()).describe("Array of node IDs to get information about")
+      nodeIds: coerceJson(z.array(z.string())).describe("Array of node IDs to get information about")
     },
     async ({ nodeIds }) => {
       try {
@@ -355,7 +356,7 @@ export function registerDocumentTools(server: McpServer): void {
         .enum(["PNG", "JPG", "SVG", "PDF"])
         .optional()
         .describe("Export format"),
-      scale: z.number().positive().optional().describe("Export scale"),
+      scale: z.coerce.number().positive().optional().describe("Export scale"),
     },
     async ({ nodeId, format, scale }) => {
       try {
