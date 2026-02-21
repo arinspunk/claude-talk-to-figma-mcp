@@ -627,4 +627,42 @@ export function registerCreationTools(server: McpServer): void {
       }
     }
   );
+
+  // Boolean Operation Tool
+  server.tool(
+    "boolean_operation",
+    "Perform a boolean operation (union, subtract, intersect, exclude) on two or more nodes. All nodes must share the same parent.",
+    {
+      nodeIds: z.array(z.string()).min(2).describe("Array of node IDs to combine (minimum 2). Order matters for SUBTRACT."),
+      operation: z.enum(["UNION", "SUBTRACT", "INTERSECT", "EXCLUDE"]).describe("Boolean operation type"),
+      name: z.string().optional().describe("Optional name for the resulting node"),
+    },
+    async ({ nodeIds, operation, name }) => {
+      try {
+        const result = await sendCommandToFigma("boolean_operation", {
+          nodeIds,
+          operation,
+          name,
+        });
+        const typedResult = result as { id: string; name: string; type: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Created ${operation} boolean operation "${typedResult.name}" with ID: ${typedResult.id}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error performing boolean operation: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
 }

@@ -134,7 +134,7 @@
       .dark .mcp-plugin__button {
         border-color: #5467F7;
         background-color: #5467F7;
-        color: #fffff;
+        color: #ffffff;
       }
       .mcp-plugin__button:hover {
         background-color: transparent;
@@ -298,7 +298,7 @@
           // Clipboard feature using event delegation
           this.ui.connectionStatus.addEventListener("click", (e) => {
             if (e.target.classList.contains("mcp-plugin__channel-name")) {
-              this.copyToClipboard(e.target.textContent);
+              this.copyToClipboard(`Connect to Figma, channel ${e.target.textContent}`);
             }
           });
 
@@ -515,7 +515,14 @@
          */
         sendErrorResponse(id, errorMessage) {
           if (!this.state.connected || !this.state.socket) return;
-          this.state.socket.send(JSON.stringify({ id, error: errorMessage }));
+          this.state.socket.send(
+            JSON.stringify({
+              id,
+              type: "message",
+              channel: this.state.channel,
+              message: { id, error: errorMessage },
+            })
+          );
         }
 
         /**
