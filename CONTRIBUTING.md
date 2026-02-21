@@ -163,6 +163,7 @@ git checkout -b feature/my-new-feature
 
 ## Contributors
 
+- **[sometimesdante](https://github.com/sometimesdante)** — Full instruction copy on channel click.
 - **[ehs208](https://github.com/ehs208)** — Configuration script, Korean localization, channel verification ping, and `set_instance_variant` tool.
 - **[mmabas77](https://github.com/mmabas77)** — Full text alignment support, RTL/Arabic languages, and `set_selection_colors` tool.
 - **[Rob Dearborn](https://github.com/rfdearborn)** — Component optimization and `set_text_style_id` tool.

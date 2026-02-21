@@ -101,24 +101,28 @@ export function connectToFigma(port: number = defaultPort) {
         // Handle regular responses
         const myResponse = json.message;
         logger.debug(`Received message: ${JSON.stringify(myResponse)}`);
-        logger.log('myResponse' + JSON.stringify(myResponse));
 
-        // Handle response to a request
+        // Skip command echoes (own messages broadcast back to sender)
+        if (myResponse.command) {
+          return;
+        }
+
+        // Handle response to a request (success or error)
         if (
           myResponse.id &&
-          pendingRequests.has(myResponse.id) &&
-          myResponse.result
+          pendingRequests.has(myResponse.id)
         ) {
           const request = pendingRequests.get(myResponse.id)!;
           clearTimeout(request.timeout);
 
-          if (myResponse.error) {
-            logger.error(`Error from Figma: ${myResponse.error}`);
-            request.reject(new Error(myResponse.error));
+          // Check for error at root level or nested inside result
+          const error = myResponse.error ?? (myResponse.result && myResponse.result.error);
+
+          if (error) {
+            logger.error(`Error from Figma: ${error}`);
+            request.reject(new Error(String(error)));
           } else {
-            if (myResponse.result) {
-              request.resolve(myResponse.result);
-            }
+            request.resolve(myResponse.result ?? myResponse);
           }
 
           pendingRequests.delete(myResponse.id);

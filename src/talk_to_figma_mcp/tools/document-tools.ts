@@ -552,4 +552,37 @@ export function registerDocumentTools(server: McpServer): void {
       }
     }
   );
+
+  // Duplicate Page Tool
+  server.tool(
+    "duplicate_page",
+    "Duplicate an existing page in the Figma document, creating a complete copy of all its contents",
+    {
+      pageId: z.string().describe("ID of the page to duplicate"),
+      name: z.string().optional().describe("Optional name for the duplicated page (defaults to 'Original Name (Copy)')"),
+    },
+    async ({ pageId, name }) => {
+      try {
+        const result = await sendCommandToFigma("duplicate_page", { pageId, name });
+        const typedResult = result as { id: string; name: string; originalName: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Duplicated page "${typedResult.originalName}" → "${typedResult.name}" with ID: ${typedResult.id}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error duplicating page: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
 }

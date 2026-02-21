@@ -5,652 +5,648 @@
     <title>Claude MCP Plugin</title>
     <style>
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          Helvetica, Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         margin: 0;
-        padding: 20px;
-        color: #e0e0e0;
-        background-color: #1e1e1e;
-      }
-      .container {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-      }
-      h1 {
-        font-size: 16px;
-        font-weight: 600;
-        margin-bottom: 10px;
-        color: #ffffff;
-      }
-      h2 {
-        font-size: 14px;
-        font-weight: 600;
-        margin-top: 20px;
-        margin-bottom: 8px;
-        color: #ffffff;
-      }
-      button {
-        background-color: #18a0fb;
-        border: none;
-        color: white;
-        padding: 8px 12px;
-        border-radius: 6px;
-        margin-top: 8px;
-        margin-bottom: 8px;
-        cursor: pointer;
-        font-size: 14px;
-        transition: background-color 0.2s;
-      }
-      button:hover {
-        background-color: #0d8ee0;
-      }
-      button.secondary {
-        background-color: #3d3d3d;
-        color: #e0e0e0;
-      }
-      button.secondary:hover {
-        background-color: #4d4d4d;
-      }
-      button:disabled {
-        background-color: #333333;
-        color: #666666;
-        cursor: not-allowed;
-      }
-      input {
-        border: 1px solid #444444;
-        border-radius: 4px;
-        padding: 8px;
-        margin-bottom: 12px;
-        font-size: 14px;
-        width: 100%;
-        box-sizing: border-box;
-        background-color: #2d2d2d;
-        color: #e0e0e0;
-      }
-      label {
-        display: block;
-        margin-bottom: 4px;
         font-size: 12px;
-        font-weight: 500;
-        color: #cccccc;
+        padding: 16px;
+        color: #400B55;
+        background-color: #FDF8FF;
       }
-      .status {
-        margin-top: 16px;
-        padding: 12px;
-        border-radius: 6px;
-        font-size: 14px;
+      .dark {
+        color: #fff;
+        background-color: #2c2c2c;
       }
-      .status.connected {
-        background-color: #1a472a;
-        color: #4ade80;
-      }
-      .status.disconnected {
-        background-color: #471a1a;
-        color: #ff9999;
-      }
-      .status.info {
-        background-color: #1a3147;
-        color: #66b3ff;
-      }
-      .section {
-        margin-bottom: 24px;
-      }
-      .hidden {
-        display: none;
-      }
-      .logo {
-        width: 50px;
-        height: 50px;
-      }
-      .header {
-        display: flex;
-        align-items: center;
-        margin-bottom: 16px;
-      }
-      .header-text {
-        margin-left: 12px;
-      }
-      .header-text h1 {
-        margin: 0;
-        font-size: 16px;
-      }
-      .header-text p {
-        margin: 4px 0 0 0;
-        font-size: 12px;
-        color: #999999;
-      }
-      .tabs {
-        display: flex;
-        border-bottom: 1px solid #444444;
-        margin-bottom: 16px;
-      }
-      .tab {
-        padding: 8px 16px;
+      .mcp-plugin__mode {
+        position: absolute;
+        bottom: -8px;
+        right: -4px;
         cursor: pointer;
-        font-size: 14px;
-        font-weight: 500;
-        color: #999999;
-      }
-      .tab.active {
-        border-bottom: 2px solid #18a0fb;
-        color: #18a0fb;
-      }
-      .tab-content {
-        display: none;
-      }
-      .tab-content.active {
-        display: block;
-      }
-      .link {
-        color: #18a0fb;
-        text-decoration: none;
-        cursor: pointer;
-      }
-      .link:hover {
-        text-decoration: underline;
-      }
-      .header-logo {
-        height: 50px;
-        width: 50px;
+        transition: ease 0.2s;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 16px;
-        background-color: #333;
+        gap: 4px;
+        font-size: 10px;
+        opacity: 0.4;
       }
-      .header-logo-image {
-        width: 100%;
+      .mcp-plugin__mode:hover {
+        opacity: 1;
       }
-      /* Progress styles */
-      .operation-complete {
-        color: #4ade80;
+      .mcp-plugin {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        height: 100%;
+      }
+      .mcp-plugin__header {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .mcp-plugin__header-title {
+        font-size: 14px;
+        margin: 0;
+      }
+      .mcp-plugin__header-description {
+        font-size: 12px;
+        margin: 0;
+      }
+      .dark .mcp-plugin__header-description {
+        color: #CCCCCC;
+      }
+      .mcp-plugin__content {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .mcp-plugin__connection-status {
+        padding: 8px;
+        border-radius: 4px;
+        height: 32px;
+        line-height: 1.35;
+      }
+      .mcp-plugin__content-activity {
+        display: flex;
+      }
+      .mcp-plugin__connection-status.connected {
+        background: #D8FFBB;
+        color: #223005;
+      }
+      .mcp-plugin__connection-status.disconnected {
+        background-color: #FFC8BD;
+        color: #280B06;
+      }
+      .mcp-plugin__connection-status.info {
+        background-color: #BBFFFD;
+        color: #0B4240;
+      }
+      .mcp-plugin__channel-name {
+        font-weight: bold;
+        text-decoration: underline;
+        cursor: pointer;
+        position: relative;
+      }
+      .mcp-plugin__channel-name:hover {
+        text-decoration: none;
+      }
+      .mcp-plugin__channel-name::after {
+        content: "Click to copy";
+        position: absolute;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #223005;
+        color: #fff;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: normal;
+        white-space: nowrap;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s, visibility 0.2s;
+        pointer-events: none;
+        z-index: 100;
+      }
+      .dark .mcp-plugin__channel-name::after {
+        background-color: #2c2c2c;
+      }
+      .mcp-plugin__channel-name:hover::after {
+        opacity: 1;
+        visibility: visible;
+      }
+      .mcp-plugin__button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 32px;
+        width: 96px;
+        border: 1px solid #732392; 
+        background-color: #732392;
+        color: #fff;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: ease 0.2s;
+        margin-left: auto;
+      }
+      .dark .mcp-plugin__button {
+        border-color: #5467F7;
+        background-color: #5467F7;
+        color: #ffffff;
+      }
+      .mcp-plugin__button:hover {
+        background-color: transparent;
+        color: #732392;
+      }
+      .dark .mcp-plugin__button:hover {
+        background-color: transparent;
+        color: #ffffff;
+        border-color: #5467F7;
+      }
+      .mcp-plugin__button--secondary {
+        background-color: transparent;
+        color: #732392;
+      }
+      .dark .mcp-plugin__button--secondary {
+        background-color: transparent;
+        color: #fff;
+        border-color: #5467F7;
+      }
+      .mcp-plugin__button--secondary:hover {
+        background-color: #732392;
+        color: #fff;
+      }
+      .dark .mcp-plugin__button--secondary:hover {
+        background-color: #5467F7;
+        color: #ffffff;
+        border-color: #5467F7;
+      }
+      .mcp-plugin__button:disabled {
+        display: none;
+      }
+      .hidden {
+        display: none !important;
+      }
+      .mcp-plugin__progress {
+        display: flex;
+        flex-direction: column;
+        width: calc(100% - 112px);
+        gap: 4px;
+      }
+      .mcp-plugin__progress-bar {
+        width: 100%; 
+        height: 4px; 
+        background-color: #EDD0F8; 
+        border-radius: 4px;
+      }
+      .dark .mcp-plugin__progress-bar {
+        background-color: #575757;
+      }
+      .mcp-plugin__progress-bar-fill {
+        width: 0%; 
+        height: 4px; 
+        background-color: #732392; 
+        border-radius: 4px; 
+        transition: width 0.3s;
+      }
+      .dark .mcp-plugin__progress-bar-fill {
+        background-color: #5467F7;
+      }
+      .mcp-plugin__progress-indicators {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        font-size: 10px;
+      }
+      .dark .mcp-plugin__progress-indicators {
+        color: #ABABAB;
+      }
+      #progress-status {
+        display: none;
       }
       .operation-error {
-        color: #ff9999;
+        color: #f87359ff;
       }
     </style>
   </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <div class="header-logo">
-          <img
-            class="header-logo-image"
-            src="data:image/png;base64,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" />
-        </div>
-        <div class="header-text">
-          <h1>Claude Talk To Figma Plugin</h1>
-          <p>Connect Figma to Claude AI using MCP</p>
-        </div>
+  <body class="dark">
+    <div class="container mcp-plugin">
+      <div class="mcp-plugin__mode">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          fill="#400b55"
+          class="mcp-plugin__mode-moon hidden"
+          viewBox="0 -960 960 960"><path d="M483.11-116q-76.3 0-143.05-28.93-66.76-28.93-116.48-78.65t-78.65-116.48Q116-406.81 116-483.11q0-125.27 75.12-223.93 75.11-98.65 198.19-129.65-10.08 96.31 20.34 181.27 30.43 84.96 97.12 151.65 64.69 64.69 151.65 94.62 86.96 29.92 178.27 19.84-29.38 121.08-128.85 197.19Q608.38-116 483.11-116m-.11-52q88 0 164-45t115-122.11q-83-5.01-158.5-39.56T469-468.3q-60-60.08-94-134.89T335-762q-77 41-122 116.18-45 75.19-45 162.82 0 131.25 91.88 223.12Q351.75-168 483-168m-14-300.38"/></svg>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          fill="#fff"
+          class="mcp-plugin__mode-sun"
+          viewBox="0 -960 960 960">
+            <path d="M454-794.31V-902h52v107.69zM454-58v-107.69h52V-58zm340.31-396v-52H902v52zM58-454v-52h107.69v52zm660.31-227.15-37.16-37.16L759-798.38 798.38-759zM202-162.62 162.62-202l79.07-76.85 37.16 37.16zm557 0-77.85-79.07 37.16-37.16L798.38-202zM241.69-681.15 162.62-759 202-798.38l76.85 80.07zm82.54 356.92Q260-388.46 260-480t64.23-155.77T480-700t155.77 64.23T700-480t-64.23 155.77T480-260t-155.77-64.23M599-360.5q49-49.5 49-119.75 0-70.24-48.75-119-48.76-48.75-119-48.75Q410-648 361-599.25q-49 48.76-49 119 0 70.25 48.75 119.75 48.76 49.5 119 49.5Q550-311 599-360.5M481-481"/></svg>
       </div>
-
-      <div class="tabs">
-        <div id="tab-connection" class="tab active">Connection</div>
-        <div id="tab-about" class="tab">About</div>
+      <div class="header mcp-plugin__header">
+        <h1 class="mcp-plugin__header-title">🤖🎨 Claude Talk to Figma</h1>
+        <p class="mcp-plugin__header-description">AI agents reading and modifing Figma designs</p>
       </div>
-
-      <div id="content-connection" class="tab-content active">
-        <div class="section">
-          <label for="port">WebSocket Server Port</label>
-          <div style="display: flex; gap: 8px">
-            <input
-              type="number"
-              id="port"
-              placeholder="3055"
-              value="3055"
-              min="1024"
-              max="65535"
-            />
-            <button id="btn-connect" class="primary">Connect</button>
+      <div class="content mcp-plugin__content">   
+        <div id="connection-status" class="disconnected mcp-plugin__connection-status">
+          Disconnected from server…<br>Try to reconnect clicking the button
+        </div>
+        <div class="mcp-plugin__content-activity">
+          <div id="progress-container" class="hidden mcp-plugin__progress">
+            <div class="mcp-plugin__progress-bar">
+              <div id="progress-bar" class="mcp-plugin__progress-bar-fill"></div>
+            </div>
+            <div class="mcp-plugin__progress-indicators">
+              <div id="progress-status">Not started</div>
+              <div id="progress-message" class="mcp-plugin__progress-message">No operation in progress</div>
+              <div id="progress-percentage">0%</div>
+            </div>
           </div>
-        </div>
-
-        <div id="connection-status" class="status disconnected">
-          Not connected to Claude MCP server
-        </div>
-
-        <div class="section">
-          <button id="btn-disconnect" class="secondary" disabled>
+          <button id="btn-connect" class="mcp-plugin__button mcp-plugin__button--primary">Connect</button>
+          <button id="btn-disconnect" class="mcp-plugin__button mcp-plugin__button--secondary" disabled>
             Disconnect
           </button>
-        </div>
-        
-        <!-- Add Progress Bar Section -->
-        <div id="progress-container" class="section hidden">
-          <h2>Operation Progress</h2>
-          <div id="progress-message">No operation in progress</div>
-          <div style="width: 100%; background-color: #444; border-radius: 4px; margin-top: 8px;">
-            <div id="progress-bar" style="width: 0%; height: 8px; background-color: #18a0fb; border-radius: 4px; transition: width 0.3s;"></div>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px;">
-            <div id="progress-status">Not started</div>
-            <div id="progress-percentage">0%</div>
-          </div>
-        </div>
-      </div>
-
-      <div id="content-about" class="tab-content">
-        <div class="section">
-          <h2>About Claude Talk To Figma Plugin</h2>
-          <p>
-            This plugin allows Claude AI to communicate with Figma, enabling
-            AI-assisted design operations. Based on work by
-            <a
-              class="link"
-              onclick="window.open(`https://github.com/sonnylazuardi`, '_blank')"
-              >Sonny</a
-            >
-          </p>
-          <p>Version: 1.0.0</p>
-
-          <h2>How to Use</h2>
-          <ol>
-            <li>Make sure the MCP server is running in Claude Desktop</li>
-            <li>Connect to the server using the port number (default: 3055)</li>
-            <li>Once connected, you can interact with Figma through Claude</li>
-          </ol>
         </div>
       </div>
     </div>
 
     <script>
-      // WebSocket connection state
-      const state = {
-        connected: false,
-        socket: null,
-        serverPort: 3055,
-        pendingRequests: new Map(),
-        channel: null,
-      };
-
-      // UI Elements
-      const portInput = document.getElementById("port");
-      const connectButton = document.getElementById("btn-connect");
-      const disconnectButton = document.getElementById("btn-disconnect");
-      const connectionStatus = document.getElementById("connection-status");
-
-      // Tabs
-      const tabs = document.querySelectorAll(".tab");
-      const tabContents = document.querySelectorAll(".tab-content");
-
-      // Add UI elements for progress tracking
-      const progressContainer = document.getElementById("progress-container");
-      const progressBar = document.getElementById("progress-bar");
-      const progressMessage = document.getElementById("progress-message");
-      const progressStatus = document.getElementById("progress-status");
-      const progressPercentage = document.getElementById("progress-percentage");
-
-      // Initialize UI
-      function updateConnectionStatus(isConnected, message) {
-        state.connected = isConnected;
-        connectionStatus.innerHTML =
-          message ||
-          (isConnected
-            ? "Connected to Claude MCP server"
-            : "Not connected to Claude MCP server");
-        connectionStatus.className = `status ${
-          isConnected ? "connected" : "disconnected"
-        }`;
-
-        connectButton.disabled = isConnected;
-        disconnectButton.disabled = !isConnected;
-        portInput.disabled = isConnected;
-      }
-
-      // Connect to WebSocket server
-      async function connectToServer(port) {
-        try {
-          if (state.connected && state.socket) {
-            updateConnectionStatus(true, "Already connected to server");
-            return;
-          }
-
-          state.serverPort = port;
-          state.socket = new WebSocket(`ws://localhost:${port}`);
-
-          state.socket.onopen = () => {
-            // Generate random channel name
-            const channelName = generateChannelName();
-            console.log("Joining channel:", channelName);
-            state.channel = channelName;
-
-            // Join the channel using the same format as App.tsx
-            state.socket.send(
-              JSON.stringify({
-                type: "join",
-                channel: channelName.trim(),
-              })
-            );
+      /**
+       * ClaudeMCPPlugin Class
+       * Managed WebSocket connection, Figma communication, and UI state.
+       */
+      class ClaudeMCPPlugin {
+        constructor() {
+          this.state = {
+            connected: false,
+            socket: null,
+            serverPort: 3055,
+            pendingRequests: new Map(),
+            channel: null,
           };
 
-          state.socket.onmessage = (event) => {
-            try {
-              const data = JSON.parse(event.data);
-              console.log("Received message:", data);
+          // Cache DOM elements
+          this.ui = {
+            connectBtn: document.getElementById("btn-connect"),
+            disconnectBtn: document.getElementById("btn-disconnect"),
+            connectionStatus: document.getElementById("connection-status"),
+            progressContainer: document.getElementById("progress-container"),
+            progressBar: document.getElementById("progress-bar"),
+            progressMessage: document.getElementById("progress-message"),
+            progressStatus: document.getElementById("progress-status"),
+            progressPercentage: document.getElementById("progress-percentage"),
+            modeToggle: document.querySelector(".mcp-plugin__mode"),
+            modeSun: document.querySelector(".mcp-plugin__mode-sun"),
+            modeMoon: document.querySelector(".mcp-plugin__mode-moon"),
+          };
 
-              if (data.type === "system") {
-                // Successfully joined channel
-                if (data.message && data.message.result) {
-                  state.connected = true;
-                  const channelName = data.channel;
-                  updateConnectionStatus(
-                    true,
-                    `Connected to server on port ${port} in channel: <strong>${channelName}</strong>`
-                  );
+          this.init();
+        }
 
-                  // Notify the plugin code
-                  parent.postMessage(
-                    {
-                      pluginMessage: {
-                        type: "notify",
-                        message: `Connected to Claude MCP server on port ${port} in channel: ${channelName}`,
-                      },
-                    },
-                    "*"
-                  );
-                }
-              } else if (data.type === "error") {
-                console.error("Error:", data.message);
-                updateConnectionStatus(false, `Error: ${data.message}`);
-                state.socket.close();
-              }
+        init() {
+          // Event Listeners
+          this.ui.connectBtn.addEventListener("click", () => this.connect());
+          this.ui.disconnectBtn.addEventListener("click", () => this.disconnect());
 
-              handleSocketMessage(data);
-            } catch (error) {
-              console.error("Error parsing message:", error);
+          // Clipboard feature using event delegation
+          this.ui.connectionStatus.addEventListener("click", (e) => {
+            if (e.target.classList.contains("mcp-plugin__channel-name")) {
+              this.copyToClipboard(`Connect to Figma, channel ${e.target.textContent}`);
             }
-          };
+          });
 
-          state.socket.onclose = () => {
-            state.connected = false;
-            state.socket = null;
-            updateConnectionStatus(false, "Disconnected from server");
-          };
+          // Mode toggle
+          this.ui.modeToggle.addEventListener("click", () => this.toggleMode());
 
-          state.socket.onerror = (error) => {
-            console.error("WebSocket error:", error);
-            updateConnectionStatus(false, "Connection error");
-            state.connected = false;
-            state.socket = null;
-          };
-        } catch (error) {
-          console.error("Connection error:", error);
-          updateConnectionStatus(
-            false,
-            `Connection error: ${error.message || "Unknown error"}`
-          );
-        }
-      }
-
-      // Disconnect from websocket server
-      function disconnectFromServer() {
-        if (state.socket) {
-          state.socket.close();
-          state.socket = null;
-          state.connected = false;
-          updateConnectionStatus(false, "Disconnected from server");
-        }
-      }
-
-      // Handle messages from the WebSocket
-      async function handleSocketMessage(payload) {
-        const data = payload.message;
-        console.log("handleSocketMessage", data);
-
-        // If it's a response to a previous request
-        if (data.id && state.pendingRequests.has(data.id)) {
-          const { resolve, reject } = state.pendingRequests.get(data.id);
-          state.pendingRequests.delete(data.id);
-
-          if (data.error) {
-            reject(new Error(data.error));
-          } else {
-            resolve(data.result);
-          }
-          return;
+          // Figma messages
+          window.onmessage = (event) => this.handleFigmaMessage(event.data.pluginMessage);
         }
 
-        // If it's a new command
-        if (data.command) {
+        /**
+         * Update the connection status UI
+         */
+        updateStatus(isConnected, message) {
+          this.state.connected = isConnected;
+          this.ui.connectionStatus.innerHTML =
+            message ||
+            (isConnected
+              ? "Connected to Claude MCP server"
+              : "Not connected to Claude MCP server");
+          
+          this.ui.connectionStatus.className = `mcp-plugin__connection-status ${
+            isConnected ? "connected" : (message && message.includes("Connecting") ? "info" : "disconnected")
+          }`;
+
+          this.ui.connectBtn.disabled = isConnected;
+          this.ui.disconnectBtn.disabled = !isConnected;
+        }
+
+        /**
+         * Connect to WebSocket server
+         */
+        async connect(port = 3055) {
           try {
-            // Send the command to the plugin code
-            parent.postMessage(
-              {
-                pluginMessage: {
-                  type: "execute-command",
-                  id: data.id,
-                  command: data.command,
-                  params: data.params,
-                },
-              },
-              "*"
-            );
+            if (this.state.connected && this.state.socket) {
+              this.updateStatus(true, "Already connected to server");
+              return;
+            }
+
+            this.updateStatus(false, "Connecting...");
+            this.ui.connectionStatus.className = "mcp-plugin__connection-status info";
+            
+            this.state.serverPort = port;
+            this.state.socket = new WebSocket(`ws://localhost:${port}`);
+
+            this.state.socket.onopen = () => {
+              const channelName = this.generateChannelName();
+              console.log("Joining channel:", channelName);
+              this.state.channel = channelName;
+
+              this.state.socket.send(
+                JSON.stringify({
+                  type: "join",
+                  channel: channelName.trim(),
+                })
+              );
+            };
+
+            this.state.socket.onmessage = (event) => {
+              try {
+                const data = JSON.parse(event.data);
+                console.log("Received message:", data);
+
+                if (data.type === "system") {
+                  if (data.message && data.message.result) {
+                    this.state.connected = true;
+                    const channelName = data.channel;
+                    this.updateStatus(
+                      true,
+                      `Connected on port ${port}!<br>Copy the channel ID: <span class="mcp-plugin__channel-name" title="Click to copy">${channelName}</span>`
+                    );
+
+                    parent.postMessage(
+                      {
+                        pluginMessage: {
+                          type: "notify",
+                          message: `Connected on port ${port}. In channel: ${channelName}`,
+                        },
+                      },
+                      "*"
+                    );
+                  }
+                } else if (data.type === "error") {
+                  console.error("Error:", data.message);
+                  this.updateStatus(false, `Error: ${data.message}`);
+                  this.state.socket.close();
+                }
+
+                this.handleSocketMessage(data);
+              } catch (error) {
+                console.error("Error parsing message:", error);
+              }
+            };
+
+            this.state.socket.onclose = () => {
+              this.state.connected = false;
+              this.state.socket = null;
+              this.updateStatus(false, "Disconnected from server…<br>Try to reconnect clicking the button");
+            };
+
+            this.state.socket.onerror = (error) => {
+              console.error("WebSocket error:", error);
+              this.updateStatus(false, "Connection error");
+              this.state.connected = false;
+              this.state.socket = null;
+            };
           } catch (error) {
-            // Send error back to WebSocket
-            sendErrorResponse(
-              data.id,
-              error.message || "Error executing command"
+            console.error("Connection error:", error);
+            this.updateStatus(
+              false,
+              `Connection error: ${error.message || "Unknown error"}`
             );
           }
         }
-      }
 
-      // Send a command to the WebSocket server
-      async function sendCommand(command, params) {
-        return new Promise((resolve, reject) => {
-          if (!state.connected || !state.socket) {
-            reject(new Error("Not connected to server"));
+        /**
+         * Disconnect from WebSocket server
+         */
+        disconnect() {
+          if (this.state.socket) {
+            this.updateStatus(false, "Disconnecting...");
+            this.ui.connectionStatus.className = "mcp-plugin__connection-status info";
+            this.state.socket.close();
+            this.state.socket = null;
+            this.state.connected = false;
+          }
+        }
+
+        /**
+         * Handle messages from the WebSocket server
+         */
+        async handleSocketMessage(payload) {
+          const data = payload.message;
+          if (!data) return;
+          console.log("handleSocketMessage", data);
+
+          // If it's a response to a previous request
+          if (data.id && this.state.pendingRequests.has(data.id)) {
+            const { resolve, reject } = this.state.pendingRequests.get(data.id);
+            this.state.pendingRequests.delete(data.id);
+
+            if (data.error) reject(new Error(data.error));
+            else resolve(data.result);
             return;
           }
 
-          const id = generateId();
-          state.pendingRequests.set(id, { resolve, reject });
+          // If it's a new command
+          if (data.command) {
+            try {
+              parent.postMessage(
+                {
+                  pluginMessage: {
+                    type: "execute-command",
+                    id: data.id,
+                    command: data.command,
+                    params: data.params,
+                  },
+                },
+                "*"
+              );
+            } catch (error) {
+              this.sendErrorResponse(data.id, error.message || "Error executing command");
+            }
+          }
+        }
 
-          state.socket.send(
+        /**
+         * Handle messages from Figma
+         */
+        handleFigmaMessage(message) {
+          if (!message) return;
+          console.log("Received message from plugin:", message);
+
+          switch (message.type) {
+            case "connection-status":
+              this.updateStatus(message.connected, message.message);
+              break;
+            case "auto-connect":
+              this.connect();
+              break;
+            case "auto-disconnect":
+              this.disconnect();
+              break;
+            case "command-result":
+              this.sendSuccessResponse(message.id, message.result);
+              break;
+            case "command-error":
+              this.sendErrorResponse(message.id, message.error);
+              break;
+            case "command_progress":
+              this.updateProgress(message);
+              this.sendProgressUpdate(message);
+              break;
+          }
+        }
+
+        /**
+         * Send success response to server
+         */
+        sendSuccessResponse(id, result) {
+          if (!this.state.connected || !this.state.socket) return;
+          this.state.socket.send(
             JSON.stringify({
               id,
               type: "message",
-              channel: state.channel,
-              message: {
-                id,
-                command,
-                params,
-              },
+              channel: this.state.channel,
+              message: { id, result },
             })
           );
-
-          // Set timeout to reject the promise after 90 seconds
-          setTimeout(() => {
-            if (state.pendingRequests.has(id)) {
-              state.pendingRequests.delete(id);
-              reject(new Error("Request timed out"));
-            }
-          }, 90000);
-        });
-      }
-
-      // Send success response back to WebSocket
-      function sendSuccessResponse(id, result) {
-        if (!state.connected || !state.socket) {
-          console.error("Cannot send response: socket not connected");
-          return;
         }
 
-        state.socket.send(
-          JSON.stringify({
-            id,
-            type: "message",
-            channel: state.channel,
-            message: {
+        /**
+         * Send error response to server
+         */
+        sendErrorResponse(id, errorMessage) {
+          if (!this.state.connected || !this.state.socket) return;
+          this.state.socket.send(
+            JSON.stringify({
               id,
-              result,
-            },
-          })
-        );
-      }
-
-      // Send error response back to WebSocket
-      function sendErrorResponse(id, errorMessage) {
-        if (!state.connected || !state.socket) {
-          console.error("Cannot send error response: socket not connected");
-          return;
-        }
-
-        state.socket.send(
-          JSON.stringify({
-            id,
-            error: errorMessage,
-          })
-        );
-      }
-
-      // Helper to generate unique IDs
-      function generateId() {
-        return (
-          Date.now().toString(36) + Math.random().toString(36).substr(2, 5)
-        );
-      }
-
-      // Add this function after the generateId() function
-      function generateChannelName() {
-        const characters = "abcdefghijklmnopqrstuvwxyz0123456789";
-        let result = "";
-        for (let i = 0; i < 8; i++) {
-          result += characters.charAt(
-            Math.floor(Math.random() * characters.length)
+              type: "message",
+              channel: this.state.channel,
+              message: { id, error: errorMessage },
+            })
           );
         }
-        return result;
-      }
 
-      // Tab switching
-      tabs.forEach((tab) => {
-        tab.addEventListener("click", () => {
-          tabs.forEach((t) => t.classList.remove("active"));
-          tabContents.forEach((c) => c.classList.remove("active"));
+        /**
+         * Update Progress UI
+         */
+        updateProgress(data) {
+          this.ui.progressContainer.classList.remove("hidden");
+          const progress = data.progress || 0;
+          this.ui.progressBar.style.width = `${progress}%`;
+          this.ui.progressPercentage.textContent = `${progress}%`;
+          this.ui.progressMessage.textContent = data.message || "Operation in progress";
 
-          tab.classList.add("active");
-          const contentId = "content-" + tab.id.split("-")[1];
-          document.getElementById(contentId).classList.add("active");
-        });
-      });
-
-      // Connect to server
-      connectButton.addEventListener("click", () => {
-        const port = parseInt(portInput.value, 10) || 3055;
-        updateConnectionStatus(false, "Connecting...");
-        connectionStatus.className = "status info";
-        connectToServer(port);
-      });
-
-      // Disconnect from server
-      disconnectButton.addEventListener("click", () => {
-        updateConnectionStatus(false, "Disconnecting...");
-        connectionStatus.className = "status info";
-        disconnectFromServer();
-      });
-
-      // Function to update progress UI
-      function updateProgressUI(progressData) {
-        // Show progress container if hidden
-        progressContainer.classList.remove("hidden");
-        
-        // Update progress bar
-        const progress = progressData.progress || 0;
-        progressBar.style.width = `${progress}%`;
-        progressPercentage.textContent = `${progress}%`;
-        
-        // Update message
-        progressMessage.textContent = progressData.message || "Operation in progress";
-        
-        // Update status text based on operation state
-        if (progressData.status === 'started') {
-          progressStatus.textContent = "Started";
-          progressStatus.className = "";
-        } else if (progressData.status === 'in_progress') {
-          progressStatus.textContent = "In Progress";
-          progressStatus.className = "";
-        } else if (progressData.status === 'completed') {
-          progressStatus.textContent = "Completed";
-          progressStatus.className = "operation-complete";
-          
-          // Hide progress container after 5 seconds
-          setTimeout(() => {
-            progressContainer.classList.add("hidden");
-          }, 5000);
-        } else if (progressData.status === 'error') {
-          progressStatus.textContent = "Error";
-          progressStatus.className = "operation-error";
+          if (data.status === 'started' || data.status === 'in_progress') {
+            this.ui.progressStatus.textContent = data.status === 'started' ? "Started" : "In Progress";
+            this.ui.progressStatus.className = "";
+          } else if (data.status === 'completed') {
+            this.ui.progressStatus.textContent = "Completed";
+            this.ui.progressStatus.className = "operation-complete";
+            setTimeout(() => this.ui.progressContainer.classList.add("hidden"), 5000);
+          } else if (data.status === 'error') {
+            this.ui.progressStatus.textContent = "Error";
+            this.ui.progressStatus.className = "operation-error";
+          }
         }
-      }
 
-      // Send operation progress update to server
-      function sendProgressUpdateToServer(progressData) {
-        if (!state.connected || !state.socket) {
-          console.error("Cannot send progress update: socket not connected");
-          return;
-        }
-        
-        console.log("Sending progress update to server:", progressData);
-        
-        state.socket.send(
-          JSON.stringify({
-            id: progressData.commandId,
-            type: "progress_update",
-            channel: state.channel,
-            message: {
-              id: progressData.commandId,
+        /**
+         * Relay progress update to server
+         */
+        sendProgressUpdate(data) {
+          if (!this.state.connected || !this.state.socket) return;
+          this.state.socket.send(
+            JSON.stringify({
+              id: data.commandId,
               type: "progress_update",
-              data: progressData
-            }
-          })
-        );
-      }
-      
-      // Reset progress UI
-      function resetProgressUI() {
-        progressContainer.classList.add("hidden");
-        progressBar.style.width = "0%";
-        progressMessage.textContent = "No operation in progress";
-        progressStatus.textContent = "Not started";
-        progressStatus.className = "";
-        progressPercentage.textContent = "0%";
-      }
-
-      // Listen for messages from the plugin code
-      window.onmessage = (event) => {
-        const message = event.data.pluginMessage;
-        if (!message) return;
-
-        console.log("Received message from plugin:", message);
-
-        switch (message.type) {
-          case "connection-status":
-            updateConnectionStatus(message.connected, message.message);
-            break;
-          case "auto-connect":
-            connectButton.click();
-            break;
-          case "auto-disconnect":
-            disconnectButton.click();
-            break;
-          case "command-result":
-            // Forward the result from plugin code back to WebSocket
-            sendSuccessResponse(message.id, message.result);
-            break;
-          case "command-error":
-            // Forward the error from plugin code back to WebSocket
-            sendErrorResponse(message.id, message.error);
-            break;
-          case "command_progress":
-            // Update UI with progress information
-            updateProgressUI(message);
-            // Forward progress update to server
-            sendProgressUpdateToServer(message);
-            break;
+              channel: this.state.channel,
+              message: {
+                id: data.commandId,
+                type: "progress_update",
+                data: data
+              }
+            })
+          );
         }
-      };
+
+        /**
+         * Copy text to clipboard and notify
+         */
+        async copyToClipboard(text) {
+          try {
+            // Try modern API first
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text);
+              this.notifyCopied(text);
+            } else {
+              throw new Error("Clipboard API not available");
+            }
+          } catch (err) {
+            // Fallback to execCommand('copy')
+            try {
+              const textArea = document.createElement("textarea");
+              textArea.value = text;
+              textArea.style.position = "fixed";
+              textArea.style.left = "-9999px";
+              textArea.style.top = "0";
+              document.body.appendChild(textArea);
+              textArea.focus();
+              textArea.select();
+              const successful = document.execCommand('copy');
+              document.body.removeChild(textArea);
+              if (successful) {
+                this.notifyCopied(text);
+              } else {
+                throw new Error("execCommand('copy') failed");
+              }
+            } catch (fallbackErr) {
+              console.error("All copy methods failed:", fallbackErr);
+            }
+          }
+        }
+
+        /**
+         * Toggle between dark and light mode
+         */
+        toggleMode() {
+          const isDark = document.body.classList.toggle("dark");
+          
+          if (isDark) {
+            this.ui.modeSun.classList.remove("hidden");
+            this.ui.modeMoon.classList.add("hidden");
+          } else {
+            this.ui.modeSun.classList.add("hidden");
+            this.ui.modeMoon.classList.remove("hidden");
+          }
+        }
+
+        /**
+         * Notify Figma about clipboard success
+         */
+        notifyCopied(text) {
+          parent.postMessage({
+            pluginMessage: {
+              type: "notify",
+              message: `Channel ID copied: ${text}`,
+            },
+          }, "*");
+        }
+
+        /**
+         * Utils
+         */
+        generateId() {
+          return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+        }
+
+        generateChannelName() {
+          const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+          let res = "";
+          for (let i = 0; i < 8; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
+          return res;
+        }
+      }
+
+      // Initialize the plugin
+      const plugin = new ClaudeMCPPlugin();
     </script>
   </body>
 </html>

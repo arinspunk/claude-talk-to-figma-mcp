@@ -38,7 +38,7 @@ function sendProgressUpdate(commandId, commandType, status, progress, totalItems
 }
 
 // Show UI
-figma.showUI(__html__, { width: 350, height: 450 });
+figma.showUI(__html__, { width: 300, height: 220 });
 
 // Plugin commands from UI
 figma.ui.onmessage = async (msg) => {
@@ -87,6 +87,15 @@ function updateSettings(settings) {
   figma.clientStorage.setAsync("settings", {
     serverPort: state.serverPort,
   });
+}
+
+// Helper: safe node lookup using figma.getNodeByIdAsync.
+// The original getNodeByIdAsync works fine — the bug was in ui.html's
+// sendErrorResponse which dropped error messages (no type/channel fields).
+// With that fixed, errors propagate correctly and timeouts are eliminated.
+async function getNodeByIdSafe(nodeId) {
+  if (!nodeId) return null;
+  return await figma.getNodeByIdAsync(nodeId);
 }
 
 // Handle commands from UI
@@ -215,6 +224,46 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "rotate_node":
+      return await rotateNode(params);
+    case "set_node_properties":
+      return await setNodeProperties(params);
+    case "reorder_node":
+      return await reorderNode(params);
+    case "duplicate_page":
+      return await duplicatePage(params);
+    case "convert_to_frame":
+      return await convertToFrame(params);
+    case "set_gradient":
+      return await setGradient(params);
+    case "boolean_operation":
+      return await booleanOperation(params);
+    case "set_svg":
+      return await setSvg(params);
+    case "get_svg":
+      return await getSvg(params);
+    case "set_image":
+      return await setImage(params);
+    case "set_grid":
+      return await setGrid(params);
+    case "get_grid":
+      return await getGrid(params);
+    case "set_guide":
+      return await setGuide(params);
+    case "get_guide":
+      return await getGuide(params);
+    case "set_annotation":
+      return await setAnnotation(params);
+    case "get_annotation":
+      return await getAnnotation(params);
+    case "get_variables":
+      return await getVariables(params);
+    case "set_variable":
+      return await setVariable(params);
+    case "apply_variable_to_node":
+      return await applyVariableToNode(params);
+    case "switch_variable_mode":
+      return await switchVariableMode(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -262,7 +311,7 @@ async function getSelection() {
 }
 
 async function getNodeInfo(nodeId) {
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
 
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
@@ -287,7 +336,7 @@ async function getNodesInfo(nodeIds) {
   try {
     // Load all nodes in parallel
     const nodes = await Promise.all(
-      nodeIds.map((id) => figma.getNodeByIdAsync(id))
+      nodeIds.map((id) => getNodeByIdSafe(id))
     );
 
     // Filter out any null values (nodes that weren't found)
@@ -330,7 +379,7 @@ async function createRectangle(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -407,7 +456,7 @@ async function createFrame(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -513,7 +562,7 @@ async function createText(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -553,7 +602,7 @@ async function setFillColor(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -613,7 +662,7 @@ async function setStrokeColor(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -678,7 +727,7 @@ async function setSelectionColors(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -788,7 +837,7 @@ async function moveNode(params) {
     throw new Error("Missing x or y parameters");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -819,7 +868,7 @@ async function resizeNode(params) {
     throw new Error("Missing width or height parameters");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -845,7 +894,7 @@ async function deleteNode(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -1041,7 +1090,7 @@ async function exportNodeAsImage(params) {
   console.log(`[exportNodeAsImage] Starting export for node ${nodeId}, scale: ${scale}, format: ${format}`);
   const startTime = Date.now();
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -1160,6 +1209,36 @@ function customBase64Encode(bytes) {
   return base64;
 }
 
+// Decode base64 string to Uint8Array (mirror of customBase64Encode)
+function customBase64Decode(base64) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) {
+    lookup[chars.charCodeAt(i)] = i;
+  }
+
+  // Remove padding and calculate output length
+  let padding = 0;
+  if (base64.length > 0 && base64[base64.length - 1] === "=") padding++;
+  if (base64.length > 1 && base64[base64.length - 2] === "=") padding++;
+  const byteLength = (base64.length * 3) / 4 - padding;
+  const bytes = new Uint8Array(byteLength);
+
+  let p = 0;
+  for (let i = 0; i < base64.length; i += 4) {
+    const a = lookup[base64.charCodeAt(i)];
+    const b = lookup[base64.charCodeAt(i + 1)];
+    const c = lookup[base64.charCodeAt(i + 2)];
+    const d = lookup[base64.charCodeAt(i + 3)];
+
+    bytes[p++] = (a << 2) | (b >> 4);
+    if (p < byteLength) bytes[p++] = ((b & 15) << 4) | (c >> 2);
+    if (p < byteLength) bytes[p++] = ((c & 3) << 6) | d;
+  }
+
+  return bytes;
+}
+
 async function setCornerRadius(params) {
   const { nodeId, radius, corners } = params || {};
 
@@ -1171,7 +1250,7 @@ async function setCornerRadius(params) {
     throw new Error("Missing radius parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -1222,7 +1301,7 @@ async function setTextContent(params) {
     throw new Error("Missing text parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -1493,7 +1572,7 @@ async function cloneNode(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -1531,7 +1610,7 @@ async function scanTextNodes(params) {
   console.log(`Starting to scan text nodes from node ID: ${params.nodeId}`);
   const { nodeId, useChunking = true, chunkSize = 10, commandId = generateCommandId() } = params || {};
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
 
   if (!node) {
     console.error(`Node with ID ${nodeId} not found`);
@@ -2027,7 +2106,7 @@ async function setMultipleTextContents(params) {
         console.log(`Attempting to replace text in node: ${replacement.nodeId}`);
 
         // Get the text node to update (just to check it exists and get original text)
-        const textNode = await figma.getNodeByIdAsync(replacement.nodeId);
+        const textNode = await getNodeByIdSafe(replacement.nodeId);
 
         if (!textNode) {
           console.error(`Text node not found: ${replacement.nodeId}`);
@@ -2204,7 +2283,7 @@ async function setAutoLayout(params) {
     throw new Error("Missing layoutMode parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2274,7 +2353,7 @@ async function setFontName(params) {
     throw new Error("Missing nodeId or font family");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2302,7 +2381,7 @@ async function setFontSize(params) {
     throw new Error("Missing nodeId or fontSize");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2346,7 +2425,7 @@ async function setFontWeight(params) {
     }
   };
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2377,7 +2456,7 @@ async function setLetterSpacing(params) {
     throw new Error("Missing nodeId or letterSpacing");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2405,7 +2484,7 @@ async function setLineHeight(params) {
     throw new Error("Missing nodeId or lineHeight");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2433,7 +2512,7 @@ async function setParagraphSpacing(params) {
     throw new Error("Missing nodeId or paragraphSpacing");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2466,7 +2545,7 @@ async function setTextCase(params) {
     throw new Error("Invalid textCase value. Must be one of: ORIGINAL, UPPER, LOWER, TITLE");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2499,7 +2578,7 @@ async function setTextDecoration(params) {
     throw new Error("Invalid textDecoration value. Must be one of: NONE, UNDERLINE, STRIKETHROUGH");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2542,7 +2621,7 @@ async function setTextAlign(params) {
     throw new Error("Must provide textAlignHorizontal or textAlignVertical");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2588,7 +2667,7 @@ async function getStyledTextSegments(params) {
     throw new Error(`Invalid property. Must be one of: ${validProperties.join(", ")}`);
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2735,7 +2814,7 @@ async function setEffects(params) {
     throw new Error("Missing or invalid effects parameter. Must be an array.");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -2815,7 +2894,7 @@ async function setEffectStyleId(params) {
 
     // Get node and validate in a promise
     const nodePromise = (async () => {
-      const node = await figma.getNodeByIdAsync(nodeId);
+      const node = await getNodeByIdSafe(nodeId);
       if (!node) {
         throw new Error(`Node not found with ID: ${nodeId}`);
       }
@@ -2899,7 +2978,7 @@ async function setTextStyleId(params) {
 
     // Get node and validate in a promise
     const nodePromise = (async () => {
-      const node = await figma.getNodeByIdAsync(nodeId);
+      const node = await getNodeByIdSafe(nodeId);
       if (!node) {
         throw new Error(`Node not found with ID: ${nodeId}`);
       }
@@ -2977,7 +3056,7 @@ async function groupNodes(params) {
     // Get all nodes to be grouped
     const nodesToGroup = [];
     for (const nodeId of nodeIds) {
-      const node = await figma.getNodeByIdAsync(nodeId);
+      const node = await getNodeByIdSafe(nodeId);
       if (!node) {
         throw new Error(`Node not found with ID: ${nodeId}`);
       }
@@ -3020,7 +3099,7 @@ async function ungroupNodes(params) {
   }
 
   try {
-    const node = await figma.getNodeByIdAsync(nodeId);
+    const node = await getNodeByIdSafe(nodeId);
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
     }
@@ -3056,7 +3135,7 @@ async function flattenNode(params) {
   }
 
   try {
-    const node = await figma.getNodeByIdAsync(nodeId);
+    const node = await getNodeByIdSafe(nodeId);
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
     }
@@ -3134,12 +3213,12 @@ async function insertChild(params) {
 
   try {
     // Get the parent and child nodes
-    const parent = await figma.getNodeByIdAsync(parentId);
+    const parent = await getNodeByIdSafe(parentId);
     if (!parent) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
 
-    const child = await figma.getNodeByIdAsync(childId);
+    const child = await getNodeByIdSafe(childId);
     if (!child) {
       throw new Error(`Child node not found with ID: ${childId}`);
     }
@@ -3231,7 +3310,7 @@ async function createEllipse(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -3315,7 +3394,7 @@ async function createPolygon(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -3410,7 +3489,7 @@ async function createStar(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -3505,7 +3584,7 @@ async function createVector(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -3604,7 +3683,7 @@ async function createLine(params) {
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
+    const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
       throw new Error(`Parent node not found with ID: ${parentId}`);
     }
@@ -3644,7 +3723,7 @@ async function renameNode(params) {
     throw new Error("Missing name parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -3672,7 +3751,7 @@ async function createComponentFromNode(params) {
     throw new Error("Missing nodeId parameter");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -3794,7 +3873,7 @@ async function createComponentSet(params) {
 
   const components = [];
   for (const id of componentIds) {
-    const node = await figma.getNodeByIdAsync(id);
+    const node = await getNodeByIdSafe(id);
     if (!node) {
       throw new Error(`Node not found with ID: ${id}`);
     }
@@ -3837,7 +3916,7 @@ async function setInstanceVariant(params) {
     throw new Error("Properties object cannot be empty");
   }
 
-  const node = await figma.getNodeByIdAsync(nodeId);
+  const node = await getNodeByIdSafe(nodeId);
   if (!node) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
@@ -3969,5 +4048,977 @@ async function setCurrentPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+
+// Rotate a node
+async function rotateNode(params) {
+  const { nodeId, angle, relative } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (angle === undefined) {
+    throw new Error("Missing angle parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("rotation" in node)) {
+    throw new Error(`Node type ${node.type} does not support rotation`);
+  }
+
+  if (relative) {
+    node.rotation = node.rotation + angle;
+  } else {
+    node.rotation = angle;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    rotation: node.rotation
+  };
+}
+
+// Set node properties (visibility, lock, opacity)
+async function setNodeProperties(params) {
+  const { nodeId, visible, locked, opacity } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (visible !== undefined) {
+    node.visible = visible;
+  }
+
+  if (locked !== undefined) {
+    node.locked = locked;
+  }
+
+  if (opacity !== undefined) {
+    if (!("opacity" in node)) {
+      throw new Error(`Node type ${node.type} does not support opacity`);
+    }
+    node.opacity = opacity;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    visible: node.visible,
+    locked: node.locked,
+    opacity: "opacity" in node ? node.opacity : undefined
+  };
+}
+
+// Reorder node within its parent (z-order)
+async function reorderNode(params) {
+  const { nodeId, position, index } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  const parent = node.parent;
+  if (!parent || !("children" in parent)) {
+    throw new Error("Node has no parent container or parent does not support children");
+  }
+
+  const siblings = parent.children;
+  const currentIndex = siblings.indexOf(node);
+
+  let targetIndex;
+
+  if (index !== undefined) {
+    targetIndex = Math.max(0, Math.min(index, siblings.length - 1));
+  } else if (position) {
+    switch (position) {
+      case "front":
+        targetIndex = siblings.length - 1;
+        break;
+      case "back":
+        targetIndex = 0;
+        break;
+      case "forward":
+        targetIndex = Math.min(currentIndex + 1, siblings.length - 1);
+        break;
+      case "backward":
+        targetIndex = Math.max(currentIndex - 1, 0);
+        break;
+      default:
+        throw new Error(`Invalid position: ${position}. Use front, back, forward, or backward.`);
+    }
+  } else {
+    throw new Error("Either position or index must be provided");
+  }
+
+  parent.insertChild(targetIndex, node);
+
+  return {
+    id: node.id,
+    name: node.name,
+    newIndex: targetIndex,
+    parentChildCount: siblings.length
+  };
+}
+
+// Duplicate a page
+async function duplicatePage(params) {
+  const { pageId, name } = params || {};
+
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+
+  const page = figma.root.children.find(p => p.id === pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  const originalName = page.name;
+  const clonedPage = page.clone();
+
+  if (name) {
+    clonedPage.name = name;
+  } else {
+    clonedPage.name = `${originalName} (Copy)`;
+  }
+
+  return {
+    id: clonedPage.id,
+    name: clonedPage.name,
+    originalName: originalName,
+    childCount: clonedPage.children.length
+  };
+}
+
+// Convert a group or shape to a frame
+async function convertToFrame(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+    throw new Error(`Node is already a ${node.type}. No conversion needed.`);
+  }
+
+  if (node.type === "PAGE" || node.type === "DOCUMENT") {
+    throw new Error(`Cannot convert ${node.type} to a frame`);
+  }
+
+  const parent = node.parent;
+  if (!parent || !("children" in parent)) {
+    throw new Error("Node has no parent container");
+  }
+
+  const originalType = node.type;
+  const originalName = node.name;
+  const siblings = parent.children;
+  const originalIndex = siblings.indexOf(node);
+
+  // Create new frame
+  const frame = figma.createFrame();
+  frame.name = originalName;
+  frame.x = node.x;
+  frame.y = node.y;
+  frame.resize(node.width, node.height);
+
+  // Copy visual properties if available
+  if ("fills" in node) frame.fills = JSON.parse(JSON.stringify(node.fills));
+  if ("strokes" in node) frame.strokes = JSON.parse(JSON.stringify(node.strokes));
+  if ("strokeWeight" in node) frame.strokeWeight = node.strokeWeight;
+  if ("effects" in node) frame.effects = JSON.parse(JSON.stringify(node.effects));
+  if ("cornerRadius" in node) frame.cornerRadius = node.cornerRadius;
+  if ("opacity" in node) frame.opacity = node.opacity;
+  if ("rotation" in node) frame.rotation = node.rotation;
+  if ("clipsContent" in node) frame.clipsContent = node.clipsContent;
+
+  // Transfer children if the node has them (e.g., groups)
+  let childCount = 0;
+  const isGroup = node.type === "GROUP";
+  if ("children" in node) {
+    const children = [...node.children];
+    childCount = children.length;
+    for (const child of children) {
+      frame.appendChild(child);
+    }
+  }
+
+  // Groups auto-delete when all children are moved out, so check if node still exists
+  // Accessing .parent on a deleted node throws in Figma, so use try/catch
+  let nodeStillExists = true;
+  if (isGroup) {
+    try {
+      nodeStillExists = node.parent !== null;
+    } catch (e) {
+      nodeStillExists = false;
+    }
+  }
+
+  // Insert frame at the correct position in parent
+  // If the group was auto-deleted, originalIndex may be stale — recalculate
+  const insertIndex = nodeStillExists ? originalIndex : Math.min(originalIndex, parent.children.length);
+  parent.insertChild(insertIndex, frame);
+
+  // Remove the original node if it still exists
+  if (nodeStillExists) {
+    try { node.remove(); } catch (e) { /* already removed */ }
+  }
+
+  return {
+    id: frame.id,
+    name: frame.name,
+    originalType: originalType,
+    childCount: childCount
+  };
+}
+
+// Set gradient fill on a node
+async function setGradient(params) {
+  const { nodeId, type, stops, gradientTransform } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("fills" in node)) {
+    throw new Error(`Node type ${node.type} does not support fills`);
+  }
+
+  if (!stops || !Array.isArray(stops) || stops.length < 2) {
+    throw new Error("Gradient requires at least 2 color stops");
+  }
+
+  const gradientStops = stops.map(stop => ({
+    position: stop.position,
+    color: {
+      r: stop.color.r,
+      g: stop.color.g,
+      b: stop.color.b,
+      a: stop.color.a !== undefined ? stop.color.a : 1,
+    },
+  }));
+
+  const gradientFill = {
+    type: type,
+    gradientStops: gradientStops,
+    gradientTransform: gradientTransform || [[1, 0, 0], [0, 1, 0]],
+  };
+
+  node.fills = [gradientFill];
+
+  return {
+    id: node.id,
+    name: node.name,
+    fills: node.fills
+  };
+}
+
+// Boolean operation (union, subtract, intersect, exclude)
+async function booleanOperation(params) {
+  const { nodeIds, operation, name } = params || {};
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length < 2) {
+    throw new Error("At least 2 node IDs are required for boolean operations");
+  }
+
+  if (!operation) {
+    throw new Error("Missing operation parameter");
+  }
+
+  // Resolve all nodes
+  const nodes = [];
+  for (const id of nodeIds) {
+    const node = await getNodeByIdSafe(id);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${id}`);
+    }
+    nodes.push(node);
+  }
+
+  // Validate all nodes share the same parent
+  const parents = new Set(nodes.map(n => n.parent ? n.parent.id : null));
+  if (parents.size > 1) {
+    throw new Error(
+      `All nodes must share the same parent. Found ${parents.size} different parents. ` +
+      `Move nodes into the same frame before performing boolean operations.`
+    );
+  }
+
+  const parent = nodes[0].parent;
+  if (!parent) {
+    throw new Error("Nodes have no parent container");
+  }
+
+  let result;
+  switch (operation) {
+    case "UNION":
+      result = figma.union(nodes, parent);
+      break;
+    case "SUBTRACT":
+      result = figma.subtract(nodes, parent);
+      break;
+    case "INTERSECT":
+      result = figma.intersect(nodes, parent);
+      break;
+    case "EXCLUDE":
+      result = figma.exclude(nodes, parent);
+      break;
+    default:
+      throw new Error(`Invalid operation: ${operation}. Use UNION, SUBTRACT, INTERSECT, or EXCLUDE.`);
+  }
+
+  if (name) {
+    result.name = name;
+  }
+
+  return {
+    id: result.id,
+    name: result.name,
+    type: result.type
+  };
+}
+
+// SVG sanitization - strip scripts, event handlers, external resources
+function sanitizeSvg(svgString) {
+  let clean = svgString;
+  // Strip <script> tags
+  clean = clean.replace(/<script[\s\S]*?<\/script>/gi, '');
+  // Strip event handlers (onclick, onload, etc.) — separate regexes per quote type to handle mixed quotes
+  clean = clean.replace(/\bon\w+\s*=\s*"[^"]*"/gi, '');
+  clean = clean.replace(/\bon\w+\s*=\s*'[^']*'/gi, '');
+  // Strip external resource references
+  clean = clean.replace(/xlink:href\s*=\s*["']https?:\/\/[^"']*["']/gi, '');
+  clean = clean.replace(/href\s*=\s*["']https?:\/\/[^"']*["']/gi, '');
+  // Strip data URIs that could be injection vectors
+  clean = clean.replace(/href\s*=\s*["']data:text\/html[^"']*["']/gi, '');
+  return clean;
+}
+
+// Import SVG string as vector node
+async function setSvg(params) {
+  const { svgString, x, y, name, parentId } = params || {};
+
+  if (!svgString) {
+    throw new Error("Missing svgString parameter");
+  }
+
+  // Validate SVG content
+  if (!svgString.includes('<svg') && !svgString.includes('<?xml')) {
+    throw new Error("Invalid SVG: string must contain an <svg> element");
+  }
+
+  // Sanitize the SVG
+  const cleanSvg = sanitizeSvg(svgString);
+
+  const node = figma.createNodeFromSvg(cleanSvg);
+
+  if (x !== undefined) node.x = x;
+  if (y !== undefined) node.y = y;
+  if (name) node.name = name;
+
+  // If parentId is provided, move into that parent
+  if (parentId) {
+    const parentNode = await getNodeByIdSafe(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    parentNode.appendChild(node);
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    width: node.width,
+    height: node.height,
+    type: node.type
+  };
+}
+
+// Export a node as SVG string
+async function getSvg(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("exportAsync" in node)) {
+    throw new Error(`Node type ${node.type} does not support export`);
+  }
+
+  const svgString = await node.exportAsync({ format: "SVG_STRING" });
+
+  return {
+    svgString: svgString,
+    name: node.name,
+    id: node.id
+  };
+}
+
+// Set image fill on a node from base64-encoded image data
+async function setImage(params) {
+  const { nodeId, imageData, scaleMode } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!imageData) {
+    throw new Error("Missing imageData parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (!("fills" in node)) {
+    throw new Error(`Node type ${node.type} does not support fills`);
+  }
+
+  // Validate base64 charset
+  if (!/^[A-Za-z0-9+/=]+$/.test(imageData)) {
+    throw new Error("Invalid base64 encoding. Ensure the string contains only valid base64 characters (no data URI prefix).");
+  }
+
+  // Decode base64 to Uint8Array (atob is not available in Figma plugin sandbox)
+  const bytes = customBase64Decode(imageData);
+
+  // Check decoded size limit (5MB)
+  if (bytes.length > 5 * 1024 * 1024) {
+    throw new Error("Image exceeds 5MB limit. Use a smaller image or compress it first.");
+  }
+
+  // Create image in Figma and set as fill
+  const image = figma.createImage(bytes);
+  node.fills = [{
+    type: "IMAGE",
+    imageHash: image.hash,
+    scaleMode: scaleMode || "FILL",
+    visible: true,
+    opacity: 1
+  }];
+
+  return {
+    id: node.id,
+    name: node.name,
+    imageHash: image.hash,
+    scaleMode: scaleMode || "FILL"
+  };
+}
+
+// Set layout grids on a frame node
+async function setGrid(params) {
+  const { nodeId, grids } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!grids || !Array.isArray(grids)) {
+    throw new Error("Missing or invalid grids parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (!("layoutGrids" in node)) {
+    throw new Error(`Node type ${node.type} does not support layout grids. Use a frame node.`);
+  }
+
+  const layoutGrids = grids.map(grid => {
+    const layoutGrid = {
+      pattern: grid.pattern,
+      visible: grid.visible !== undefined ? grid.visible : true
+    };
+
+    // Ensure required fields have defaults per pattern type to prevent Figma from hanging
+    if (grid.pattern === "GRID") {
+      layoutGrid.sectionSize = grid.sectionSize !== undefined ? grid.sectionSize : 10;
+    } else {
+      // COLUMNS and ROWS require count, alignment, gutterSize, offset (NO sectionSize)
+      layoutGrid.count = grid.count !== undefined ? grid.count : 5;
+      layoutGrid.alignment = grid.alignment !== undefined ? grid.alignment : "STRETCH";
+      layoutGrid.gutterSize = grid.gutterSize !== undefined ? grid.gutterSize : 10;
+      layoutGrid.offset = grid.offset !== undefined ? grid.offset : 0;
+    }
+
+    if (grid.color) {
+      layoutGrid.color = {
+        r: grid.color.r,
+        g: grid.color.g,
+        b: grid.color.b,
+        a: grid.color.a !== undefined ? grid.color.a : 0.1
+      };
+    }
+
+    return layoutGrid;
+  });
+
+  node.layoutGrids = layoutGrids;
+
+  return {
+    id: node.id,
+    name: node.name,
+    gridCount: layoutGrids.length
+  };
+}
+
+// Get layout grids from a frame node
+async function getGrid(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (!("layoutGrids" in node)) {
+    throw new Error(`Node type ${node.type} does not support layout grids. Use a frame node.`);
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    grids: node.layoutGrids.map(grid => ({
+      pattern: grid.pattern,
+      visible: grid.visible,
+      sectionSize: grid.sectionSize,
+      count: grid.count,
+      gutterSize: grid.gutterSize,
+      offset: grid.offset,
+      alignment: grid.alignment,
+      color: grid.color
+    }))
+  };
+}
+
+// Set guides on a page
+async function setGuide(params) {
+  const { pageId, guides } = params || {};
+
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+  if (!guides || !Array.isArray(guides)) {
+    throw new Error("Missing or invalid guides parameter");
+  }
+
+  const page = figma.root.children.find(p => p.id === pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  page.guides = guides.map(guide => ({
+    axis: guide.axis,
+    offset: guide.offset
+  }));
+
+  return {
+    id: page.id,
+    name: page.name,
+    guideCount: guides.length
+  };
+}
+
+// Get guides from a page
+async function getGuide(params) {
+  const { pageId } = params || {};
+
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+
+  const page = figma.root.children.find(p => p.id === pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  return {
+    id: page.id,
+    name: page.name,
+    guides: (page.guides || []).map(guide => ({
+      axis: guide.axis,
+      offset: guide.offset
+    }))
+  };
+}
+
+// Set annotation on a node (proposed API)
+async function setAnnotation(params) {
+  const { nodeId, label } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!label) {
+    throw new Error("Missing label parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  // Feature detection for annotations API
+  if (!("annotations" in node)) {
+    throw new Error(
+      "Annotations API is not available on this node type (" + node.type + "). " +
+      "Supported types: Frame, Rectangle, Ellipse, Text, Component, Instance, etc."
+    );
+  }
+
+  // node.annotations is ReadonlyArray — must create a new array with deep copies
+  // Strip labelMarkdown from copies since Figma auto-generates it from label
+  // and rejects annotations that have both label + labelMarkdown
+  const existing = node.annotations
+    ? node.annotations.map(a => {
+        const copy = JSON.parse(JSON.stringify(a));
+        if (copy.label && copy.labelMarkdown) {
+          delete copy.labelMarkdown;
+        }
+        return copy;
+      })
+    : [];
+  existing.push({ label: label, properties: [] });
+  node.annotations = existing;
+
+  return {
+    id: node.id,
+    name: node.name,
+    annotationCount: existing.length
+  };
+}
+
+// Get annotations from a node (proposed API)
+async function getAnnotation(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  // Feature detection for proposed API
+  if (!("annotations" in node)) {
+    throw new Error(
+      "Annotations API is not available in this Figma version. " +
+      "Please update Figma Desktop to the latest version. " +
+      "This feature requires the proposed API (enableProposedApi: true in manifest)."
+    );
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    annotations: node.annotations || []
+  };
+}
+
+// Get all variable collections and their variables
+async function getVariables() {
+  // Check if Variables API is available
+  if (!figma.variables) {
+    throw new Error(
+      "Variables API is not available. This feature requires Figma with Variables support. " +
+      "Ensure enableProposedApi is true in the plugin manifest."
+    );
+  }
+
+  const collections = await figma.variables.getLocalVariableCollectionsAsync();
+  const result = [];
+
+  for (const collection of collections) {
+    const variables = [];
+    for (const variableId of collection.variableIds) {
+      const variable = await figma.variables.getVariableByIdAsync(variableId);
+      if (variable) {
+        variables.push({
+          id: variable.id,
+          name: variable.name,
+          resolvedType: variable.resolvedType,
+          valuesByMode: variable.valuesByMode
+        });
+      }
+    }
+
+    result.push({
+      id: collection.id,
+      name: collection.name,
+      modes: collection.modes,
+      variableIds: collection.variableIds,
+      variables: variables
+    });
+  }
+
+  return { collections: result };
+}
+
+// Create or update a variable
+async function setVariable(params) {
+  const { collectionId, collectionName, name, resolvedType, value, modeId } = params || {};
+
+  if (!figma.variables) {
+    throw new Error(
+      "Variables API is not available. This feature requires Figma with Variables support."
+    );
+  }
+
+  if (!name) {
+    throw new Error("Missing name parameter");
+  }
+  if (!resolvedType) {
+    throw new Error("Missing resolvedType parameter");
+  }
+  if (value === undefined || value === null) {
+    throw new Error("Missing value parameter");
+  }
+
+  let collection;
+
+  // Find or create collection
+  if (collectionId) {
+    collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+    if (!collection) {
+      throw new Error(`Variable collection not found: ${collectionId}`);
+    }
+  } else if (collectionName) {
+    // Search existing collections first
+    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    collection = collections.find(c => c.name === collectionName);
+    if (!collection) {
+      // Create new collection
+      collection = figma.variables.createVariableCollection(collectionName);
+    }
+  } else {
+    throw new Error("Either collectionId or collectionName must be provided");
+  }
+
+  // Find existing variable by name in collection, or create new one
+  let variable = null;
+  for (const varId of collection.variableIds) {
+    const v = await figma.variables.getVariableByIdAsync(varId);
+    if (v && v.name === name) {
+      variable = v;
+      break;
+    }
+  }
+
+  if (!variable) {
+    variable = figma.variables.createVariable(name, collection, resolvedType);
+  }
+
+  // Determine mode
+  const targetModeId = modeId || collection.modes[0].modeId;
+
+  // Attempt to parse value based on resolvedType if it's a string (MCP/WS serialization fix)
+  let finalValue = value;
+  if (typeof value === "string") {
+    if (resolvedType === "FLOAT") {
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed)) finalValue = parsed;
+    } else if (resolvedType === "BOOLEAN") {
+      if (value.toLowerCase() === "true") finalValue = true;
+      if (value.toLowerCase() === "false") finalValue = false;
+    } else if (resolvedType === "COLOR") {
+      try {
+        // Try to parse JSON if it's a stringified object
+        if (value.startsWith("{")) {
+          finalValue = JSON.parse(value);
+        }
+      } catch (e) {
+        // Fallback to original value if parsing fails
+      }
+    }
+  }
+
+  // Validate value type matches resolvedType
+  if (resolvedType === "COLOR") {
+    if (typeof finalValue !== "object" || finalValue === null || finalValue.r === undefined) {
+      throw new Error("Value does not match resolvedType. Expected COLOR object {r, g, b, a}, got " + typeof finalValue);
+    }
+  } else if (resolvedType === "FLOAT") {
+    if (typeof finalValue !== "number") {
+      throw new Error("Value does not match resolvedType. Expected FLOAT (number), got " + typeof finalValue);
+    }
+  } else if (resolvedType === "STRING") {
+    if (typeof finalValue !== "string") {
+      throw new Error("Value does not match resolvedType. Expected STRING, got " + typeof finalValue);
+    }
+  } else if (resolvedType === "BOOLEAN") {
+    if (typeof finalValue !== "boolean") {
+      throw new Error("Value does not match resolvedType. Expected BOOLEAN, got " + typeof finalValue);
+    }
+  }
+
+  // Set value for mode
+  variable.setValueForMode(targetModeId, finalValue);
+
+  return {
+    variableId: variable.id,
+    variableName: variable.name,
+    collectionId: collection.id,
+    collectionName: collection.name,
+    resolvedType: variable.resolvedType,
+    value: finalValue
+  };
+}
+
+// Apply a variable binding to a node property
+async function applyVariableToNode(params) {
+  const { nodeId, variableId, field } = params || {};
+
+  if (!figma.variables) {
+    throw new Error(
+      "Variables API is not available. This feature requires Figma with Variables support."
+    );
+  }
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!variableId) {
+    throw new Error("Missing variableId parameter");
+  }
+  if (!field) {
+    throw new Error("Missing field parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  const variable = await figma.variables.getVariableByIdAsync(variableId);
+  if (!variable) {
+    throw new Error(`Variable not found with ID: ${variableId}`);
+  }
+
+  // Apply the variable binding
+  if (!("setBoundVariable" in node)) {
+    throw new Error(`Node type ${node.type} does not support variable bindings`);
+  }
+
+  // Handle paint-level bindings (fills/N/color, strokes/N/color)
+  const paintMatch = field.match(/^(fills|strokes)\/(\d+)\/color$/);
+  if (paintMatch) {
+    const paintProp = paintMatch[1];
+    const paintIndex = parseInt(paintMatch[2], 10);
+
+    if (!(paintProp in node)) {
+      throw new Error(`Node does not have ${paintProp} property`);
+    }
+    const paints = [...node[paintProp]];
+    if (paintIndex >= paints.length) {
+      throw new Error(`${paintProp} index ${paintIndex} out of range (node has ${paints.length} ${paintProp})`);
+    }
+    const paint = Object.assign({}, paints[paintIndex]);
+    paint.boundVariables = Object.assign({}, paint.boundVariables || {});
+    paint.boundVariables.color = { type: "VARIABLE_ALIAS", id: variable.id };
+    paints[paintIndex] = paint;
+    node[paintProp] = paints;
+  } else {
+    node.setBoundVariable(field, variable);
+  }
+
+  return {
+    nodeId: node.id,
+    nodeName: node.name,
+    variableId: variable.id,
+    variableName: variable.name,
+    field: field
+  };
+}
+
+// Switch variable mode on a node for a collection
+async function switchVariableMode(params) {
+  const { nodeId, collectionId, modeId } = params || {};
+
+  if (!figma.variables) {
+    throw new Error(
+      "Variables API is not available. This feature requires Figma with Variables support."
+    );
+  }
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!collectionId) {
+    throw new Error("Missing collectionId parameter");
+  }
+  if (!modeId) {
+    throw new Error("Missing modeId parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("setExplicitVariableModeForCollection" in node)) {
+    throw new Error(`Node type ${node.type} does not support variable mode switching`);
+  }
+
+  const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+  if (!collection) {
+    throw new Error(`Variable collection not found: ${collectionId}`);
+  }
+
+  const mode = collection.modes.find(m => m.modeId === modeId);
+  if (!mode) {
+    throw new Error(`Mode not found with ID: ${modeId} in collection "${collection.name}"`);
+  }
+
+  node.setExplicitVariableModeForCollection(collection, mode.modeId);
+
+  return {
+    nodeId: node.id,
+    nodeName: node.name,
+    collectionId: collection.id,
+    collectionName: collection.name,
+    modeId: mode.modeId,
+    modeName: mode.name
   };
 }
