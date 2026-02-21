@@ -163,8 +163,8 @@ export function registerModificationTools(server: McpServer): void {
     "Move a node to a new position in Figma",
     {
       nodeId: z.string().describe("The ID of the node to move"),
-      x: z.number().describe("New X position"),
-      y: z.number().describe("New Y position"),
+      x: z.number().describe("New X position (local coordinates, relative to parent)"),
+      y: z.number().describe("New Y position (local coordinates, relative to parent)"),
     },
     async ({ nodeId, x, y }) => {
       try {

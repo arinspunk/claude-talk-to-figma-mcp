@@ -82,6 +82,26 @@ Complete reference of the tools Claude can use to interact with Figma.
 | `create_component_instance` | Use components | Consistent UI elements |
 | `set_instance_variant` | Change variant properties | Switch button states |
 
+## Understanding coordinate systems
+
+Figma uses two coordinate systems:
+
+- **Global coordinates** (`absoluteBoundingBox`): Position relative to canvas origin (0,0)
+- **Local coordinates** (`localPosition`): Position relative to parent node
+
+**When to use which:**
+- `get_node_info` returns both `absoluteBoundingBox` (global) and `localPosition` (local)
+- `move_node` expects local coordinates (same as create operations)
+- To move a node to its current position, use `localPosition.x` and `localPosition.y`
+
+**Example:**
+```
+Frame at (100, 50)
+  └─ Rectangle
+     - absoluteBoundingBox: {x: 150, y: 80}  ← Global position
+     - localPosition: {x: 50, y: 30}         ← Use for move_node
+```
+
 ## Effective prompt examples
 
 ```
