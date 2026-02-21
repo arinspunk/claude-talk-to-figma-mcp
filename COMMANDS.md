@@ -22,6 +22,21 @@ Complete reference of the tools Claude can use to interact with Figma.
 | `rename_page` | Rename page | Change a page's name |
 | `set_current_page` | Switch page | Go to a specific page |
 
+## Image tools
+
+| Command | Purpose | Usage example |
+|---------|---------|---------------|
+| `set_image_fill` | Apply image to node | Set product photos, avatars |
+| `get_image_from_node` | Extract image metadata | Audit images in design |
+| `replace_image_fill` | Swap images | Update assets, placeholders |
+| `apply_image_transform` | Adjust image position/scale/rotation | Pan, zoom, rotate image inside node |
+| `set_image_filters` | Apply color/light adjustments | Brightness, contrast, saturation, etc. |
+
+**⚠️ Known Limitations:**
+- **URL images**: Must be whitelisted in `manifest.json` (`allowedDomains`). Use base64 (`sourceType: "base64"`) for no restrictions.
+- **Data URIs not supported**: `data:image/...` format unsupported
+- **Rotation**: 90° increments only (0, 90, 180, 270)
+
 ## Creation tools
 
 | Command | Purpose | Usage example |
