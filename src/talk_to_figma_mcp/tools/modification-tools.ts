@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
 import { applyColorDefaults, applyDefault, FIGMA_DEFAULTS } from "../utils/defaults";
 import { Color } from "../types/color";
+import { coerceJson, coerceBoolean } from "../utils/schema-helpers";
 
 /**
  * Register modification tools to the MCP server
@@ -16,10 +17,10 @@ export function registerModificationTools(server: McpServer): void {
     "Set the fill color of a node in Figma. Alpha component defaults to 1 (fully opaque) if not specified. Use alpha 0 for fully transparent.",
     {
       nodeId: z.string().describe("The ID of the node to modify"),
-      r: z.number().min(0).max(1).describe("Red component (0-1)"),
-      g: z.number().min(0).max(1).describe("Green component (0-1)"),
-      b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-      a: z.number().min(0).max(1).optional().describe("Alpha component (0-1, defaults to 1 if not specified)"),
+      r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
+      g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
+      b: z.coerce.number().min(0).max(1).describe("Blue component (0-1)"),
+      a: z.coerce.number().min(0).max(1).optional().describe("Alpha component (0-1, defaults to 1 if not specified)"),
     },
     async ({ nodeId, r, g, b, a }) => {
       try {
@@ -64,11 +65,11 @@ export function registerModificationTools(server: McpServer): void {
     "Set the stroke color of a node in Figma (defaults: opacity 1, weight 1)",
     {
       nodeId: z.string().describe("The ID of the node to modify"),
-      r: z.number().min(0).max(1).describe("Red component (0-1)"),
-      g: z.number().min(0).max(1).describe("Green component (0-1)"),
-      b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-      a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
-      strokeWeight: z.number().min(0).optional().describe("Stroke weight >= 0)"),
+      r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
+      g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
+      b: z.coerce.number().min(0).max(1).describe("Blue component (0-1)"),
+      a: z.coerce.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
+      strokeWeight: z.coerce.number().min(0).optional().describe("Stroke weight >= 0)"),
     },
     async ({ nodeId, r, g, b, a, strokeWeight }) => {
       try {
@@ -115,10 +116,10 @@ export function registerModificationTools(server: McpServer): void {
     "Recursively change all stroke and fill colors of a node and all its descendants. Works like Figma's 'Selection colors' feature - perfect for recoloring icon instances.",
     {
       nodeId: z.string().describe("The ID of the node to modify (typically an icon instance)"),
-      r: z.number().min(0).max(1).describe("Red component (0-1)"),
-      g: z.number().min(0).max(1).describe("Green component (0-1)"),
-      b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-      a: z.number().min(0).max(1).optional().describe("Alpha component (0-1, defaults to 1)"),
+      r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
+      g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
+      b: z.coerce.number().min(0).max(1).describe("Blue component (0-1)"),
+      a: z.coerce.number().min(0).max(1).optional().describe("Alpha component (0-1, defaults to 1)"),
     },
     async ({ nodeId, r, g, b, a }) => {
       try {
@@ -163,8 +164,8 @@ export function registerModificationTools(server: McpServer): void {
     "Move a node to a new position in Figma",
     {
       nodeId: z.string().describe("The ID of the node to move"),
-      x: z.number().describe("New X position"),
-      y: z.number().describe("New Y position"),
+      x: z.coerce.number().describe("New X position"),
+      y: z.coerce.number().describe("New Y position"),
     },
     async ({ nodeId, x, y }) => {
       try {
@@ -197,8 +198,8 @@ export function registerModificationTools(server: McpServer): void {
     "Resize a node in Figma",
     {
       nodeId: z.string().describe("The ID of the node to resize"),
-      width: z.number().positive().describe("New width"),
-      height: z.number().positive().describe("New height"),
+      width: z.coerce.number().positive().describe("New width"),
+      height: z.coerce.number().positive().describe("New height"),
     },
     async ({ nodeId, width, height }) => {
       try {
@@ -266,10 +267,10 @@ export function registerModificationTools(server: McpServer): void {
     "Set the corner radius of a node in Figma",
     {
       nodeId: z.string().describe("The ID of the node to modify"),
-      radius: z.number().min(0).describe("Corner radius value"),
-      corners: z
+      radius: z.coerce.number().min(0).describe("Corner radius value"),
+      corners: coerceJson(z
         .array(z.boolean())
-        .length(4)
+        .length(4))
         .optional()
         .describe(
           "Optional array of 4 booleans to specify which corners to round [topLeft, topRight, bottomRight, bottomLeft]"
@@ -311,15 +312,15 @@ export function registerModificationTools(server: McpServer): void {
     {
       nodeId: z.string().describe("The ID of the node to configure auto layout"),
       layoutMode: z.enum(["HORIZONTAL", "VERTICAL", "NONE"]).describe("Layout direction"),
-      paddingTop: z.number().optional().describe("Top padding in pixels"),
-      paddingBottom: z.number().optional().describe("Bottom padding in pixels"),
-      paddingLeft: z.number().optional().describe("Left padding in pixels"),
-      paddingRight: z.number().optional().describe("Right padding in pixels"),
-      itemSpacing: z.number().optional().describe("Spacing between items in pixels"),
+      paddingTop: z.coerce.number().optional().describe("Top padding in pixels"),
+      paddingBottom: z.coerce.number().optional().describe("Bottom padding in pixels"),
+      paddingLeft: z.coerce.number().optional().describe("Left padding in pixels"),
+      paddingRight: z.coerce.number().optional().describe("Right padding in pixels"),
+      itemSpacing: z.coerce.number().optional().describe("Spacing between items in pixels"),
       primaryAxisAlignItems: z.enum(["MIN", "CENTER", "MAX", "SPACE_BETWEEN"]).optional().describe("Alignment along primary axis"),
       counterAxisAlignItems: z.enum(["MIN", "CENTER", "MAX"]).optional().describe("Alignment along counter axis"),
       layoutWrap: z.enum(["WRAP", "NO_WRAP"]).optional().describe("Whether items wrap to new lines"),
-      strokesIncludedInLayout: z.boolean().optional().describe("Whether strokes are included in layout calculations")
+      strokesIncludedInLayout: coerceBoolean.optional().describe("Whether strokes are included in layout calculations")
     },
     async ({ nodeId, layoutMode, paddingTop, paddingBottom, paddingLeft, paddingRight,
              itemSpacing, primaryAxisAlignItems, counterAxisAlignItems, layoutWrap, strokesIncludedInLayout }) => {
@@ -366,25 +367,25 @@ export function registerModificationTools(server: McpServer): void {
     "Set the visual effects of a node in Figma",
     {
       nodeId: z.string().describe("The ID of the node to modify"),
-      effects: z.array(
+      effects: coerceJson(z.array(
         z.object({
           type: z.enum(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"]).describe("Effect type"),
           color: z.object({
-            r: z.number().min(0).max(1).describe("Red (0-1)"),
-            g: z.number().min(0).max(1).describe("Green (0-1)"),
-            b: z.number().min(0).max(1).describe("Blue (0-1)"),
-            a: z.number().min(0).max(1).describe("Alpha (0-1)")
+            r: z.coerce.number().min(0).max(1).describe("Red (0-1)"),
+            g: z.coerce.number().min(0).max(1).describe("Green (0-1)"),
+            b: z.coerce.number().min(0).max(1).describe("Blue (0-1)"),
+            a: z.coerce.number().min(0).max(1).describe("Alpha (0-1)")
           }).optional().describe("Effect color (for shadows)"),
           offset: z.object({
-            x: z.number().describe("X offset"),
-            y: z.number().describe("Y offset")
+            x: z.coerce.number().describe("X offset"),
+            y: z.coerce.number().describe("Y offset")
           }).optional().describe("Offset (for shadows)"),
-          radius: z.number().optional().describe("Effect radius"),
-          spread: z.number().optional().describe("Shadow spread (for shadows)"),
+          radius: z.coerce.number().optional().describe("Effect radius"),
+          spread: z.coerce.number().optional().describe("Shadow spread (for shadows)"),
           visible: z.boolean().optional().describe("Whether the effect is visible"),
           blendMode: z.string().optional().describe("Blend mode")
         })
-      ).describe("Array of effects to apply")
+      )).describe("Array of effects to apply")
     },
     async ({ nodeId, effects }) => {
       try {
@@ -460,8 +461,8 @@ export function registerModificationTools(server: McpServer): void {
     "Rotate a node in Figma by a specified angle in degrees (clockwise). Use relative=true to add to the current rotation instead of setting an absolute value. Note: locked nodes can still be rotated — the Plugin API bypasses the UI lock by design.",
     {
       nodeId: z.string().describe("The ID of the node to rotate"),
-      angle: z.number().describe("Rotation angle in degrees (clockwise)"),
-      relative: z.boolean().optional().describe("If true, add angle to current rotation instead of setting absolute value (default: false)"),
+      angle: z.coerce.number().describe("Rotation angle in degrees (clockwise)"),
+      relative: coerceBoolean.optional().describe("If true, add angle to current rotation instead of setting absolute value (default: false)"),
     },
     async ({ nodeId, angle, relative }) => {
       try {
@@ -498,9 +499,9 @@ export function registerModificationTools(server: McpServer): void {
     "Set visibility, lock state, and/or opacity of a node in Figma. Only provided properties are changed; omitted properties remain unchanged.",
     {
       nodeId: z.string().describe("The ID of the node to modify"),
-      visible: z.boolean().optional().describe("Set node visibility (true = visible, false = hidden)"),
-      locked: z.boolean().optional().describe("Set node lock state (true = locked, false = unlocked)"),
-      opacity: z.number().min(0).max(1).optional().describe("Set node opacity (0 = fully transparent, 1 = fully opaque)"),
+      visible: coerceBoolean.optional().describe("Set node visibility (true = visible, false = hidden)"),
+      locked: coerceBoolean.optional().describe("Set node lock state (true = locked, false = unlocked)"),
+      opacity: z.coerce.number().min(0).max(1).optional().describe("Set node opacity (0 = fully transparent, 1 = fully opaque)"),
     },
     async ({ nodeId, visible, locked, opacity }) => {
       try {
@@ -543,7 +544,7 @@ export function registerModificationTools(server: McpServer): void {
     {
       nodeId: z.string().describe("The ID of the node to reorder"),
       position: z.enum(["front", "back", "forward", "backward"]).optional().describe("Move to front/back or one step forward/backward"),
-      index: z.number().optional().describe("Direct index position within parent's children (0 = bottom). Overrides position if both provided."),
+      index: z.coerce.number().optional().describe("Direct index position within parent's children (0 = bottom). Overrides position if both provided."),
     },
     async ({ nodeId, position, index }) => {
       try {
@@ -613,16 +614,16 @@ export function registerModificationTools(server: McpServer): void {
     {
       nodeId: z.string().describe("The ID of the node to modify"),
       type: z.enum(["GRADIENT_LINEAR", "GRADIENT_RADIAL", "GRADIENT_ANGULAR", "GRADIENT_DIAMOND"]).describe("Gradient type"),
-      stops: z.array(z.object({
-        position: z.number().min(0).max(1).describe("Stop position (0-1, where 0 is start and 1 is end)"),
+      stops: coerceJson(z.array(z.object({
+        position: z.coerce.number().min(0).max(1).describe("Stop position (0-1, where 0 is start and 1 is end)"),
         color: z.object({
-          r: z.number().min(0).max(1).describe("Red (0-1)"),
-          g: z.number().min(0).max(1).describe("Green (0-1)"),
-          b: z.number().min(0).max(1).describe("Blue (0-1)"),
-          a: z.number().min(0).max(1).optional().describe("Alpha (0-1, defaults to 1)"),
+          r: z.coerce.number().min(0).max(1).describe("Red (0-1)"),
+          g: z.coerce.number().min(0).max(1).describe("Green (0-1)"),
+          b: z.coerce.number().min(0).max(1).describe("Blue (0-1)"),
+          a: z.coerce.number().min(0).max(1).optional().describe("Alpha (0-1, defaults to 1)"),
         }),
-      })).min(2).describe("Array of gradient color stops (minimum 2)"),
-      gradientTransform: z.array(z.array(z.number())).optional().describe("2x3 affine transform matrix [[a,b,tx],[c,d,ty]]. Defaults to left-to-right linear: [[1,0,0],[0,1,0]]"),
+      })).min(2)).describe("Array of gradient color stops (minimum 2)"),
+      gradientTransform: coerceJson(z.array(z.array(z.coerce.number()))).optional().describe("2x3 affine transform matrix [[a,b,tx],[c,d,ty]]. Defaults to left-to-right linear: [[1,0,0],[0,1,0]]"),
     },
     async ({ nodeId, type, stops, gradientTransform }) => {
       try {
@@ -701,23 +702,23 @@ export function registerModificationTools(server: McpServer): void {
     "Apply layout grids to a frame node in Figma. Supports columns, rows, and grid patterns.",
     {
       nodeId: z.string().describe("The ID of the frame node to apply grids to"),
-      grids: z.array(
+      grids: coerceJson(z.array(
         z.object({
           pattern: z.enum(["COLUMNS", "ROWS", "GRID"]).describe("Grid pattern type"),
-          count: z.number().optional().describe("Number of columns/rows (ignored for GRID)"),
-          sectionSize: z.number().optional().describe("Size of each section in pixels"),
-          gutterSize: z.number().optional().describe("Gutter size between sections in pixels"),
-          offset: z.number().optional().describe("Offset from the edge in pixels"),
+          count: z.coerce.number().optional().describe("Number of columns/rows (ignored for GRID)"),
+          sectionSize: z.coerce.number().optional().describe("Size of each section in pixels"),
+          gutterSize: z.coerce.number().optional().describe("Gutter size between sections in pixels"),
+          offset: z.coerce.number().optional().describe("Offset from the edge in pixels"),
           alignment: z.enum(["MIN", "CENTER", "MAX", "STRETCH"]).optional().describe("Grid alignment"),
           visible: z.boolean().optional().describe("Whether the grid is visible (default: true)"),
           color: z.object({
-            r: z.number().min(0).max(1).describe("Red (0-1)"),
-            g: z.number().min(0).max(1).describe("Green (0-1)"),
-            b: z.number().min(0).max(1).describe("Blue (0-1)"),
-            a: z.number().min(0).max(1).describe("Alpha (0-1)")
+            r: z.coerce.number().min(0).max(1).describe("Red (0-1)"),
+            g: z.coerce.number().min(0).max(1).describe("Green (0-1)"),
+            b: z.coerce.number().min(0).max(1).describe("Blue (0-1)"),
+            a: z.coerce.number().min(0).max(1).describe("Alpha (0-1)")
           }).optional().describe("Grid color")
         })
-      ).describe("Array of layout grids to apply")
+      )).describe("Array of layout grids to apply")
     },
     async ({ nodeId, grids }) => {
       try {
@@ -782,12 +783,12 @@ export function registerModificationTools(server: McpServer): void {
     "Set guides on a page in Figma. Replaces all existing guides on the page.",
     {
       pageId: z.string().describe("The ID of the page to add guides to"),
-      guides: z.array(
+      guides: coerceJson(z.array(
         z.object({
           axis: z.enum(["X", "Y"]).describe("Guide axis: X for vertical, Y for horizontal"),
-          offset: z.number().describe("Offset position of the guide in pixels")
+          offset: z.coerce.number().describe("Offset position of the guide in pixels")
         })
-      ).describe("Array of guides to set on the page")
+      )).describe("Array of guides to set on the page")
     },
     async ({ pageId, guides }) => {
       try {

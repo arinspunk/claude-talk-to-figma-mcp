@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
+import { coerceJson } from "../utils/schema-helpers";
 
 /**
  * Register component-related tools to the MCP server
@@ -14,8 +15,8 @@ export function registerComponentTools(server: McpServer): void {
     "Create an instance of a component in Figma",
     {
       componentKey: z.string().describe("Key of the component to instantiate"),
-      x: z.number().describe("X position"),
-      y: z.number().describe("Y position"),
+      x: z.coerce.number().describe("X position"),
+      y: z.coerce.number().describe("Y position"),
     },
     async ({ componentKey, x, y }) => {
       try {
@@ -87,7 +88,7 @@ export function registerComponentTools(server: McpServer): void {
     "create_component_set",
     "Create a component set (variants) from multiple component nodes in Figma",
     {
-      componentIds: z.array(z.string()).describe("Array of component node IDs to combine into a component set"),
+      componentIds: coerceJson(z.array(z.string())).describe("Array of component node IDs to combine into a component set"),
       name: z.string().optional().describe("Optional name for the component set"),
     },
     async ({ componentIds, name }) => {
@@ -124,7 +125,7 @@ export function registerComponentTools(server: McpServer): void {
     "Change the variant properties of a component instance without recreating it. This preserves instance overrides and is more efficient than delete + create workflow.",
     {
       nodeId: z.string().describe("The ID of the instance node to modify"),
-      properties: z.record(z.string()).describe("Variant properties to set as key-value pairs (e.g., { \"State\": \"Hover\", \"Size\": \"Large\" })"),
+      properties: coerceJson(z.record(z.string())).describe("Variant properties to set as key-value pairs (e.g., { \"State\": \"Hover\", \"Size\": \"Large\" })"),
     },
     async ({ nodeId, properties }) => {
       try {
