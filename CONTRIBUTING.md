@@ -164,7 +164,7 @@ git checkout -b feature/my-new-feature
 ## Contributors
 
 - **[sometimesdante](https://github.com/sometimesdante)** — Full instruction copy on channel click.
-- **[ehs208](https://github.com/ehs208)** — Configuration script, Korean localization, channel verification ping, `set_instance_variant` tool, coordinate system unification, and Docker orchestration.
+- **[ehs208](https://github.com/ehs208)** — Configuration script, Korean localization, channel verification ping, `set_instance_variant` tool, coordinate system unification, Docker orchestration, and image manipulation tools.
 - **[mmabas77](https://github.com/mmabas77)** — Full text alignment support, RTL/Arabic languages, `set_selection_colors` tool, and massive expansion with 20+ new tools (variables, gradients, grids, and transformations).
 - **[leeyc09](https://github.com/leeyc09)** — Fixed-width text support and dependency stability improvements.
 - **[Rob Dearborn](https://github.com/rfdearborn)** — Component optimization and `set_text_style_id` tool.
