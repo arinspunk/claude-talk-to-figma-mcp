@@ -224,6 +224,19 @@ async function handleCommand(command, params) {
       return await setCurrentPage(params);
     case "rename_node":
       return await renameNode(params);
+    case "set_image_fill":
+      return await setImageFill(params);
+    case "get_image_from_node":
+      return await getImageFromNode(params);
+    case "replace_image_fill":
+      return await replaceImageFill(params);
+    // COMMENTED OUT: get_image_bytes - Issues pending investigation
+    // case "get_image_bytes":
+    //   return await getImageBytes(params);
+    case "apply_image_transform":
+      return await applyImageTransform(params);
+    case "set_image_filters":
+      return await setImageFilters(params);
     case "rotate_node":
       return await rotateNode(params);
     case "set_node_properties":
@@ -4063,6 +4076,388 @@ async function setCurrentPage(params) {
     id: page.id,
     name: page.name
   };
+}
+
+// Helper function: base64 to Uint8Array decoder
+function base64ToUint8Array(base64) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) {
+    lookup[chars.charCodeAt(i)] = i;
+  }
+
+  const paddingLength = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  const cleanBase64 = base64.replace(/[^A-Za-z0-9+/]/g, '');
+  const len = cleanBase64.length;
+  const byteLength = (len * 3 / 4) - paddingLength;
+  const bytes = new Uint8Array(byteLength);
+
+  let p = 0;
+  for (let i = 0; i < len; i += 4) {
+    const encoded1 = lookup[cleanBase64.charCodeAt(i)];
+    const encoded2 = lookup[cleanBase64.charCodeAt(i + 1)];
+    const encoded3 = lookup[cleanBase64.charCodeAt(i + 2)];
+    const encoded4 = lookup[cleanBase64.charCodeAt(i + 3)];
+
+    bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+    if (i + 2 < len && cleanBase64[i + 2] !== '=') {
+      bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+    }
+    if (i + 3 < len && cleanBase64[i + 3] !== '=') {
+      bytes[p++] = ((encoded3 & 3) << 6) | encoded4;
+    }
+  }
+
+  return bytes;
+}
+
+// Image manipulation commands
+
+async function setImageFill(params) {
+  try {
+    const { nodeId, imageSource, sourceType, scaleMode } = params || {};
+
+    if (!nodeId || !imageSource || !sourceType) {
+      throw new Error("Missing required parameters: nodeId, imageSource, sourceType");
+    }
+
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+
+    if (!("fills" in node)) {
+      throw new Error(`Node type ${node.type} does not support fills`);
+    }
+    let image;
+
+    if (sourceType === "url") {
+      image = await figma.createImageAsync(imageSource);
+    } else if (sourceType === "base64") {
+      const imageBytes = base64ToUint8Array(imageSource);
+      image = figma.createImage(imageBytes);
+    } else {
+      throw new Error(`Invalid sourceType: ${sourceType}. Must be 'url' or 'base64'`);
+    }
+
+    const imageSize = await image.getSizeAsync();
+    if (imageSize.width > 4096 || imageSize.height > 4096) {
+      throw new Error(`Image size ${imageSize.width}x${imageSize.height} exceeds Figma limit of 4096x4096`);
+    }
+
+    const imageFill = {
+      type: "IMAGE",
+      scaleMode: scaleMode || "FILL",
+      imageHash: image.hash,
+    };
+
+    node.fills = [imageFill];
+
+    return {
+      name: node.name,
+      scaleMode: imageFill.scaleMode,
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Error setting image fill: ${errorMsg}`);
+  }
+}
+
+async function getImageFromNode(params) {
+  try {
+    const { nodeId } = params || {};
+
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+
+    if (!("fills" in node)) {
+      throw new Error(`Node type ${node.type} does not support fills`);
+    }
+
+    const fills = Array.isArray(node.fills) ? node.fills : [];
+    const imageFill = fills.find(fill => fill.type === "IMAGE");
+
+    if (!imageFill) {
+      return {
+        name: node.name,
+        hasImage: false,
+      };
+    }
+
+    const image = figma.getImageByHash(imageFill.imageHash);
+    const imageSize = image ? await image.getSizeAsync() : null;
+
+    return {
+      name: node.name,
+      hasImage: true,
+      imageHash: imageFill.imageHash,
+      scaleMode: imageFill.scaleMode,
+      imageSize: imageSize,
+      rotation: imageFill.rotation || 0,
+      filters: imageFill.filters || null,
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Error getting image from node: ${errorMsg}`);
+  }
+}
+
+async function replaceImageFill(params) {
+  try {
+    const { nodeId, newImageSource, sourceType, preserveTransform } = params || {};
+
+    if (!nodeId || !newImageSource || !sourceType) {
+      throw new Error("Missing required parameters: nodeId, newImageSource, sourceType");
+    }
+
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+
+    if (!("fills" in node)) {
+      throw new Error(`Node type ${node.type} does not support fills`);
+    }
+
+    const fills = Array.isArray(node.fills) ? node.fills : [];
+    const imageFillIndex = fills.findIndex(fill => fill.type === "IMAGE");
+
+    if (imageFillIndex === -1) {
+      throw new Error(`Node does not have an existing image fill to replace`);
+    }
+
+    const existingImageFill = fills[imageFillIndex];
+    let newImage;
+
+    if (sourceType === "url") {
+      newImage = await figma.createImageAsync(newImageSource);
+    } else if (sourceType === "base64") {
+      const imageBytes = base64ToUint8Array(newImageSource);
+      newImage = figma.createImage(imageBytes);
+    } else {
+      throw new Error(`Invalid sourceType: ${sourceType}`);
+    }
+
+    const newImageFill = {
+      type: "IMAGE",
+      imageHash: newImage.hash,
+    };
+
+    if (preserveTransform !== false) {
+      if (existingImageFill.scaleMode) newImageFill.scaleMode = existingImageFill.scaleMode;
+      if (existingImageFill.imageTransform) newImageFill.imageTransform = existingImageFill.imageTransform;
+      if (existingImageFill.rotation) newImageFill.rotation = existingImageFill.rotation;
+      if (existingImageFill.scalingFactor) newImageFill.scalingFactor = existingImageFill.scalingFactor;
+      if (existingImageFill.filters) newImageFill.filters = existingImageFill.filters;
+    } else {
+      newImageFill.scaleMode = "FILL";
+    }
+
+    const newFills = fills.slice();
+    newFills[imageFillIndex] = newImageFill;
+    node.fills = newFills;
+
+    return {
+      name: node.name,
+      preserved: preserveTransform !== false,
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Error replacing image fill: ${errorMsg}`);
+  }
+}
+
+// COMMENTED OUT: getImageBytes - Issues pending investigation
+// Known issues: 400 errors, inconsistent behavior (black images), file save path needs discussion
+/*
+async function getImageBytes(params) {
+  try {
+    const { imageHash, nodeId } = params || {};
+
+    if (!imageHash && !nodeId) {
+      throw new Error("Either imageHash or nodeId must be provided");
+    }
+    let image;
+
+    if (imageHash) {
+      image = figma.getImageByHash(imageHash);
+      if (!image) {
+        throw new Error(`Image not found with hash: ${imageHash}`);
+      }
+    } else {
+      const node = await figma.getNodeByIdAsync(nodeId);
+      if (!node) {
+        throw new Error(`Node not found with ID: ${nodeId}`);
+      }
+
+      if (!("fills" in node)) {
+        throw new Error(`Node type ${node.type} does not support fills`);
+      }
+
+      const fills = Array.isArray(node.fills) ? node.fills : [];
+      const imageFill = fills.find(fill => fill.type === "IMAGE");
+
+      if (!imageFill) {
+        throw new Error(`Node does not have an image fill`);
+      }
+
+      image = figma.getImageByHash(imageFill.imageHash);
+      if (!image) {
+        throw new Error(`Image not found for node`);
+      }
+    }
+
+    const bytes = await image.getBytesAsync();
+    const base64 = customBase64Encode(bytes);
+
+    return {
+      imageData: base64,
+      mimeType: "image/png",
+      size: bytes.length,
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Error getting image bytes: ${errorMsg}`);
+  }
+}
+*/
+
+async function applyImageTransform(params) {
+  try {
+    const { nodeId, scaleMode, rotation, translateX, translateY, scale } = params || {};
+
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+
+    if (!("fills" in node)) {
+      throw new Error(`Node type ${node.type} does not support fills`);
+    }
+
+    const fills = Array.isArray(node.fills) ? node.fills : [];
+    const imageFillIndex = fills.findIndex(fill => fill.type === "IMAGE");
+
+    if (imageFillIndex === -1) {
+      throw new Error(`Node does not have an image fill`);
+    }
+
+    const imageFill = Object.assign({}, fills[imageFillIndex]);
+    const transformApplied = [];
+
+    if (scaleMode !== undefined) {
+      imageFill.scaleMode = scaleMode;
+      transformApplied.push(`scaleMode: ${scaleMode}`);
+    }
+
+    if (rotation !== undefined) {
+      if (![0, 90, 180, 270].includes(rotation)) {
+        throw new Error("Rotation must be 0, 90, 180, or 270 degrees");
+      }
+      imageFill.rotation = rotation;
+      transformApplied.push(`rotation: ${rotation}°`);
+    }
+
+    if (translateX !== undefined || translateY !== undefined || scale !== undefined) {
+      const currentTransform = imageFill.imageTransform || [[1, 0, 0], [0, 1, 0]];
+      const newTransform = [
+        [currentTransform[0][0], currentTransform[0][1], currentTransform[0][2]],
+        [currentTransform[1][0], currentTransform[1][1], currentTransform[1][2]]
+      ];
+
+      if (scale !== undefined) {
+        newTransform[0][0] = scale;
+        newTransform[1][1] = scale;
+        transformApplied.push(`scale: ${scale}`);
+      }
+
+      if (translateX !== undefined) {
+        newTransform[0][2] = translateX;
+        transformApplied.push(`translateX: ${translateX}`);
+      }
+
+      if (translateY !== undefined) {
+        newTransform[1][2] = translateY;
+        transformApplied.push(`translateY: ${translateY}`);
+      }
+
+      imageFill.imageTransform = newTransform;
+    }
+
+    const newFills = fills.slice();
+    newFills[imageFillIndex] = imageFill;
+    node.fills = newFills;
+
+    return {
+      name: node.name,
+      transformApplied: transformApplied.length > 0 ? transformApplied : ["no changes"],
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Error applying image transform: ${errorMsg}`);
+  }
+}
+
+async function setImageFilters(params) {
+  try {
+    const nodeId = params.nodeId;
+    const filters = params.filters;
+
+    if (!nodeId || !filters) {
+      throw new Error("Missing required parameters: nodeId, filters");
+    }
+
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error("Node not found with ID: " + nodeId);
+    }
+
+    if (!("fills" in node)) {
+      throw new Error("Node type " + node.type + " does not support fills");
+    }
+
+    const fills = Array.isArray(node.fills) ? node.fills : [];
+    const imageFillIndex = fills.findIndex(function(f) { return f.type === "IMAGE"; });
+
+    if (imageFillIndex === -1) {
+      throw new Error("Node does not have an image fill");
+    }
+
+    const imageFill = Object.assign({}, fills[imageFillIndex]);
+
+    const currentFilters = imageFill.filters || {};
+    const newFilters = Object.assign({}, currentFilters);
+
+    if (filters.exposure !== undefined) newFilters.exposure = filters.exposure;
+    if (filters.contrast !== undefined) newFilters.contrast = filters.contrast;
+    if (filters.saturation !== undefined) newFilters.saturation = filters.saturation;
+    if (filters.temperature !== undefined) newFilters.temperature = filters.temperature;
+    if (filters.tint !== undefined) newFilters.tint = filters.tint;
+    if (filters.highlights !== undefined) newFilters.highlights = filters.highlights;
+    if (filters.shadows !== undefined) newFilters.shadows = filters.shadows;
+
+    imageFill.filters = newFilters;
+
+    const newFills = fills.slice();
+    newFills[imageFillIndex] = imageFill;
+    node.fills = newFills;
+
+    return {
+      name: node.name,
+      appliedFilters: newFilters
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error("Error setting image filters: " + errorMsg);
+  }
 }
 
 // Rotate a node

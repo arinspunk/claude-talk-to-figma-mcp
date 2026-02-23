@@ -97,6 +97,12 @@ export type FigmaCommand =
   | "set_current_page"
   | "rename_node"
   | "set_selection_colors"
+  | "set_image_fill"
+  | "get_image_from_node"
+  | "replace_image_fill"
+  // | "get_image_bytes" // COMMENTED OUT: Issues pending investigation
+  | "apply_image_transform"
+  | "set_image_filters"
   | "rotate_node"
   | "set_node_properties"
   | "reorder_node"
