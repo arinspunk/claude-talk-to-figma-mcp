@@ -321,6 +321,14 @@ async function getNodeInfo(nodeId) {
     format: "JSON_REST_V1",
   });
 
+  // Add local coordinates if node supports positioning
+  if ("x" in node && "y" in node) {
+    response.document.localPosition = {
+      x: node.x,
+      y: node.y
+    };
+  }
+
   return response.document;
 }
 
