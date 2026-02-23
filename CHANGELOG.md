@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Standardized `x`/`y` descriptions across all creation, component, and modification tools to explicitly mention local coordinates.
   - Added `localPosition` support to `get_nodes_info` (batch) for full parity with single-node inspection.
   - Optimized `get_nodes_info` to use a high-performance native batch implementation in the Figma plugin side.
+- **Docker**: Improved Docker implementation and documentation (#56) (Thanks to [ehs208](https://github.com/ehs208) - [PR #56](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/56))
+  - Fixed Dockerfile to run as a network bridge (WebSocket server) instead of a standalone MCP client.
+  - Added comprehensive Docker installation guide to `INSTALLATION.md`.
+  - Simplified Docker pointers in `README.md`.
 
 ## [0.9.0] - 2026-02-20
 
