@@ -14,8 +14,8 @@ export function registerComponentTools(server: McpServer): void {
     "Create an instance of a component in Figma",
     {
       componentKey: z.string().describe("Key of the component to instantiate"),
-      x: z.number().describe("X position"),
-      y: z.number().describe("Y position"),
+      x: z.number().describe("X position (local coordinates, relative to parent)"),
+      y: z.number().describe("Y position (local coordinates, relative to parent)"),
     },
     async ({ componentKey, x, y }) => {
       try {

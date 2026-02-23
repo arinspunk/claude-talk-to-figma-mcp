@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- Fixed coordinate system mismatch between `get_node_info` and `move_node` (#27)
-  - `get_node_info` now returns both `absoluteBoundingBox` (global) and `localPosition` (local)
-  - Updated tool descriptions to clarify coordinate systems
-  - Added coordinate conversion utilities in `figma-helpers.ts`
+- **Coordinate System**: Fixed coordinate system mismatch between `get_node_info` and `move_node` (#27) (Thanks to [ehs208](https://github.com/ehs208) - [PR #57](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/57))
+  - `get_node_info` now returns both `absoluteBoundingBox` (global) and `localPosition` (local).
+  - Added coordinate conversion utilities in `figma-helpers.ts`.
+- **Coordinate System Refinement**: Unified coordinate handling across the entire MCP ecosystem.
+  - Standardized `x`/`y` descriptions across all creation, component, and modification tools to explicitly mention local coordinates.
+  - Added `localPosition` support to `get_nodes_info` (batch) for full parity with single-node inspection.
+  - Optimized `get_nodes_info` to use a high-performance native batch implementation in the Figma plugin side.
 
 ## [0.9.0] - 2026-02-20
 

@@ -113,17 +113,12 @@ export function registerDocumentTools(server: McpServer): void {
     },
     async ({ nodeIds }) => {
       try {
-        const results = await Promise.all(
-          nodeIds.map(async (nodeId) => {
-            const result = await sendCommandToFigma('get_node_info', { nodeId });
-            return { nodeId, info: result };
-          })
-        );
+        const results = await sendCommandToFigma('get_nodes_info', { nodeIds }) as any[];
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(results.map((result) => filterFigmaNode(result.info)))
+              text: JSON.stringify(results.map((result) => filterFigmaNode(result.document || result.info)))
             }
           ]
         };

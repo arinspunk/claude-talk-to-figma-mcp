@@ -13,8 +13,8 @@ export function registerCreationTools(server: McpServer): void {
     "create_rectangle",
     "Create a new rectangle in Figma",
     {
-      x: z.number().describe("X position"),
-      y: z.number().describe("Y position"),
+      x: z.number().describe("X position (local coordinates, relative to parent)"),
+      y: z.number().describe("Y position (local coordinates, relative to parent)"),
       width: z.number().describe("Width of the rectangle"),
       height: z.number().describe("Height of the rectangle"),
       name: z.string().optional().describe("Optional name for the rectangle"),
@@ -59,8 +59,8 @@ export function registerCreationTools(server: McpServer): void {
     "create_frame",
     "Create a new frame in Figma",
     {
-      x: z.number().describe("X position"),
-      y: z.number().describe("Y position"),
+      x: z.number().describe("X position (local coordinates, relative to parent)"),
+      y: z.number().describe("Y position (local coordinates, relative to parent)"),
       width: z.number().describe("Width of the frame"),
       height: z.number().describe("Height of the frame"),
       name: z.string().optional().describe("Optional name for the frame"),
@@ -148,8 +148,8 @@ export function registerCreationTools(server: McpServer): void {
     "create_text",
     "Create a new text element in Figma",
     {
-      x: z.number().describe("X position"),
-      y: z.number().describe("Y position"),
+      x: z.number().describe("X position (local coordinates, relative to parent)"),
+      y: z.number().describe("Y position (local coordinates, relative to parent)"),
       text: z.string().describe("Text content"),
       fontSize: z.number().optional().describe("Font size (default: 14)"),
       fontWeight: z
@@ -228,8 +228,8 @@ export function registerCreationTools(server: McpServer): void {
     "create_ellipse",
     "Create a new ellipse in Figma",
     {
-      x: z.number().describe("X position"),
-      y: z.number().describe("Y position"),
+      x: z.number().describe("X position (local coordinates, relative to parent)"),
+      y: z.number().describe("Y position (local coordinates, relative to parent)"),
       width: z.number().describe("Width of the ellipse"),
       height: z.number().describe("Height of the ellipse"),
       name: z.string().optional().describe("Optional name for the ellipse"),
@@ -295,8 +295,8 @@ export function registerCreationTools(server: McpServer): void {
     "create_polygon",
     "Create a new polygon in Figma",
     {
-      x: z.number().describe("X position"),
-      y: z.number().describe("Y position"),
+      x: z.number().describe("X position (local coordinates, relative to parent)"),
+      y: z.number().describe("Y position (local coordinates, relative to parent)"),
       width: z.number().describe("Width of the polygon"),
       height: z.number().describe("Height of the polygon"),
       sides: z.number().min(3).optional().describe("Number of sides (default: 6)"),
@@ -364,8 +364,8 @@ export function registerCreationTools(server: McpServer): void {
     "create_star",
     "Create a new star in Figma",
     {
-      x: z.number().describe("X position"),
-      y: z.number().describe("Y position"),
+      x: z.number().describe("X position (local coordinates, relative to parent)"),
+      y: z.number().describe("Y position (local coordinates, relative to parent)"),
       width: z.number().describe("Width of the star"),
       height: z.number().describe("Height of the star"),
       points: z.number().min(3).optional().describe("Number of points (default: 5)"),
@@ -517,8 +517,8 @@ export function registerCreationTools(server: McpServer): void {
     "Clone an existing node in Figma",
     {
       nodeId: z.string().describe("The ID of the node to clone"),
-      x: z.number().optional().describe("New X position for the clone"),
-      y: z.number().optional().describe("New Y position for the clone")
+      x: z.number().optional().describe("New X position for the clone (local coordinates, relative to parent)"),
+      y: z.number().optional().describe("New Y position for the clone (local coordinates, relative to parent)")
     },
     async ({ nodeId, x, y }) => {
       try {

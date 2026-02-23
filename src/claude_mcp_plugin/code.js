@@ -348,9 +348,17 @@ async function getNodesInfo(nodeIds) {
         const response = await node.exportAsync({
           format: "JSON_REST_V1",
         });
+        const doc = response.document;
+        // Add local coordinates if node supports positioning
+        if ("x" in node && "y" in node) {
+          doc.localPosition = {
+            x: node.x,
+            y: node.y
+          };
+        }
         return {
           nodeId: node.id,
-          document: response.document,
+          document: doc,
         };
       })
     );
