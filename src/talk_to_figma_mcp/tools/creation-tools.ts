@@ -186,8 +186,13 @@ export function registerCreationTools(server: McpServer): void {
         .enum(["WIDTH_AND_HEIGHT", "HEIGHT", "NONE", "TRUNCATE"])
         .optional()
         .describe("Text resize behavior. Use HEIGHT for fixed-width text that wraps."),
+      width: z
+        .number()
+        .positive()
+        .optional()
+        .describe("Fixed width for the text node. Use with textAutoResize HEIGHT for wrapping text within a specific width."),
     },
-    async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId, textAlignHorizontal, textAutoResize }) => {
+    async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId, textAlignHorizontal, textAutoResize, width }) => {
       try {
         const result = await sendCommandToFigma("create_text", {
           x,
@@ -200,6 +205,7 @@ export function registerCreationTools(server: McpServer): void {
           parentId,
           textAlignHorizontal,
           textAutoResize,
+          width,
         });
         const typedResult = result as { name: string; id: string };
         return {

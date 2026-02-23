@@ -502,6 +502,7 @@ async function createText(params) {
     parentId,
     textAlignHorizontal,
     textAutoResize,
+    width,
   } = params || {};
 
   // Map common font weights to Figma font styles
@@ -544,7 +545,7 @@ async function createText(params) {
   } catch (error) {
     console.error("Error setting font size", error);
   }
-  setCharacters(textNode, text);
+  await setCharacters(textNode, text);
 
   // Set text color
   const paintStyle = {
@@ -566,6 +567,11 @@ async function createText(params) {
   // Set text auto resize if provided (WIDTH_AND_HEIGHT, HEIGHT, NONE, TRUNCATE)
   if (textAutoResize && ["WIDTH_AND_HEIGHT", "HEIGHT", "NONE", "TRUNCATE"].includes(textAutoResize)) {
     textNode.textAutoResize = textAutoResize;
+  }
+
+  // Set width if provided (useful with textAutoResize "HEIGHT" for fixed-width wrapping text)
+  if (width && typeof width === "number" && width > 0) {
+    textNode.resize(width, textNode.height);
   }
 
   // If parentId is provided, append to that node, otherwise append to current page
