@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed Dockerfile to run as a network bridge (WebSocket server) instead of a standalone MCP client.
   - Added comprehensive Docker installation guide to `INSTALLATION.md`.
   - Simplified Docker pointers in `README.md`.
+- **Text Styling & Stability**: Enhanced text creation and dependency reliability (Thanks to [leeyc09](https://github.com/leeyc09) - [PR #59](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/59))
+  - Added `width` parameter to `create_text` tool for fixed-width text wrapping.
+  - Pinned `zod` dependency to `^3.24.0` to resolve installation issues (#80).
+  - Fixed plugin race condition by awaiting `setCharacters` in text node creation.
 
 ## [0.9.0] - 2026-02-20
 
