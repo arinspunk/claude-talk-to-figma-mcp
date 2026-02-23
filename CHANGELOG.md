@@ -24,6 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Notes
 - **Image Sources**: Base64 fully supported, external URLs restricted by manifest.json allowedDomains, Data URIs not supported by Figma API
 - **Image Rotation vs Node Rotation**: `apply_image_transform` rotates the image fill inside the node boundary (node shape unchanged). To rotate the entire node, use a separate node rotation tool (not yet implemented).
+- **Coordinate System**: Fixed coordinate system mismatch between `get_node_info` and `move_node` (#27) (Thanks to [ehs208](https://github.com/ehs208) - [PR #57](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/57))
+  - `get_node_info` now returns both `absoluteBoundingBox` (global) and `localPosition` (local).
+  - Added coordinate conversion utilities in `figma-helpers.ts`.
+- **Coordinate System Refinement**: Unified coordinate handling across the entire MCP ecosystem.
+  - Standardized `x`/`y` descriptions across all creation, component, and modification tools to explicitly mention local coordinates.
+  - Added `localPosition` support to `get_nodes_info` (batch) for full parity with single-node inspection.
+  - Optimized `get_nodes_info` to use a high-performance native batch implementation in the Figma plugin side.
+- **Docker**: Improved Docker implementation and documentation (#56) (Thanks to [ehs208](https://github.com/ehs208) - [PR #56](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/56))
+  - Fixed Dockerfile to run as a network bridge (WebSocket server) instead of a standalone MCP client.
+  - Added comprehensive Docker installation guide to `INSTALLATION.md`.
+  - Simplified Docker pointers in `README.md`.
+- **Text Styling & Stability**: Enhanced text creation and dependency reliability (Thanks to [leeyc09](https://github.com/leeyc09) - [PR #59](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/59))
+  - Added `width` parameter to `create_text` tool for fixed-width text wrapping.
+  - Pinned `zod` dependency to `^3.24.0` to resolve installation issues (#80).
+  - Fixed plugin race condition by awaiting `setCharacters` in text node creation.
 
 ## [0.9.0] - 2026-02-20
 

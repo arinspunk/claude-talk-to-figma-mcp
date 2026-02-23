@@ -86,6 +86,10 @@ export function filterFigmaNode(node: any) {
     filtered.absoluteBoundingBox = node.absoluteBoundingBox;
   }
 
+  if (node.localPosition) {
+    filtered.localPosition = node.localPosition;
+  }
+
   if (node.characters) {
     filtered.characters = node.characters;
   }
@@ -109,6 +113,36 @@ export function filterFigmaNode(node: any) {
   }
 
   return filtered;
+}
+
+/**
+ * Convert global coordinates to local coordinates relative to a parent
+ */
+export function globalToLocal(
+  globalX: number,
+  globalY: number,
+  parentGlobalX: number = 0,
+  parentGlobalY: number = 0
+): { x: number; y: number } {
+  return {
+    x: globalX - parentGlobalX,
+    y: globalY - parentGlobalY
+  };
+}
+
+/**
+ * Convert local coordinates to global coordinates
+ */
+export function localToGlobal(
+  localX: number,
+  localY: number,
+  parentGlobalX: number = 0,
+  parentGlobalY: number = 0
+): { x: number; y: number } {
+  return {
+    x: localX + parentGlobalX,
+    y: localY + parentGlobalY
+  };
 }
 
 /**

@@ -334,6 +334,14 @@ async function getNodeInfo(nodeId) {
     format: "JSON_REST_V1",
   });
 
+  // Add local coordinates if node supports positioning
+  if ("x" in node && "y" in node) {
+    response.document.localPosition = {
+      x: node.x,
+      y: node.y
+    };
+  }
+
   return response.document;
 }
 
@@ -353,9 +361,17 @@ async function getNodesInfo(nodeIds) {
         const response = await node.exportAsync({
           format: "JSON_REST_V1",
         });
+        const doc = response.document;
+        // Add local coordinates if node supports positioning
+        if ("x" in node && "y" in node) {
+          doc.localPosition = {
+            x: node.x,
+            y: node.y
+          };
+        }
         return {
           nodeId: node.id,
-          document: response.document,
+          document: doc,
         };
       })
     );
@@ -499,6 +515,7 @@ async function createText(params) {
     parentId,
     textAlignHorizontal,
     textAutoResize,
+    width,
   } = params || {};
 
   // Map common font weights to Figma font styles
@@ -541,7 +558,7 @@ async function createText(params) {
   } catch (error) {
     console.error("Error setting font size", error);
   }
-  setCharacters(textNode, text);
+  await setCharacters(textNode, text);
 
   // Set text color
   const paintStyle = {
@@ -563,6 +580,11 @@ async function createText(params) {
   // Set text auto resize if provided (WIDTH_AND_HEIGHT, HEIGHT, NONE, TRUNCATE)
   if (textAutoResize && ["WIDTH_AND_HEIGHT", "HEIGHT", "NONE", "TRUNCATE"].includes(textAutoResize)) {
     textNode.textAutoResize = textAutoResize;
+  }
+
+  // Set width if provided (useful with textAutoResize "HEIGHT" for fixed-width wrapping text)
+  if (width && typeof width === "number" && width > 0) {
+    textNode.resize(width, textNode.height);
   }
 
   // If parentId is provided, append to that node, otherwise append to current page
