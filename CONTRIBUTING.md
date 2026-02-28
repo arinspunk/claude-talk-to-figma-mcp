@@ -163,11 +163,11 @@ git checkout -b feature/my-new-feature
 
 ## Contributors
 
+- **[Rob Dearborn](https://github.com/rfdearborn)** — Comprehensive FigJam support (6 new tools), component optimization, and `set_text_style_id` tool.
 - **[sometimesdante](https://github.com/sometimesdante)** — Full instruction copy on channel click.
 - **[ehs208](https://github.com/ehs208)** — Configuration script, Korean localization, channel verification ping, `set_instance_variant` tool, coordinate system unification, Docker orchestration, and image manipulation tools.
 - **[mmabas77](https://github.com/mmabas77)** — Full text alignment support, RTL/Arabic languages, `set_selection_colors` tool, and massive expansion with 20+ new tools (variables, gradients, grids, and transformations).
 - **[leeyc09](https://github.com/leeyc09)** — Fixed-width text support and dependency stability improvements.
-- **[Rob Dearborn](https://github.com/rfdearborn)** — Component optimization and `set_text_style_id` tool.
 - **[sk (kovalevsky)](https://github.com/kovalevsky)** — Page management tools and SVG export fix.
 - **[Beomsu Koh](https://github.com/GoBeromsu)** — `rename_node` tool.
 - **[Timur](https://github.com/Mirsmog)** — Zod validation improvements.
