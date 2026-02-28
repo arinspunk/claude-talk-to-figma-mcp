@@ -1,7 +1,7 @@
 {
   "name": "claude-talk-to-figma-mcp",
   "description": "Claude Desktop Talk to Figma MCP",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "module": "dist/talk_to_figma_mcp/server.js",
   "main": "dist/talk_to_figma_mcp/server.js",
   "bin": {
@@ -51,7 +51,7 @@
     "@modelcontextprotocol/sdk": "latest",
     "uuid": "latest",
     "ws": "latest",
-    "zod": "^3.24.0"
+    "zod": "^3.25.0"
   },
   "keywords": [
     "claude",
