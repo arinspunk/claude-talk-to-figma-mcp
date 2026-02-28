@@ -122,4 +122,10 @@ export type FigmaCommand =
   | "get_variables"
   | "set_variable"
   | "apply_variable_to_node"
-  | "switch_variable_mode";
+  | "switch_variable_mode"
+  | "get_figjam_elements"
+  | "create_sticky"
+  | "set_sticky_text"
+  | "create_shape_with_text"
+  | "create_connector"
+  | "create_section";

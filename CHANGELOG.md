@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.9.0] - 2026-02-20
 
 ### Added
+- **🗒️ FigJam Support**: Six new tools for reading and writing FigJam boards (Thanks to [Rob Dearborn](https://github.com/rfdearborn))
+  - `get_figjam_elements` – read all stickies, connectors, shapes-with-text, sections, and stamps on the current page
+  - `create_sticky` – create a sticky note with text and colour (yellow, pink, green, blue, purple, red, orange, teal, gray, white)
+  - `set_sticky_text` – update the text on an existing sticky note
+  - `create_shape_with_text` – create a labelled FigJam shape (SQUARE, ELLIPSE, ROUNDED_RECTANGLE, DIAMOND, TRIANGLE_UP, TRIANGLE_DOWN, PARALLELOGRAM_RIGHT, PARALLELOGRAM_LEFT)
+  - `create_connector` – draw an arrow or line between two nodes (by ID) or between canvas positions, with configurable line style and arrowheads
+  - `create_section` – create a labelled colour region for grouping board content
 - **🛠️ 20 New Tools**: Massive expansion of Figma capabilities including:
   - **Transformation**: `rotate_node`, `reorder_node`, `convert_to_frame`.
   - **Properties**: `set_node_properties` (visibility, lock, opacity).
