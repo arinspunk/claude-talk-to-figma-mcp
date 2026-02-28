@@ -76,11 +76,18 @@ export function registerDocumentTools(server: McpServer): void {
     async ({ nodeId }) => {
       try {
         const result = await sendCommandToFigma("get_node_info", { nodeId });
+        const filtered = filterFigmaNode(result);
+        const coordinateNote = filtered.absoluteBoundingBox && filtered.localPosition
+          ? "absoluteBoundingBox contains global coordinates (relative to canvas). localPosition contains local coordinates (relative to parent, use these for move_node)."
+          : undefined;
+
+        const payload = coordinateNote ? { ...filtered, _note: coordinateNote } : filtered;
+
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(filterFigmaNode(result))
+              text: JSON.stringify(payload)
             }
           ]
         };
@@ -106,17 +113,12 @@ export function registerDocumentTools(server: McpServer): void {
     },
     async ({ nodeIds }) => {
       try {
-        const results = await Promise.all(
-          nodeIds.map(async (nodeId) => {
-            const result = await sendCommandToFigma('get_node_info', { nodeId });
-            return { nodeId, info: result };
-          })
-        );
+        const results = await sendCommandToFigma('get_nodes_info', { nodeIds }) as any[];
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(results.map((result) => filterFigmaNode(result.info)))
+              text: JSON.stringify(results.map((result) => filterFigmaNode(result.document || result.info)))
             }
           ]
         };

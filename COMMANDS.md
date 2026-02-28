@@ -22,6 +22,21 @@ Complete reference of the tools Claude can use to interact with Figma.
 | `rename_page` | Rename page | Change a page's name |
 | `set_current_page` | Switch page | Go to a specific page |
 
+## Image tools
+
+| Command | Purpose | Usage example |
+|---------|---------|---------------|
+| `set_image_fill` | Apply image to node | Set product photos, avatars |
+| `get_image_from_node` | Extract image metadata | Audit images in design |
+| `replace_image_fill` | Swap images | Update assets, placeholders |
+| `apply_image_transform` | Adjust image position/scale/rotation | Pan, zoom, rotate image inside node |
+| `set_image_filters` | Apply color/light adjustments | Brightness, contrast, saturation, etc. |
+
+**⚠️ Known Limitations:**
+- **URL images**: Must be whitelisted in `manifest.json` (`allowedDomains`). Use base64 (`sourceType: "base64"`) for no restrictions.
+- **Data URIs not supported**: `data:image/...` format unsupported
+- **Rotation**: 90° increments only (0, 90, 180, 270)
+
 ## Creation tools
 
 | Command | Purpose | Usage example |
@@ -92,6 +107,26 @@ Complete reference of the tools Claude can use to interact with Figma.
 | `create_shape_with_text` | Create labeled shape | Flowchart nodes, process boxes, decision diamonds |
 | `create_connector` | Draw connector arrow | Link stickies or shapes with flow arrows |
 | `create_section` | Create section region | Group and organise content areas on the board |
+
+## Understanding coordinate systems
+
+Figma uses two coordinate systems:
+
+- **Global coordinates** (`absoluteBoundingBox`): Position relative to canvas origin (0,0)
+- **Local coordinates** (`localPosition`): Position relative to parent node
+
+**When to use which:**
+- `get_node_info` returns both `absoluteBoundingBox` (global) and `localPosition` (local)
+- `move_node` expects local coordinates (same as create operations)
+- To move a node to its current position, use `localPosition.x` and `localPosition.y`
+
+**Example:**
+```
+Frame at (100, 50)
+  └─ Rectangle
+     - absoluteBoundingBox: {x: 150, y: 80}  ← Global position
+     - localPosition: {x: 50, y: 30}         ← Use for move_node
+```
 
 ## Effective prompt examples
 

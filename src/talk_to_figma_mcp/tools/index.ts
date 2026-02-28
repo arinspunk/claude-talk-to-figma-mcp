@@ -4,6 +4,7 @@ import { registerCreationTools } from "./creation-tools";
 import { registerModificationTools } from "./modification-tools";
 import { registerTextTools } from "./text-tools";
 import { registerComponentTools } from "./component-tools";
+import { registerImageTools } from "./image-tools";
 import { registerSvgTools } from "./svg-tools";
 import { registerVariableTools } from "./variable-tools";
 import { registerFigJamTools } from "./figjam-tools";
@@ -19,6 +20,7 @@ export function registerTools(server: McpServer): void {
   registerModificationTools(server);
   registerTextTools(server);
   registerComponentTools(server);
+  registerImageTools(server);
   registerSvgTools(server);
   registerVariableTools(server);
   registerFigJamTools(server);
@@ -31,6 +33,7 @@ export {
   registerModificationTools,
   registerTextTools,
   registerComponentTools,
+  registerImageTools,
   registerSvgTools,
   registerVariableTools,
   registerFigJamTools,
