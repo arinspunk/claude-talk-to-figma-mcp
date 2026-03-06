@@ -2790,54 +2790,70 @@ async function loadFontAsyncWrapper(params) {
 
 async function getRemoteComponents() {
   try {
-    // Check if figma.teamLibrary is available
-    if (!figma.teamLibrary) {
-      console.error("Error: figma.teamLibrary API is not available");
-      throw new Error("The figma.teamLibrary API is not available in this context");
+    // Figma removed getAvailableComponentsAsync from the Plugin API.
+    // Instead, we scan the document for component instances that come from
+    // external libraries (remote components already in use).
+    console.log("Scanning document for remote component instances...");
+
+    const remoteComponents = new Map();
+    const instances = [];
+
+    // First pass: collect all INSTANCE nodes
+    function collectInstances(node) {
+      if (node.type === "INSTANCE") {
+        instances.push(node);
+      }
+      if ("children" in node) {
+        for (const child of node.children) {
+          collectInstances(child);
+        }
+      }
     }
 
-    // Check if figma.teamLibrary.getAvailableComponentsAsync exists
-    if (!figma.teamLibrary.getAvailableComponentsAsync) {
-      console.error("Error: figma.teamLibrary.getAvailableComponentsAsync is not available");
-      throw new Error("The getAvailableComponentsAsync method is not available");
+    collectInstances(figma.currentPage);
+
+    // Second pass: resolve main components asynchronously
+    for (const instance of instances) {
+      try {
+        const mainComponent = await instance.getMainComponentAsync();
+        if (mainComponent && mainComponent.remote) {
+          const key = mainComponent.key;
+          if (!remoteComponents.has(key)) {
+            let libraryName = "";
+            try {
+              const parent = mainComponent.parent;
+              if (parent && parent.type === "COMPONENT_SET") {
+                libraryName = parent.name;
+              }
+            } catch (e) {
+              // mainComponent parent may not be accessible for remote components
+            }
+            remoteComponents.set(key, {
+              key: key,
+              name: mainComponent.name || instance.name,
+              description: mainComponent.description || "",
+              libraryName: libraryName,
+              componentId: mainComponent.id || ""
+            });
+          }
+        }
+      } catch (e) {
+        // Skip instances where we can't resolve the main component
+        console.warn(`Could not resolve main component for instance "${instance.name}": ${e.message}`);
+      }
     }
 
-    console.log("Starting remote components retrieval...");
-
-    // Set up a manual timeout to detect deadlocks
-    let timeoutId;
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error("Internal timeout while retrieving remote components (45s)"));
-      }, 45000); // 45 seconds internal timeout
-    });
-
-    // Execute the request with a manual timeout
-    const fetchPromise = figma.teamLibrary.getAvailableComponentsAsync();
-
-    // Use Promise.race to implement the timeout
-    const teamComponents = await Promise.race([fetchPromise, timeoutPromise])
-      .finally(() => {
-        clearTimeout(timeoutId); // Clear the timeout
-      });
-
-    console.log(`Retrieved ${teamComponents.length} remote components`);
+    const components = Array.from(remoteComponents.values());
+    console.log(`Found ${components.length} remote components in use`);
 
     return {
       success: true,
-      count: teamComponents.length,
-      components: teamComponents.map(component => ({
-        key: component.key,
-        name: component.name,
-        description: component.description || "",
-        libraryName: component.libraryName
-      }))
+      count: components.length,
+      components: components,
+      note: "These are remote library components currently used in the document. Figma no longer provides an API to list all available library components."
     };
   } catch (error) {
-    console.error(`Detailed error retrieving remote components: ${error.message || "Unknown error"}`);
-    console.error(`Stack trace: ${error.stack || "Not available"}`);
-
-    // Instead of returning an error object, throw an exception with the error message
+    console.error(`Error scanning for remote components: ${error.message || "Unknown error"}`);
     throw new Error(`Error retrieving remote components: ${error.message}`);
   }
 }

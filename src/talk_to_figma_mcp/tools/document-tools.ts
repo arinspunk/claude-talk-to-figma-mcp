@@ -196,7 +196,7 @@ export function registerDocumentTools(server: McpServer): void {
   // Get Remote Components Tool
   server.tool(
     "get_remote_components",
-    "Get available components from team libraries in Figma",
+    "Get remote library components currently used in the Figma document",
     {},
     async () => {
       try {
