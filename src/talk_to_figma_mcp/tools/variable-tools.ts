@@ -120,6 +120,74 @@ export function registerVariableTools(server: McpServer): void {
     }
   );
 
+  // Delete Variable Tool
+  server.tool(
+    "delete_variable",
+    "Delete a variable by its ID. Use get_variables first to find the variable ID.",
+    {
+      variableId: z.string().describe("The ID of the variable to delete (e.g., 'VariableID:34:4353')"),
+    },
+    async ({ variableId }) => {
+      try {
+        const result = await sendCommandToFigma("delete_variable", {
+          variableId,
+        });
+        const typedResult = result as { deletedVariableId: string; deletedVariableName: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Deleted variable "${typedResult.deletedVariableName}" (ID: ${typedResult.deletedVariableId})`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error deleting variable: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Delete Variable Collection Tool
+  server.tool(
+    "delete_variable_collection",
+    "Delete an entire variable collection and all its variables by collection ID. Use get_variables first to find the collection ID.",
+    {
+      collectionId: z.string().describe("The ID of the variable collection to delete (e.g., 'VariableCollectionId:34:4352')"),
+    },
+    async ({ collectionId }) => {
+      try {
+        const result = await sendCommandToFigma("delete_variable_collection", {
+          collectionId,
+        });
+        const typedResult = result as { deletedCollectionId: string; deletedCollectionName: string; deletedVariableCount: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Deleted collection "${typedResult.deletedCollectionName}" (ID: ${typedResult.deletedCollectionId}) with ${typedResult.deletedVariableCount} variables`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error deleting variable collection: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Switch Variable Mode Tool
   server.tool(
     "switch_variable_mode",

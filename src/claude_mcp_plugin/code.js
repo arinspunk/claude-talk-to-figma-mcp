@@ -212,6 +212,12 @@ async function handleCommand(command, params) {
       return await createComponentSet(params);
     case "set_instance_variant":
       return await setInstanceVariant(params);
+    case "add_component_property":
+      return await addComponentProperty(params);
+    case "get_component_properties":
+      return await getComponentProperties(params);
+    case "set_component_property":
+      return await setComponentProperty(params);
     case "create_page":
       return await createPage(params);
     case "delete_page":
@@ -277,6 +283,12 @@ async function handleCommand(command, params) {
       return await applyVariableToNode(params);
     case "switch_variable_mode":
       return await switchVariableMode(params);
+    case "delete_variable":
+      return await deleteVariable(params);
+    case "delete_variable_collection":
+      return await deleteVariableCollection(params);
+    case "link_component_property":
+      return await linkComponentProperty(params);
     // ── FigJam commands ──────────────────────────────────────────────────
     case "get_figjam_elements":
       return await getFigJamElements();
@@ -290,6 +302,25 @@ async function handleCommand(command, params) {
       return await createConnector(params);
     case "create_section":
       return await createSection(params);
+    // ── Prototyping commands ─────────────────────────────────────────────
+    case "get_reactions":
+      return await getReactions(params);
+    case "add_reaction":
+      return await addReaction(params);
+    case "add_back_reaction":
+      return await addBackReaction(params);
+    case "add_url_reaction":
+      return await addUrlReaction(params);
+    case "remove_reactions":
+      return await removeReactions(params);
+    case "get_flow_starting_points":
+      return await getFlowStartingPoints();
+    case "set_flow_starting_point":
+      return await setFlowStartingPoint(params);
+    case "set_prototype_device":
+      return await setPrototypeDevice(params);
+    case "set_prototype_start_node":
+      return await setPrototypeStartNode(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -1351,7 +1382,22 @@ async function setTextContent(params) {
   }
 
   try {
-    await figma.loadFontAsync(node.fontName);
+    // Handle mixed fonts: node.fontName may be figma.mixed if the text node
+    // uses multiple font styles. Load all unique fonts from text segments.
+    if (node.fontName === figma.mixed) {
+      const len = node.characters.length;
+      const fontsToLoad = new Set();
+      for (let i = 0; i < len; i++) {
+        const font = node.getRangeFontName(i, i + 1);
+        const key = font.family + "|" + font.style;
+        if (!fontsToLoad.has(key)) {
+          fontsToLoad.add(key);
+          await figma.loadFontAsync(font);
+        }
+      }
+    } else {
+      await figma.loadFontAsync(node.fontName);
+    }
 
     await setCharacters(node, text);
 
@@ -1359,7 +1405,7 @@ async function setTextContent(params) {
       id: node.id,
       name: node.name,
       characters: node.characters,
-      fontName: node.fontName,
+      fontName: node.fontName === figma.mixed ? "mixed" : node.fontName,
     };
   } catch (error) {
     throw new Error(`Error setting text content: ${error.message}`);
@@ -2769,6 +2815,37 @@ async function getStyledTextSegments(params) {
   }
 }
 
+// Load all fonts used by text nodes within a subtree (or a single text node)
+async function loadFontsForNode(node) {
+  const fontsToLoad = new Set();
+
+  function collectFonts(n) {
+    if (n.type === "TEXT") {
+      if (n.fontName === figma.mixed) {
+        const len = n.characters.length;
+        for (let i = 0; i < len; i++) {
+          const font = n.getRangeFontName(i, i + 1);
+          fontsToLoad.add(font.family + "|" + font.style);
+        }
+      } else if (n.fontName) {
+        fontsToLoad.add(n.fontName.family + "|" + n.fontName.style);
+      }
+    }
+    if ("children" in n) {
+      for (const child of n.children) {
+        collectFonts(child);
+      }
+    }
+  }
+
+  collectFonts(node);
+
+  for (const key of fontsToLoad) {
+    const [family, style] = key.split("|");
+    await figma.loadFontAsync({ family, style });
+  }
+}
+
 async function loadFontAsyncWrapper(params) {
   const { family, style = "Regular" } = params || {};
   if (!family) {
@@ -3985,12 +4062,131 @@ async function setInstanceVariant(params) {
     throw new Error(`Node does not support variant properties`);
   }
 
+  // Load fonts for text nodes before setting properties
+  await loadFontsForNode(node);
+
   node.setProperties(properties);
 
   return {
     id: node.id,
     name: node.name,
     properties: node.componentProperties
+  };
+}
+
+// Add a component property to a component node
+async function addComponentProperty(params) {
+  const { nodeId, propertyName, type, defaultValue, preferredValues } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!propertyName) {
+    throw new Error("Missing propertyName parameter");
+  }
+
+  if (!type) {
+    throw new Error("Missing type parameter");
+  }
+
+  const validTypes = ["TEXT", "BOOLEAN", "INSTANCE_SWAP", "VARIANT"];
+  if (!validTypes.includes(type)) {
+    throw new Error(`Invalid type "${type}". Must be one of: ${validTypes.join(", ")}`);
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
+    throw new Error(`Node with ID ${nodeId} is not a component (type: ${node.type}). Only COMPONENT or COMPONENT_SET nodes support addComponentProperty.`);
+  }
+
+  const propDefault = defaultValue !== undefined ? defaultValue : (type === "BOOLEAN" ? true : type === "TEXT" ? "" : "");
+
+  const options = { type, defaultValue: propDefault };
+  if (preferredValues && Array.isArray(preferredValues)) {
+    options.preferredValues = preferredValues;
+  }
+
+  const propertyKey = node.addComponentProperty(propertyName, type, propDefault);
+
+  return {
+    id: node.id,
+    name: node.name,
+    propertyKey,
+    propertyName,
+    type,
+    defaultValue: propDefault,
+    componentProperties: node.componentPropertyDefinitions
+  };
+}
+
+// Get component properties from a component or instance
+async function getComponentProperties(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+    return {
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      componentPropertyDefinitions: node.componentPropertyDefinitions
+    };
+  } else if (node.type === "INSTANCE") {
+    return {
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      componentProperties: node.componentProperties
+    };
+  } else {
+    throw new Error(`Node with ID ${nodeId} is not a component or instance (type: ${node.type})`);
+  }
+}
+
+// Set a component property value on an instance
+async function setComponentProperty(params) {
+  const { nodeId, properties } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!properties || typeof properties !== "object") {
+    throw new Error("Missing or invalid properties parameter. Expected an object of { propertyKey: value } pairs.");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type !== "INSTANCE") {
+    throw new Error(`Node with ID ${nodeId} is not an instance (type: ${node.type}). Only instances support setProperties for component properties.`);
+  }
+
+  // Load fonts for all text nodes in the instance before setting properties,
+  // because TEXT properties change linked text node content which requires fonts.
+  await loadFontsForNode(node);
+
+  node.setProperties(properties);
+
+  return {
+    id: node.id,
+    name: node.name,
+    componentProperties: node.componentProperties
   };
 }
 
@@ -4075,13 +4271,24 @@ async function renamePage(params) {
 
 // Get all pages in the document
 async function getPages() {
-  return {
-    pages: figma.root.children.map(page => ({
+  const pages = [];
+  for (const page of figma.root.children) {
+    let childCount = 0;
+    try {
+      await page.loadAsync();
+      childCount = page.children.length;
+    } catch (e) {
+      // Page may not be loadable, default to 0
+    }
+    pages.push({
       id: page.id,
       name: page.name,
-      childCount: page.children.length,
+      childCount,
       isCurrent: page.id === figma.currentPage.id
-    })),
+    });
+  }
+  return {
+    pages,
     currentPageId: figma.currentPage.id
   };
 }
@@ -4551,12 +4758,26 @@ async function setNodeProperties(params) {
     node.opacity = opacity;
   }
 
+  if (params.layoutSizingHorizontal !== undefined) {
+    if ("layoutSizingHorizontal" in node) {
+      node.layoutSizingHorizontal = params.layoutSizingHorizontal;
+    }
+  }
+
+  if (params.layoutSizingVertical !== undefined) {
+    if ("layoutSizingVertical" in node) {
+      node.layoutSizingVertical = params.layoutSizingVertical;
+    }
+  }
+
   return {
     id: node.id,
     name: node.name,
     visible: node.visible,
     locked: node.locked,
-    opacity: "opacity" in node ? node.opacity : undefined
+    opacity: "opacity" in node ? node.opacity : undefined,
+    layoutSizingHorizontal: "layoutSizingHorizontal" in node ? node.layoutSizingHorizontal : undefined,
+    layoutSizingVertical: "layoutSizingVertical" in node ? node.layoutSizingVertical : undefined
   };
 }
 
@@ -5461,6 +5682,130 @@ async function switchVariableMode(params) {
   };
 }
 
+// Delete a variable by ID
+async function deleteVariable(params) {
+  const { variableId } = params || {};
+
+  if (!figma.variables) {
+    throw new Error(
+      "Variables API is not available. This feature requires Figma with Variables support."
+    );
+  }
+
+  if (!variableId) {
+    throw new Error("Missing variableId parameter");
+  }
+
+  const variable = await figma.variables.getVariableByIdAsync(variableId);
+  if (!variable) {
+    throw new Error(`Variable not found with ID: ${variableId}`);
+  }
+
+  const name = variable.name;
+  const id = variable.id;
+  variable.remove();
+
+  return {
+    deletedVariableId: id,
+    deletedVariableName: name
+  };
+}
+
+// Delete an entire variable collection by ID
+async function deleteVariableCollection(params) {
+  const { collectionId } = params || {};
+
+  if (!figma.variables) {
+    throw new Error(
+      "Variables API is not available. This feature requires Figma with Variables support."
+    );
+  }
+
+  if (!collectionId) {
+    throw new Error("Missing collectionId parameter");
+  }
+
+  const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+  if (!collection) {
+    throw new Error(`Variable collection not found with ID: ${collectionId}`);
+  }
+
+  const name = collection.name;
+  const id = collection.id;
+  const varCount = collection.variableIds.length;
+  collection.remove();
+
+  return {
+    deletedCollectionId: id,
+    deletedCollectionName: name,
+    deletedVariableCount: varCount
+  };
+}
+
+// Link a component property to a child text node via componentPropertyReferences
+async function linkComponentProperty(params) {
+  const { nodeId, textNodeId, propertyKey } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter (the component ID)");
+  }
+  if (!textNodeId) {
+    throw new Error("Missing textNodeId parameter (the child text node ID)");
+  }
+  if (!propertyKey) {
+    throw new Error("Missing propertyKey parameter (from addComponentProperty result)");
+  }
+
+  const componentNode = await getNodeByIdSafe(nodeId);
+  if (!componentNode) {
+    throw new Error(`Component node not found with ID: ${nodeId}`);
+  }
+
+  if (componentNode.type !== "COMPONENT" && componentNode.type !== "COMPONENT_SET") {
+    throw new Error(`Node ${nodeId} is not a component (type: ${componentNode.type})`);
+  }
+
+  const textNode = await getNodeByIdSafe(textNodeId);
+  if (!textNode) {
+    throw new Error(`Text node not found with ID: ${textNodeId}`);
+  }
+
+  if (textNode.type !== "TEXT") {
+    throw new Error(`Node ${textNodeId} is not a text node (type: ${textNode.type})`);
+  }
+
+  // Verify the text node is a descendant of the component
+  let parent = textNode.parent;
+  let isChild = false;
+  while (parent) {
+    if (parent.id === componentNode.id) {
+      isChild = true;
+      break;
+    }
+    parent = parent.parent;
+  }
+  if (!isChild) {
+    throw new Error(`Text node ${textNodeId} is not a descendant of component ${nodeId}`);
+  }
+
+  // Load fonts for the text node before modifying property references
+  await loadFontsForNode(textNode);
+
+  // Set the componentPropertyReferences to link the "characters" field to the property
+  var refs = Object.assign({}, textNode.componentPropertyReferences || {});
+  refs.characters = propertyKey;
+  textNode.componentPropertyReferences = refs;
+
+  return {
+    textNodeId: textNode.id,
+    textNodeName: textNode.name,
+    componentId: componentNode.id,
+    componentName: componentNode.name,
+    linkedPropertyKey: propertyKey,
+    componentPropertyReferences: textNode.componentPropertyReferences
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FigJam-specific command implementations
 // ─────────────────────────────────────────────────────────────────────────────
@@ -5920,5 +6265,388 @@ async function createSection(params) {
     width: section.width,
     height: section.height,
     fills: section.fills,
+  };
+}
+
+// ── Prototyping commands ──────────────────────────────────────────────────
+
+/**
+ * Helper: serialize a reaction for output
+ */
+function serializeReaction(reaction, index) {
+  const result = { index };
+
+  if (reaction.trigger) {
+    result.trigger = { type: reaction.trigger.type };
+    if (reaction.trigger.type === "AFTER_TIMEOUT" && reaction.trigger.timeout !== undefined) {
+      result.trigger.timeout = reaction.trigger.timeout;
+    }
+  }
+
+  if (reaction.actions && reaction.actions.length > 0) {
+    result.actions = reaction.actions.map(action => {
+      const a = { type: action.type };
+      if (action.destinationId) a.destinationId = action.destinationId;
+      if (action.navigation) a.navigation = action.navigation;
+      if (action.url) a.url = action.url;
+      if (action.transition) {
+        a.transition = {
+          type: action.transition.type,
+          duration: action.transition.duration,
+        };
+        if (action.transition.easing) {
+          a.transition.easing = action.transition.easing;
+        }
+      }
+      if (action.resetScrollPosition !== undefined) a.resetScrollPosition = action.resetScrollPosition;
+      if (action.resetInteractions !== undefined) a.resetInteractions = action.resetInteractions;
+      if (action.resetVideoPosition !== undefined) a.resetVideoPosition = action.resetVideoPosition;
+      if (action.overlayRelativePosition) a.overlayRelativePosition = action.overlayRelativePosition;
+      return a;
+    });
+  }
+
+  // Legacy single-action format fallback
+  if (!result.actions && reaction.action) {
+    const action = reaction.action;
+    result.action = { type: action.type };
+    if (action.destinationId) result.action.destinationId = action.destinationId;
+    if (action.navigation) result.action.navigation = action.navigation;
+    if (action.url) result.action.url = action.url;
+    if (action.transition) {
+      result.action.transition = {
+        type: action.transition.type,
+        duration: action.transition.duration,
+      };
+      if (action.transition.easing) {
+        result.action.transition.easing = action.transition.easing;
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Helper: build a transition object from params
+ */
+function buildTransition(transition) {
+  if (!transition) return undefined;
+  return {
+    type: transition.type,
+    duration: transition.duration !== undefined ? transition.duration : 300,
+    easing: transition.easing
+      ? { type: transition.easing }
+      : { type: "EASE_IN_AND_OUT" },
+  };
+}
+
+/**
+ * Get all reactions (prototyping interactions) on a node
+ */
+async function getReactions(params) {
+  const { nodeId } = params;
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+
+  if (!("reactions" in node)) {
+    return { nodeId, name: node.name, reactions: [], message: "Node does not support reactions" };
+  }
+
+  const reactions = node.reactions || [];
+  return {
+    nodeId: node.id,
+    name: node.name,
+    reactionCount: reactions.length,
+    reactions: reactions.map((r, i) => serializeReaction(r, i)),
+  };
+}
+
+/**
+ * Add a navigation/overlay/swap/scroll reaction to a node
+ */
+async function addReaction(params) {
+  const {
+    nodeId,
+    trigger,
+    triggerTimeout,
+    navigationType,
+    destinationId,
+    transition,
+    overlayRelativePosition,
+    resetScrollPosition,
+    resetInteractions,
+    resetVideoPosition,
+  } = params;
+
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+  if (!trigger) throw new Error("Missing trigger parameter");
+  if (!navigationType) throw new Error("Missing navigationType parameter");
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+  if (!("reactions" in node)) throw new Error("Node does not support reactions");
+
+  // Validate destination exists if provided
+  let destinationNode = null;
+  if (destinationId) {
+    destinationNode = await getNodeByIdSafe(destinationId);
+    if (!destinationNode) throw new Error(`Destination node not found with ID: ${destinationId}`);
+  }
+
+  const triggerObj = { type: trigger };
+  if (trigger === "AFTER_TIMEOUT" && triggerTimeout !== undefined) {
+    triggerObj.timeout = triggerTimeout;
+  }
+
+  const action = {
+    type: "NODE",
+    destinationId: destinationId || null,
+    navigation: navigationType,
+    transition: buildTransition(transition) || null,
+    resetScrollPosition: resetScrollPosition || false,
+    resetInteractions: resetInteractions || false,
+    resetVideoPosition: resetVideoPosition || false,
+  };
+
+  if (overlayRelativePosition && navigationType === "OVERLAY") {
+    action.overlayRelativePosition = overlayRelativePosition;
+  }
+
+  const existingReactions = node.reactions ? [...node.reactions] : [];
+  existingReactions.push({
+    trigger: triggerObj,
+    actions: [action],
+  });
+  await node.setReactionsAsync(existingReactions);
+
+  return {
+    nodeId: node.id,
+    name: node.name,
+    reactionCount: existingReactions.length,
+    addedReaction: {
+      trigger: triggerObj,
+      navigationType,
+      destinationId: destinationId || null,
+    },
+  };
+}
+
+/**
+ * Add a BACK or CLOSE reaction to a node
+ */
+async function addBackReaction(params) {
+  const { nodeId, trigger, actionType, transition } = params;
+
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+  if (!trigger) throw new Error("Missing trigger parameter");
+  if (!actionType) throw new Error("Missing actionType parameter");
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+  if (!("reactions" in node)) throw new Error("Node does not support reactions");
+
+  const triggerObj = { type: trigger };
+
+  const action = {
+    type: actionType,
+    transition: buildTransition(transition) || null,
+  };
+
+  const existingReactions = node.reactions ? [...node.reactions] : [];
+  existingReactions.push({
+    trigger: triggerObj,
+    actions: [action],
+  });
+  await node.setReactionsAsync(existingReactions);
+
+  return {
+    nodeId: node.id,
+    name: node.name,
+    reactionCount: existingReactions.length,
+    addedReaction: { trigger: triggerObj, actionType },
+  };
+}
+
+/**
+ * Add a URL open reaction to a node
+ */
+async function addUrlReaction(params) {
+  const { nodeId, trigger, url } = params;
+
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+  if (!trigger) throw new Error("Missing trigger parameter");
+  if (!url) throw new Error("Missing url parameter");
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+  if (!("reactions" in node)) throw new Error("Node does not support reactions");
+
+  const triggerObj = { type: trigger };
+
+  const action = {
+    type: "URL",
+    url: url,
+  };
+
+  const existingReactions = node.reactions ? [...node.reactions] : [];
+  existingReactions.push({
+    trigger: triggerObj,
+    actions: [action],
+  });
+  await node.setReactionsAsync(existingReactions);
+
+  return {
+    nodeId: node.id,
+    name: node.name,
+    reactionCount: existingReactions.length,
+    addedReaction: { trigger: triggerObj, url },
+  };
+}
+
+/**
+ * Remove reactions from a node
+ */
+async function removeReactions(params) {
+  const { nodeId, reactionIndex } = params;
+
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+  if (!("reactions" in node)) throw new Error("Node does not support reactions");
+
+  const previousCount = (node.reactions || []).length;
+
+  let newReactions;
+  if (reactionIndex !== undefined) {
+    newReactions = [...(node.reactions || [])];
+    if (reactionIndex < 0 || reactionIndex >= newReactions.length) {
+      throw new Error(`Reaction index ${reactionIndex} out of range (0-${newReactions.length - 1})`);
+    }
+    newReactions.splice(reactionIndex, 1);
+  } else {
+    newReactions = [];
+  }
+  await node.setReactionsAsync(newReactions);
+
+  return {
+    nodeId: node.id,
+    name: node.name,
+    previousReactionCount: previousCount,
+    currentReactionCount: newReactions.length,
+    removed: reactionIndex !== undefined ? 1 : previousCount,
+  };
+}
+
+/**
+ * Get all prototype flow starting points on the current page
+ */
+async function getFlowStartingPoints() {
+  await figma.currentPage.loadAsync();
+  const page = figma.currentPage;
+  const flowStartingPoints = page.flowStartingPoints || [];
+
+  return {
+    pageId: page.id,
+    pageName: page.name,
+    flowStartingPoints: flowStartingPoints.map(fp => ({
+      nodeId: fp.nodeId,
+      name: fp.name,
+    })),
+  };
+}
+
+/**
+ * Set or remove a flow starting point on a node
+ */
+async function setFlowStartingPoint(params) {
+  const { nodeId, name } = params;
+
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+
+  const page = figma.currentPage;
+  const flowStartingPoints = [...(page.flowStartingPoints || [])];
+
+  if (name) {
+    // Add or update flow starting point
+    const existingIndex = flowStartingPoints.findIndex(fp => fp.nodeId === nodeId);
+    if (existingIndex >= 0) {
+      flowStartingPoints[existingIndex] = { nodeId, name };
+    } else {
+      flowStartingPoints.push({ nodeId, name });
+    }
+  } else {
+    // Remove flow starting point
+    const existingIndex = flowStartingPoints.findIndex(fp => fp.nodeId === nodeId);
+    if (existingIndex >= 0) {
+      flowStartingPoints.splice(existingIndex, 1);
+    }
+  }
+
+  page.flowStartingPoints = flowStartingPoints;
+
+  return {
+    nodeId,
+    name: name || null,
+    action: name ? "set" : "removed",
+    totalFlowStartingPoints: page.flowStartingPoints.length,
+  };
+}
+
+/**
+ * Set the prototype device settings for the current page
+ */
+async function setPrototypeDevice(params) {
+  const { deviceType, presetIdentifier, rotation } = params;
+
+  if (!deviceType) throw new Error("Missing deviceType parameter");
+
+  const page = figma.currentPage;
+
+  if (deviceType === "NONE") {
+    page.prototypeDevice = { type: "NONE", rotation: rotation || "NONE" };
+  } else if (deviceType === "PRESET") {
+    if (!presetIdentifier) throw new Error("presetIdentifier is required when deviceType is PRESET");
+    page.prototypeDevice = {
+      type: "PRESET",
+      presetIdentifier: presetIdentifier,
+      rotation: rotation || "NONE",
+      size: page.prototypeDevice && page.prototypeDevice.size ? page.prototypeDevice.size : { width: 0, height: 0 },
+    };
+  }
+
+  return {
+    pageId: page.id,
+    pageName: page.name,
+    prototypeDevice: page.prototypeDevice,
+  };
+}
+
+/**
+ * Set the prototype start node for the current page
+ */
+async function setPrototypeStartNode(params) {
+  const { nodeId } = params;
+
+  const page = figma.currentPage;
+
+  if (nodeId) {
+    const node = await getNodeByIdSafe(nodeId);
+    if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+    page.prototypeStartNode = node;
+  } else {
+    page.prototypeStartNode = null;
+  }
+
+  return {
+    pageId: page.id,
+    pageName: page.name,
+    prototypeStartNodeId: page.prototypeStartNode ? page.prototypeStartNode.id : null,
   };
 }

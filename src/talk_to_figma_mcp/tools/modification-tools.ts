@@ -501,14 +501,18 @@ export function registerModificationTools(server: McpServer): void {
       visible: z.boolean().optional().describe("Set node visibility (true = visible, false = hidden)"),
       locked: z.boolean().optional().describe("Set node lock state (true = locked, false = unlocked)"),
       opacity: z.number().min(0).max(1).optional().describe("Set node opacity (0 = fully transparent, 1 = fully opaque)"),
+      layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Set horizontal layout sizing for auto-layout children"),
+      layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Set vertical layout sizing for auto-layout children"),
     },
-    async ({ nodeId, visible, locked, opacity }) => {
+    async ({ nodeId, visible, locked, opacity, layoutSizingHorizontal, layoutSizingVertical }) => {
       try {
         const result = await sendCommandToFigma("set_node_properties", {
           nodeId,
           visible,
           locked,
           opacity,
+          layoutSizingHorizontal,
+          layoutSizingVertical,
         });
         const typedResult = result as { name: string; visible: boolean; locked: boolean; opacity: number };
         const changes: string[] = [];
