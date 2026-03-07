@@ -153,4 +153,55 @@ export function registerComponentTools(server: McpServer): void {
       }
     }
   );
+
+  // Set Reactions (Prototype Interactions) Tool
+  server.tool(
+    "set_reactions",
+    "Set prototype interactions (reactions) on a node in Figma. Use this to add hover effects, click interactions, etc. For component variants, set on the default variant to add 'While hovering -> Change to hover variant' interactions.",
+    {
+      nodeId: z.string().describe("The ID of the node to set reactions on"),
+      reactions: z.array(z.object({
+        trigger: z.object({
+          type: z.string().describe("Trigger type: ON_CLICK, ON_HOVER, ON_PRESS, ON_DRAG, AFTER_TIMEOUT, MOUSE_ENTER, MOUSE_LEAVE, MOUSE_UP, MOUSE_DOWN"),
+          delay: z.number().optional().describe("Delay in seconds (for AFTER_TIMEOUT)"),
+        }).describe("The trigger for this reaction"),
+        actions: z.array(z.object({
+          type: z.string().describe("Action type: NODE, BACK, CLOSE, URL"),
+          destinationId: z.string().optional().describe("Target node ID (for NODE type)"),
+          navigation: z.string().optional().describe("Navigation type: NAVIGATE, SWAP, OVERLAY, SCROLL_TO, CHANGE_TO"),
+          transition: z.object({
+            type: z.string().optional().describe("Transition type: DISSOLVE, SMART_ANIMATE, MOVE_IN, MOVE_OUT, PUSH, SLIDE_IN, SLIDE_OUT"),
+            easing: z.object({ type: z.string() }).optional().describe("Easing: EASE_IN, EASE_OUT, EASE_IN_AND_OUT, LINEAR"),
+            duration: z.number().optional().describe("Duration in seconds"),
+          }).optional().describe("Transition animation"),
+        })).describe("Actions to perform when triggered"),
+      })).describe("Array of reactions to set on the node"),
+    },
+    async ({ nodeId, reactions }) => {
+      try {
+        const result = await sendCommandToFigma("set_reactions", {
+          nodeId,
+          reactions,
+        });
+        const typedResult = result as { id: string; name: string; reactionsCount: number; message: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: typedResult.message,
+            }
+          ]
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting reactions: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
 }

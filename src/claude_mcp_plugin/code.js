@@ -290,6 +290,8 @@ async function handleCommand(command, params) {
       return await createConnector(params);
     case "create_section":
       return await createSection(params);
+    case "set_reactions":
+      return await setReactions(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -5904,5 +5906,62 @@ async function createSection(params) {
     width: section.width,
     height: section.height,
     fills: section.fills,
+  };
+}
+
+// Set prototype reactions (interactions) on a node
+async function setReactions(params) {
+  if (!params || !params.nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!params.reactions || !Array.isArray(params.reactions)) {
+    throw new Error("Missing or invalid reactions parameter");
+  }
+
+  const node = await getNodeByIdSafe(params.nodeId);
+  if (!node) {
+    throw new Error(`Node not found: ${params.nodeId}`);
+  }
+
+  // Build reactions array for the Figma API
+  const reactions = params.reactions.map((r) => {
+    const reaction = {};
+
+    // Set trigger
+    if (r.trigger) {
+      reaction.trigger = { type: r.trigger.type };
+      if (r.trigger.delay !== undefined) {
+        reaction.trigger.delay = r.trigger.delay;
+      }
+    }
+
+    // Set actions array
+    if (r.actions && Array.isArray(r.actions)) {
+      reaction.actions = r.actions.map((a) => {
+        const action = { type: a.type };
+        if (a.destinationId) action.destinationId = a.destinationId;
+        if (a.navigation) action.navigation = a.navigation;
+        if (a.transition) {
+          action.transition = {
+            type: a.transition.type || "DISSOLVE",
+            easing: a.transition.easing || { type: "EASE_IN_AND_OUT" },
+            duration: a.transition.duration !== undefined ? a.transition.duration : 0.2,
+          };
+        }
+        if (a.resetVideoPosition !== undefined) action.resetVideoPosition = a.resetVideoPosition;
+        return action;
+      });
+    }
+
+    return reaction;
+  });
+
+  await node.setReactionsAsync(reactions);
+
+  return {
+    id: node.id,
+    name: node.name,
+    reactionsCount: reactions.length,
+    message: `Set ${reactions.length} reaction(s) on node "${node.name}"`,
   };
 }
