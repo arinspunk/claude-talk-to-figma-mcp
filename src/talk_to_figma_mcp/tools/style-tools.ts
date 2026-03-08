@@ -2,11 +2,6 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
 
-/**
- * Register style creation tools to the MCP server
- * This module contains tools for creating reusable styles in Figma
- * @param server - The MCP server instance
- */
 export function registerStyleTools(server: McpServer): void {
   // Create Text Style Tool
   server.tool(
