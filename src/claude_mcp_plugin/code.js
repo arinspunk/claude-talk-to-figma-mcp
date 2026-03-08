@@ -277,6 +277,8 @@ async function handleCommand(command, params) {
       return await applyVariableToNode(params);
     case "switch_variable_mode":
       return await switchVariableMode(params);
+    case "detach_instance":
+      return await detachInstance(params);
     // ── FigJam commands ──────────────────────────────────────────────────
     case "get_figjam_elements":
       return await getFigJamElements();
@@ -5443,6 +5445,38 @@ async function switchVariableMode(params) {
     modeId: mode.modeId,
     modeName: mode.name
   };
+}
+
+
+// Detach an instance
+async function detachInstance(params) {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  try {
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+
+    if (node.type !== "INSTANCE") {
+      throw new Error(`Node with ID ${nodeId} is not an INSTANCE`);
+    }
+
+    const detachedFrame = node.detachInstance();
+
+    return {
+      success: true,
+      frameId: detachedFrame.id,
+      frameName: detachedFrame.name,
+      frameType: detachedFrame.type,
+    };
+  } catch (error) {
+    throw new Error(`Error detaching instance: ${error.message}`);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

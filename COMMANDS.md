@@ -96,6 +96,7 @@ Complete reference of the tools Claude can use to interact with Figma.
 | `get_remote_components` | Team libraries | Access shared components |
 | `create_component_instance` | Use components | Consistent UI elements |
 | `set_instance_variant` | Change variant properties | Switch button states |
+| `detach_instance` | Detach instance from main component | One-off component customization |
 
 ## FigJam tools
 
