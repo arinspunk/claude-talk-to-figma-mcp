@@ -290,6 +290,10 @@ async function handleCommand(command, params) {
       return await createConnector(params);
     case "create_section":
       return await createSection(params);
+    case "set_reactions":
+      return await setReactions(params);
+    case "get_reactions":
+      return await getReactions(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -5904,5 +5908,177 @@ async function createSection(params) {
     width: section.width,
     height: section.height,
     fills: section.fills,
+  };
+}
+
+// Set prototype reactions (interactions) on a node
+async function setReactions(params) {
+  if (!params || !params.nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (!params.reactions || !Array.isArray(params.reactions)) {
+    throw new Error("Missing or invalid reactions parameter");
+  }
+
+  const node = await getNodeByIdSafe(params.nodeId);
+  if (!node) {
+    throw new Error(`Node not found: ${params.nodeId}`);
+  }
+
+  // Set overlayPositionType on destination nodes for OVERLAY actions
+  const overlayDebug = [];
+  for (const r of params.reactions) {
+    if (r.actions && Array.isArray(r.actions)) {
+      for (const a of r.actions) {
+        if (a.type === "NODE" && a.navigation === "OVERLAY" && a.destinationId) {
+          try {
+            const destNode = await figma.getNodeByIdAsync(a.destinationId);
+            const info = { destId: a.destinationId, type: destNode ? destNode.type : "not found" };
+            if (destNode) {
+              // For instances, set overlay properties on the main component
+              let targetNode = destNode;
+              if (destNode.type === "INSTANCE") {
+                const mainComp = await destNode.getMainComponentAsync();
+                if (mainComp) {
+                  targetNode = mainComp;
+                  info.usingMainComponent = targetNode.id;
+                }
+              }
+              info.targetType = targetNode.type;
+              info.hasOverlayPositionType = "overlayPositionType" in targetNode;
+              info.beforePositionType = targetNode.overlayPositionType;
+              info.beforeBgInteraction = targetNode.overlayBackgroundInteraction;
+              try {
+                targetNode.overlayPositionType = a.overlayPositionType || "CENTER";
+                info.afterPositionType = targetNode.overlayPositionType;
+              } catch (e) {
+                info.positionTypeError = e.message || String(e);
+              }
+              try {
+                targetNode.overlayBackgroundInteraction = a.overlayBackgroundInteraction || "CLOSE_ON_CLICK_OUTSIDE";
+                info.afterBgInteraction = targetNode.overlayBackgroundInteraction;
+              } catch (e) {
+                info.bgInteractionError = e.message || String(e);
+              }
+            }
+            overlayDebug.push(info);
+          } catch (e) {
+            overlayDebug.push({ destId: a.destinationId, error: e.message || String(e) });
+          }
+        }
+      }
+    }
+  }
+
+  // Build reactions array for the Figma API
+  const reactions = params.reactions.map((r) => {
+    const reaction = {};
+
+    // Set trigger
+    if (r.trigger) {
+      reaction.trigger = { type: r.trigger.type };
+      if (r.trigger.delay !== undefined) {
+        reaction.trigger.delay = r.trigger.delay;
+      }
+    }
+
+    // Build transition object helper
+    const buildTransition = (t) => {
+      if (!t) return null;
+      return {
+        type: t.type || "DISSOLVE",
+        easing: t.easing || { type: "EASE_IN_AND_OUT" },
+        duration: t.duration !== undefined ? t.duration : 0.2,
+      };
+    };
+
+    // Set actions - support both "actions" (array, new API) and "action" (single, old API)
+    if (r.actions && Array.isArray(r.actions)) {
+      const mappedActions = r.actions.map((a) => {
+        if (a.type === "NODE") {
+          const nav = a.navigation || "NAVIGATE";
+          const nodeAction = {
+            type: "NODE",
+            destinationId: a.destinationId || null,
+            navigation: nav,
+            transition: buildTransition(a.transition),
+            preserveScrollPosition: a.preserveScrollPosition || false,
+            resetVideoPosition: a.resetVideoPosition || false,
+            resetScrollPosition: a.resetScrollPosition || false,
+            resetInteractiveComponents: a.resetInteractiveComponents || false,
+          };
+          if (nav === "OVERLAY" && a.overlayRelativePosition) {
+            nodeAction.overlayRelativePosition = a.overlayRelativePosition;
+          }
+          return nodeAction;
+        } else if (a.type === "BACK") {
+          return { type: "BACK", transition: buildTransition(a.transition) };
+        } else if (a.type === "CLOSE") {
+          return { type: "CLOSE" };
+        } else if (a.type === "URL") {
+          return { type: "URL", url: a.url || "" };
+        }
+        return { type: a.type };
+      });
+
+      reaction.actions = mappedActions;
+    }
+
+    return reaction;
+  });
+
+  // Debug: log the exact reactions being set
+  const debugJson = JSON.stringify(reactions, null, 2);
+  console.log("setReactionsAsync input:", debugJson);
+
+  try {
+    await node.setReactionsAsync(reactions);
+  } catch (e) {
+    // Try with singular "action" format (older Figma API)
+    try {
+      const reactionsOldFormat = reactions.map((r) => ({
+        trigger: r.trigger,
+        action: r.actions ? r.actions[0] : r.action,
+      }));
+      await node.setReactionsAsync(reactionsOldFormat);
+    } catch (e2) {
+      const errStr = e ? (e.message || e.toString() || JSON.stringify(e)) : "unknown";
+      const errStr2 = e2 ? (e2.message || e2.toString() || JSON.stringify(e2)) : "unknown";
+      throw new Error(`setReactionsAsync failed.\nNew API error: ${errStr}\nOld API error: ${errStr2}\nInput: ${debugJson}`);
+    }
+  }
+
+  // Verify what was actually set by reading back
+  const actualReactions = node.reactions;
+  const actualCount = actualReactions ? actualReactions.length : 0;
+  const actualJson = JSON.stringify(actualReactions, null, 2);
+
+  return {
+    id: node.id,
+    name: node.name,
+    reactionsCount: reactions.length,
+    actualReactionsCount: actualCount,
+    sentToFigma: debugJson,
+    readBackFromFigma: actualJson,
+    overlayDebug: overlayDebug.length > 0 ? overlayDebug : undefined,
+    message: `Set ${reactions.length} reaction(s) on node "${node.name}" (verified: ${actualCount} persisted)`,
+  };
+}
+
+async function getReactions(params) {
+  if (!params || !params.nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  const node = await getNodeByIdSafe(params.nodeId);
+  if (!node) {
+    throw new Error(`Node not found: ${params.nodeId}`);
+  }
+  const reactions = node.reactions;
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    reactionsCount: reactions ? reactions.length : 0,
+    reactions: reactions ? JSON.parse(JSON.stringify(reactions)) : [],
   };
 }
