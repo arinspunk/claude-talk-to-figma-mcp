@@ -2,8 +2,12 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
 
+/**
+ * Register style creation tools to the MCP server
+ * This module contains tools for creating reusable styles in Figma
+ * @param server - The MCP server instance
+ */
 export function registerStyleTools(server: McpServer): void {
-  // Create Text Style Tool
   server.tool(
     "create_text_style",
     "Create a reusable text style in Figma",
@@ -55,7 +59,6 @@ export function registerStyleTools(server: McpServer): void {
     }
   );
 
-  // Create Paint Style Tool
   server.tool(
     "create_paint_style",
     "Create a reusable color/paint style in Figma",
@@ -97,7 +100,6 @@ export function registerStyleTools(server: McpServer): void {
     }
   );
 
-  // Create Effect Style Tool
   server.tool(
     "create_effect_style",
     "Create a reusable effect style in Figma",
