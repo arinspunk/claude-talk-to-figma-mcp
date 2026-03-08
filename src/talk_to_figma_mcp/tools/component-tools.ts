@@ -174,6 +174,10 @@ export function registerComponentTools(server: McpServer): void {
             easing: z.object({ type: z.string() }).optional().describe("Easing: EASE_IN, EASE_OUT, EASE_IN_AND_OUT, LINEAR"),
             duration: z.number().optional().describe("Duration in seconds"),
           }).optional().describe("Transition animation"),
+          overlayRelativePosition: z.object({
+            x: z.number(),
+            y: z.number(),
+          }).optional().describe("Position of the overlay relative to the viewport top-left (for OVERLAY navigation)"),
         })).describe("Actions to perform when triggered"),
       })).describe("Array of reactions to set on the node"),
     },
@@ -183,12 +187,12 @@ export function registerComponentTools(server: McpServer): void {
           nodeId,
           reactions,
         });
-        const typedResult = result as { id: string; name: string; reactionsCount: number; message: string };
+        const typedResult = result as Record<string, unknown>;
         return {
           content: [
             {
               type: "text",
-              text: typedResult.message,
+              text: JSON.stringify(typedResult, null, 2),
             }
           ]
         }
@@ -198,6 +202,40 @@ export function registerComponentTools(server: McpServer): void {
             {
               type: "text",
               text: `Error setting reactions: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Get Reactions (Prototype Interactions) Tool
+  server.tool(
+    "get_reactions",
+    "Read all prototype interactions (reactions) from a node in Figma. Useful for debugging and inspecting existing interactions.",
+    {
+      nodeId: z.string().describe("The ID of the node to read reactions from"),
+    },
+    async ({ nodeId }) => {
+      try {
+        const result = await sendCommandToFigma("get_reactions", {
+          nodeId,
+        });
+        const typedResult = result as Record<string, unknown>;
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(typedResult, null, 2),
+            }
+          ]
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting reactions: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
         };
