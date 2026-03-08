@@ -188,6 +188,12 @@ async function handleCommand(command, params) {
       return await setEffectStyleId(params);
     case "set_text_style_id":
       return await setTextStyleId(params);
+    case "create_text_style":
+      return await createTextStyle(params);
+    case "create_paint_style":
+      return await createPaintStyle(params);
+    case "create_effect_style":
+      return await createEffectStyle(params);
     case "group_nodes":
       return await groupNodes(params);
     case "ungroup_nodes":
@@ -5905,4 +5911,58 @@ async function createSection(params) {
     height: section.height,
     fills: section.fills,
   };
+}
+
+async function createTextStyle(params) {
+  const { name, fontFamily, fontStyle = "Regular", fontSize, letterSpacing, letterSpacingUnit = "PIXELS", lineHeight, lineHeightUnit = "PIXELS", textCase, textDecoration } = params;
+
+  const style = figma.createTextStyle();
+  style.name = name;
+
+  await figma.loadFontAsync({ family: fontFamily, style: fontStyle });
+  style.fontName = { family: fontFamily, style: fontStyle };
+  style.fontSize = fontSize;
+
+  if (letterSpacing !== undefined) {
+    style.letterSpacing = { value: letterSpacing, unit: letterSpacingUnit };
+  }
+  if (lineHeight !== undefined) {
+    if (lineHeightUnit === "AUTO") {
+      style.lineHeight = { unit: "AUTO" };
+    } else {
+      style.lineHeight = { value: lineHeight, unit: lineHeightUnit };
+    }
+  }
+  if (textCase) style.textCase = textCase;
+  if (textDecoration) style.textDecoration = textDecoration;
+
+  return { id: style.id, name: style.name, key: style.key };
+}
+
+async function createPaintStyle(params) {
+  const { name, r, g, b, a = 1 } = params;
+
+  const style = figma.createPaintStyle();
+  style.name = name;
+  style.paints = [{ type: "SOLID", color: { r, g, b }, opacity: a }];
+
+  return { id: style.id, name: style.name, key: style.key };
+}
+
+async function createEffectStyle(params) {
+  const { name, effects } = params;
+
+  const style = figma.createEffectStyle();
+  style.name = name;
+  style.effects = effects.map(effect => ({
+    type: effect.type,
+    radius: effect.radius || 0,
+    visible: effect.visible !== false,
+    color: effect.color ? { r: effect.color.r, g: effect.color.g, b: effect.color.b, a: effect.color.a || 1 } : { r: 0, g: 0, b: 0, a: 0.25 },
+    offset: effect.offset ? { x: effect.offset.x, y: effect.offset.y } : { x: 0, y: 0 },
+    spread: effect.spread || 0,
+    blendMode: effect.blendMode || "NORMAL",
+  }));
+
+  return { id: style.id, name: style.name, key: style.key, effectCount: effects.length };
 }
