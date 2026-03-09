@@ -128,4 +128,5 @@ export type FigmaCommand =
   | "set_sticky_text"
   | "create_shape_with_text"
   | "create_connector"
-  | "create_section";
+  | "create_section"
+  | "detach_instance";

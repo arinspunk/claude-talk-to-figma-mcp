@@ -153,4 +153,37 @@ export function registerComponentTools(server: McpServer): void {
       }
     }
   );
+
+
+  // Detach Instance Tool
+  server.tool(
+    "detach_instance",
+    "Detach an instance of a component in Figma",
+    {
+      instanceId: z.string().describe("The ID of the instance to detach"),
+    },
+    async ({ instanceId }) => {
+      try {
+        const result = await sendCommandToFigma("detach_instance", { nodeId: instanceId });
+        const typedResult = result as { success: boolean; frameId: string; frameName: string; frameType: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Detached instance with ID: ${instanceId}. New frame ID: ${typedResult.frameId}, name: "${typedResult.frameName}", type: ${typedResult.frameType}`,
+            }
+          ]
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error detaching instance: ${error instanceof Error ? error.message : String(error)}`,
+            }
+          ]
+        };
+      }
+    }
+  );
 }
