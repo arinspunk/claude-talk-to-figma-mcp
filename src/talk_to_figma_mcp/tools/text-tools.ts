@@ -190,6 +190,39 @@ export function registerTextTools(server: McpServer): void {
     }
   );
 
+  // Fix Fonts Tool - batch fix misnamed fonts from auto-capture
+  server.tool(
+    "fix_fonts",
+    "Batch fix misnamed fonts in a subtree. Auto-capture creates wrong font families like 'Rund Display Medium' instead of family 'Rund Display' with style 'Medium'. This recursively walks all text nodes under the given node and fixes them.",
+    {
+      nodeId: z.string().describe("The ID of the root node to fix fonts in (e.g., a page frame)"),
+    },
+    async ({ nodeId }) => {
+      try {
+        const result = await sendCommandToFigma("fix_fonts", { nodeId });
+        const typedResult = result as { fixed: number, skipped: number, errors: number, fixedNodes: Array<{ id: string, name: string, from: string, to: string }>, totalFixedNodes: number };
+        const summary = typedResult.fixedNodes.map((n: { id: string, name: string, from: string, to: string }) => `  ${n.id}: "${n.name}" ${n.from} → ${n.to}`).join("\n");
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Fixed ${typedResult.fixed} text nodes, skipped ${typedResult.skipped}, errors ${typedResult.errors}.\n${summary}`
+            }
+          ]
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error fixing fonts: ${error instanceof Error ? error.message : String(error)}`
+            }
+          ]
+        };
+      }
+    }
+  );
+
   // Set Font Size Tool
   server.tool(
     "set_font_size",

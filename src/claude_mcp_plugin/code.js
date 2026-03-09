@@ -321,6 +321,8 @@ async function handleCommand(command, params) {
       return await setPrototypeDevice(params);
     case "set_prototype_start_node":
       return await setPrototypeStartNode(params);
+    case "fix_fonts":
+      return await fixFonts(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -1139,14 +1141,15 @@ async function createComponentInstance(params) {
     console.error(`Stack trace: ${error.stack || "Not available"}`);
 
     // Provide more helpful error messages for common failure scenarios
-    if (error.message.includes("timeout") || error.message.includes("Timeout")) {
+    const msg = error.message || String(error) || "Unknown error";
+    if (msg.includes("timeout") || msg.includes("Timeout")) {
       throw new Error(`The component import timed out after 10 seconds. This usually happens with complex remote components or network issues. Try again later or use a simpler component.`);
-    } else if (error.message.includes("not found") || error.message.includes("Not found")) {
+    } else if (msg.includes("not found") || msg.includes("Not found")) {
       throw new Error(`Component with key "${componentKey}" not found. Make sure the component exists and is accessible in your document or team libraries.`);
-    } else if (error.message.includes("permission") || error.message.includes("Permission")) {
+    } else if (msg.includes("permission") || msg.includes("Permission")) {
       throw new Error(`You don't have permission to use this component. Make sure you have access to the team library containing this component.`);
     } else {
-      throw new Error(`Error creating component instance: ${error.message}`);
+      throw new Error(`Error creating component instance: ${msg}`);
     }
   }
 }
@@ -2461,6 +2464,116 @@ async function setFontName(params) {
   }
 }
 
+// Batch fix misnamed fonts in a subtree (from auto-capture)
+// Auto-capture creates font families like "Rund Display Medium" instead of
+// family "Rund Display" with style "Medium". This recursively walks a node
+// tree and fixes all text nodes.
+async function fixFonts(params) {
+  const { nodeId } = params || {};
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const root = await getNodeByIdSafe(nodeId);
+  if (!root) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  // Font family mappings: wrong family → { family, style }
+  const fontFixMap = {
+    "Rund Display Medium": { family: "Rund Display", style: "Medium" },
+    "Rund Display Regular": { family: "Rund Display", style: "Regular" },
+    "Rund Display SemiBold": { family: "Rund Display", style: "SemiBold" },
+    "Rund Display Bold": { family: "Rund Display", style: "Bold" },
+    "Rund Text Regular": { family: "Rund Text", style: "Regular" },
+    "Rund Text Medium": { family: "Rund Text", style: "Medium" },
+    "Rund Text SemiBold": { family: "Rund Text", style: "SemiBold" },
+    "Rund Text Bold": { family: "Rund Text", style: "Bold" },
+    "Arimo": { family: "Rund Text", style: "Regular" },
+  };
+
+  // Pre-load all target fonts
+  const fontsToLoad = new Set();
+  for (const fix of Object.values(fontFixMap)) {
+    fontsToLoad.add(`${fix.family}::${fix.style}`);
+  }
+  for (const fontKey of fontsToLoad) {
+    const [family, style] = fontKey.split("::");
+    try {
+      await figma.loadFontAsync({ family, style });
+    } catch (e) {
+      console.log(`Warning: Could not load font ${family} ${style}`);
+    }
+  }
+
+  // Also load the wrong font names so we can read them
+  for (const wrongFamily of Object.keys(fontFixMap)) {
+    try {
+      await figma.loadFontAsync({ family: wrongFamily, style: "Regular" });
+    } catch (e) {
+      // Expected for missing/invalid fonts
+    }
+  }
+
+  let fixed = 0;
+  let skipped = 0;
+  let errors = 0;
+  const fixedNodes = [];
+
+  // Recursively walk the tree
+  async function walkAndFix(node) {
+    if (node.type === "TEXT") {
+      try {
+        const fontName = node.fontName;
+        // fontName could be mixed (Symbol) if text has multiple fonts
+        if (fontName === figma.mixed) {
+          // Handle mixed fonts by checking segments
+          const segments = node.getStyledTextSegments(["fontName"]);
+          for (const seg of segments) {
+            const fix = fontFixMap[seg.fontName.family];
+            if (fix) {
+              await figma.loadFontAsync(seg.fontName); // load current font first
+              await figma.loadFontAsync({ family: fix.family, style: fix.style });
+              node.setRangeFontName(seg.start, seg.end, { family: fix.family, style: fix.style });
+              fixed++;
+              fixedNodes.push({ id: node.id, name: node.name, from: seg.fontName.family, to: `${fix.family} ${fix.style}`, range: true });
+            }
+          }
+        } else {
+          const fix = fontFixMap[fontName.family];
+          if (fix) {
+            node.fontName = { family: fix.family, style: fix.style };
+            fixed++;
+            fixedNodes.push({ id: node.id, name: node.name, from: fontName.family, to: `${fix.family} ${fix.style}` });
+          } else {
+            skipped++;
+          }
+        }
+      } catch (e) {
+        errors++;
+        console.log(`Error fixing font on ${node.id}: ${e.message || e}`);
+      }
+    }
+
+    // Recurse into children (skip component instances' internals to avoid breaking them)
+    if ("children" in node && node.type !== "INSTANCE") {
+      for (const child of node.children) {
+        await walkAndFix(child);
+      }
+    }
+  }
+
+  await walkAndFix(root);
+
+  return {
+    fixed,
+    skipped,
+    errors,
+    fixedNodes: fixedNodes.slice(0, 50), // limit response size
+    totalFixedNodes: fixedNodes.length
+  };
+}
+
 async function setFontSize(params) {
   const { nodeId, fontSize } = params || {};
   if (!nodeId || fontSize === undefined) {
@@ -3071,17 +3184,17 @@ async function setEffectStyleId(params) {
     console.error(`Error setting effect style ID: ${error.message || "Unknown error"}`);
     console.error(`Stack trace: ${error.stack || "Not available"}`);
 
-    // Proporcionar mensajes de error específicos para diferentes casos
-    if (error.message.includes("timeout") || error.message.includes("Timeout")) {
+    const msg = error.message || String(error) || "Unknown error";
+    if (msg.includes("timeout") || msg.includes("Timeout")) {
       throw new Error(`The operation timed out after 8 seconds. This could happen with complex nodes or effects. Try with a simpler node or effect style.`);
-    } else if (error.message.includes("not found") && error.message.includes("Node")) {
+    } else if (msg.includes("not found") && msg.includes("Node")) {
       throw new Error(`Node with ID "${nodeId}" not found. Make sure the node exists in the current document.`);
-    } else if (error.message.includes("not found") && error.message.includes("style")) {
+    } else if (msg.includes("not found") && msg.includes("style")) {
       throw new Error(`Effect style with ID "${effectStyleId}" not found. Make sure the style exists in your local styles.`);
-    } else if (error.message.includes("does not support")) {
+    } else if (msg.includes("does not support")) {
       throw new Error(`The selected node type does not support effect styles. Only certain node types like frames, components, and instances can have effect styles.`);
     } else {
-      throw new Error(`Error setting effect style ID: ${error.message}`);
+      throw new Error(`Error setting effect style ID: ${msg}`);
     }
   }
 }
@@ -3162,17 +3275,17 @@ async function setTextStyleId(params) {
     console.error(`Error setting text style ID: ${error.message || "Unknown error"}`);
     console.error(`Stack trace: ${error.stack || "Not available"}`);
 
-    // Provide specific error messages for different cases
-    if (error.message.includes("timeout") || error.message.includes("Timeout")) {
+    const msg = error.message || String(error) || "Unknown error";
+    if (msg.includes("timeout") || msg.includes("Timeout")) {
       throw new Error(`The operation timed out after 8 seconds. This could happen with complex nodes. Try with a simpler node.`);
-    } else if (error.message.includes("not found") && error.message.includes("Node")) {
+    } else if (msg.includes("not found") && msg.includes("Node")) {
       throw new Error(`Node with ID "${nodeId}" not found. Make sure the node exists in the current document.`);
-    } else if (error.message.includes("not found") && error.message.includes("style")) {
+    } else if (msg.includes("not found") && msg.includes("style")) {
       throw new Error(`Text style with ID "${textStyleId}" not found. Make sure the style exists in your local styles.`);
-    } else if (error.message.includes("not a text node")) {
+    } else if (msg.includes("not a text node")) {
       throw new Error(`The selected node is not a text node. Only text nodes can have text styles applied.`);
     } else {
-      throw new Error(`Error setting text style ID: ${error.message}`);
+      throw new Error(`Error setting text style ID: ${msg}`);
     }
   }
 }
@@ -3322,12 +3435,12 @@ async function flattenNode(params) {
       type: flattened.type
     };
   } catch (error) {
-    console.error(`Error in flattenNode: ${error.message}`);
-    if (error.message.includes("timed out")) {
-      // Provide a more helpful message for timeout errors
+    const msg = error.message || String(error) || "Unknown error";
+    console.error(`Error in flattenNode: ${msg}`);
+    if (msg.includes("timed out")) {
       throw new Error(`The flatten operation timed out. This usually happens with complex nodes. Try simplifying the node first or breaking it into smaller parts.`);
     } else {
-      throw new Error(`Error flattening node: ${error.message}`);
+      throw new Error(`Error flattening node: ${msg}`);
     }
   }
 }
@@ -6405,12 +6518,12 @@ async function addReaction(params) {
     type: "NODE",
     destinationId: destinationId || null,
     navigation: navigationType,
-    transition: buildTransition(transition) || null,
-    resetScrollPosition: resetScrollPosition || false,
-    resetInteractions: resetInteractions || false,
-    resetVideoPosition: resetVideoPosition || false,
   };
 
+  const builtTransition = buildTransition(transition);
+  if (builtTransition) action.transition = builtTransition;
+  if (resetScrollPosition !== undefined) action.preserveScrollPosition = !resetScrollPosition;
+  if (resetVideoPosition !== undefined) action.resetVideoPosition = resetVideoPosition;
   if (overlayRelativePosition && navigationType === "OVERLAY") {
     action.overlayRelativePosition = overlayRelativePosition;
   }
@@ -6450,10 +6563,9 @@ async function addBackReaction(params) {
 
   const triggerObj = { type: trigger };
 
-  const action = {
-    type: actionType,
-    transition: buildTransition(transition) || null,
-  };
+  const action = { type: actionType };
+  const builtTransition = buildTransition(transition);
+  if (builtTransition) action.transition = builtTransition;
 
   const existingReactions = node.reactions ? [...node.reactions] : [];
   existingReactions.push({
