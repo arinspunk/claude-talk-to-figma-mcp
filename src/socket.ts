@@ -56,6 +56,8 @@ const CREATION_COMMANDS = new Set([
   "create_polygon", "create_star", "create_vector", "create_line",
   "create_component_instance", "create_component_set", "set_svg",
   "clone_node", "create_component_from_node",
+  // FigJam creation commands
+  "create_section", "create_sticky", "create_shape_with_text", "create_connector",
 ]);
 
 // Stateful commands blocked unconditionally (use parentId-based targeting instead)

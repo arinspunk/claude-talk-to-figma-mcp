@@ -5805,6 +5805,7 @@ async function createConnector(params) {
     strokeColor,
     strokeWeight,
     name,
+    parentId,
   } = params || {};
 
   if (!figma.createConnector) {
@@ -5865,7 +5866,18 @@ async function createConnector(params) {
     connector.name = name;
   }
 
-  figma.currentPage.appendChild(connector);
+  if (parentId) {
+    const parentNode = await getNodeByIdSafe(parentId);
+    if (!parentNode) {
+      throw new Error("Parent node not found with ID: " + parentId);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error("Parent node does not support children: " + parentId);
+    }
+    parentNode.appendChild(connector);
+  } else {
+    figma.currentPage.appendChild(connector);
+  }
 
   return {
     id: connector.id,
@@ -5892,6 +5904,7 @@ async function createSection(params) {
     height = 600,
     name = "Section",
     fillColor,
+    parentId,
   } = params || {};
 
   if (!figma.createSection) {
@@ -5918,7 +5931,18 @@ async function createSection(params) {
     ];
   }
 
-  figma.currentPage.appendChild(section);
+  if (parentId) {
+    const parentNode = await getNodeByIdSafe(parentId);
+    if (!parentNode) {
+      throw new Error("Parent node not found with ID: " + parentId);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error("Parent node does not support children: " + parentId);
+    }
+    parentNode.appendChild(section);
+  } else {
+    figma.currentPage.appendChild(section);
+  }
 
   return {
     id: section.id,

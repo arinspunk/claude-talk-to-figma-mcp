@@ -16,6 +16,8 @@ const CREATION_COMMANDS = new Set([
   "create_polygon", "create_star", "create_vector", "create_line",
   "create_component_instance", "create_component_set", "set_svg",
   "clone_node", "create_component_from_node",
+  // FigJam creation commands
+  "create_section", "create_sticky", "create_shape_with_text", "create_connector",
 ]);
 
 const BLOCKED_COMMANDS = new Set(["set_current_page"]);
@@ -106,6 +108,11 @@ describe("Command Validation (unit)", () => {
     expect(CREATION_COMMANDS.has("set_svg")).toBe(true);
     expect(CREATION_COMMANDS.has("clone_node")).toBe(true);
     expect(CREATION_COMMANDS.has("create_component_from_node")).toBe(true);
+    // FigJam creation commands
+    expect(CREATION_COMMANDS.has("create_section")).toBe(true);
+    expect(CREATION_COMMANDS.has("create_sticky")).toBe(true);
+    expect(CREATION_COMMANDS.has("create_shape_with_text")).toBe(true);
+    expect(CREATION_COMMANDS.has("create_connector")).toBe(true);
   });
 
   it("CREATION_COMMANDS does NOT include stateless commands", () => {

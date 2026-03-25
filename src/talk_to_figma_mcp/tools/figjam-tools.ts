@@ -88,7 +88,7 @@ export function registerFigJamTools(server: McpServer): void {
       parentId: z
         .string()
         .optional()
-        .describe("Optional parent node ID (e.g. a section) to place the sticky into"),
+        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
     async ({ x, y, text, color, isWide, name, parentId }) => {
       try {
@@ -197,7 +197,7 @@ export function registerFigJamTools(server: McpServer): void {
       parentId: z
         .string()
         .optional()
-        .describe("Optional parent node ID to place the shape into"),
+        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
     async ({ x, y, width, height, shapeType, text, fillColor, name, parentId }) => {
       try {
@@ -287,6 +287,10 @@ export function registerFigJamTools(server: McpServer): void {
         .describe("Stroke color in RGBA format"),
       strokeWeight: z.number().positive().optional().describe("Stroke weight / line thickness"),
       name: z.string().optional().describe("Optional name for the connector node"),
+      parentId: z
+        .string()
+        .optional()
+        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
     async ({
       startNodeId,
@@ -301,6 +305,7 @@ export function registerFigJamTools(server: McpServer): void {
       strokeColor,
       strokeWeight,
       name,
+      parentId,
     }) => {
       try {
         const result = await sendCommandToFigma("create_connector", {
@@ -316,6 +321,7 @@ export function registerFigJamTools(server: McpServer): void {
           strokeColor,
           strokeWeight,
           name,
+          parentId,
         });
         return {
           content: [
@@ -359,8 +365,12 @@ export function registerFigJamTools(server: McpServer): void {
         })
         .optional()
         .describe("Background fill color in RGBA format"),
+      parentId: z
+        .string()
+        .optional()
+        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
-    async ({ x, y, width, height, name, fillColor }) => {
+    async ({ x, y, width, height, name, fillColor, parentId }) => {
       try {
         const result = await sendCommandToFigma("create_section", {
           x,
@@ -369,6 +379,7 @@ export function registerFigJamTools(server: McpServer): void {
           height: height ?? 600,
           name: name ?? "Section",
           fillColor,
+          parentId,
         });
         return {
           content: [
