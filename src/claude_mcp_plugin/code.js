@@ -1653,7 +1653,7 @@ const setCharactersWithSmartMatchFont = async (
 
 // Add the cloneNode function implementation
 async function cloneNode(params) {
-  const { nodeId, x, y } = params || {};
+  const { nodeId, x, y, parentId } = params || {};
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -1676,8 +1676,17 @@ async function cloneNode(params) {
     clone.y = y;
   }
 
-  // Add the clone to the same parent as the original node
-  if (node.parent) {
+  // Add the clone to the target parent, or fall back to the original node's parent
+  if (parentId) {
+    const parentNode = await getNodeByIdSafe(parentId);
+    if (!parentNode) {
+      throw new Error("Parent node not found with ID: " + parentId);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error("Parent node does not support children: " + parentId);
+    }
+    parentNode.appendChild(clone);
+  } else if (node.parent) {
     node.parent.appendChild(clone);
   } else {
     figma.currentPage.appendChild(clone);
