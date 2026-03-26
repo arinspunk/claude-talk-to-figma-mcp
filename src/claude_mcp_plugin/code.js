@@ -625,12 +625,18 @@ async function createText(params) {
     textNode.textAlignHorizontal = textAlignHorizontal;
   }
 
-  // Set text auto resize if provided (WIDTH_AND_HEIGHT, HEIGHT, NONE, TRUNCATE)
-  if (textAutoResize && ["WIDTH_AND_HEIGHT", "HEIGHT", "NONE", "TRUNCATE"].includes(textAutoResize)) {
-    textNode.textAutoResize = textAutoResize;
+  // Set text auto resize (WIDTH_AND_HEIGHT, HEIGHT, NONE, TRUNCATE)
+  // When width is provided without an explicit textAutoResize, default to "HEIGHT"
+  // so text wraps at the given width instead of staying on a single line.
+  var effectiveAutoResize = textAutoResize;
+  if (!effectiveAutoResize && width && typeof width === "number" && width > 0) {
+    effectiveAutoResize = "HEIGHT";
+  }
+  if (effectiveAutoResize && ["WIDTH_AND_HEIGHT", "HEIGHT", "NONE", "TRUNCATE"].includes(effectiveAutoResize)) {
+    textNode.textAutoResize = effectiveAutoResize;
   }
 
-  // Set width if provided (useful with textAutoResize "HEIGHT" for fixed-width wrapping text)
+  // Set width if provided (with "HEIGHT" auto-resize, text wraps at this width)
   if (width && typeof width === "number" && width > 0) {
     textNode.resize(width, textNode.height);
   }

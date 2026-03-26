@@ -212,7 +212,7 @@ export function registerCreationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Created text "${typedResult.name}" with ID: ${typedResult.id}. TIP: If this text is inside a frame, use set_auto_layout on the parent frame to center and align text automatically instead of manual positioning.`,
+              text: `Created text "${typedResult.name}" with ID: ${typedResult.id}. TIP: Pass a width parameter to enable text wrapping (auto-sets textAutoResize to HEIGHT). Use set_auto_layout on the parent frame to center and align text automatically instead of manual positioning.`,
             },
           ],
         };
