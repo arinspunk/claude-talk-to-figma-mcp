@@ -126,7 +126,7 @@ export function registerCreationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Created frame "${typedResult.name}" with ID: ${typedResult.id}. Use the ID as the parentId to appendChild inside this frame.`,
+              text: `Created frame "${typedResult.name}" with ID: ${typedResult.id}. Use the ID as the parentId to appendChild inside this frame. TIP: Apply set_auto_layout to this frame for automatic centering and spacing of child elements — avoid manual x/y positioning inside frames.`,
             },
           ],
         };
@@ -212,7 +212,7 @@ export function registerCreationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Created text "${typedResult.name}" with ID: ${typedResult.id}`,
+              text: `Created text "${typedResult.name}" with ID: ${typedResult.id}. TIP: If this text is inside a frame, use set_auto_layout on the parent frame to center and align text automatically instead of manual positioning.`,
             },
           ],
         };
