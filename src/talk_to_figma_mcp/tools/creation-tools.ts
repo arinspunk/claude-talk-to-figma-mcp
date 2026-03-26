@@ -21,7 +21,7 @@ export function registerCreationTools(server: McpServer): void {
       parentId: z
         .string()
         .optional()
-        .describe("Optional parent node ID to append the rectangle to"),
+        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
     async ({ x, y, width, height, name, parentId }) => {
       try {
@@ -67,7 +67,7 @@ export function registerCreationTools(server: McpServer): void {
       parentId: z
         .string()
         .optional()
-        .describe("Optional parent node ID to append the frame to"),
+        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
       fillColor: z
         .object({
           r: z.number().min(0).max(1).describe("Red component (0-1)"),
@@ -126,7 +126,7 @@ export function registerCreationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Created frame "${typedResult.name}" with ID: ${typedResult.id}. Use the ID as the parentId to appendChild inside this frame.`,
+              text: `Created frame "${typedResult.name}" with ID: ${typedResult.id}. Use the ID as the parentId to appendChild inside this frame. TIP: Apply set_auto_layout to this frame for automatic centering and spacing of child elements — avoid manual x/y positioning inside frames.`,
             },
           ],
         };
@@ -177,7 +177,7 @@ export function registerCreationTools(server: McpServer): void {
       parentId: z
         .string()
         .optional()
-        .describe("Optional parent node ID to append the text to"),
+        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
       textAlignHorizontal: z
         .enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"])
         .optional()
@@ -212,7 +212,7 @@ export function registerCreationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Created text "${typedResult.name}" with ID: ${typedResult.id}`,
+              text: `Created text "${typedResult.name}" with ID: ${typedResult.id}. TIP: Pass a width parameter to enable text wrapping (auto-sets textAutoResize to HEIGHT). Use set_auto_layout on the parent frame to center and align text automatically instead of manual positioning.`,
             },
           ],
         };
@@ -239,7 +239,7 @@ export function registerCreationTools(server: McpServer): void {
       width: z.number().describe("Width of the ellipse"),
       height: z.number().describe("Height of the ellipse"),
       name: z.string().optional().describe("Optional name for the ellipse"),
-      parentId: z.string().optional().describe("Optional parent node ID to append the ellipse to"),
+      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
       fillColor: z
         .object({
           r: z.number().min(0).max(1).describe("Red component (0-1)"),
@@ -307,7 +307,7 @@ export function registerCreationTools(server: McpServer): void {
       height: z.number().describe("Height of the polygon"),
       sides: z.number().min(3).optional().describe("Number of sides (default: 6)"),
       name: z.string().optional().describe("Optional name for the polygon"),
-      parentId: z.string().optional().describe("Optional parent node ID to append the polygon to"),
+      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
       fillColor: z
         .object({
           r: z.number().min(0).max(1).describe("Red component (0-1)"),
@@ -377,7 +377,7 @@ export function registerCreationTools(server: McpServer): void {
       points: z.number().min(3).optional().describe("Number of points (default: 5)"),
       innerRadius: z.number().min(0.01).max(0.99).optional().describe("Inner radius ratio (0.01-0.99, default: 0.5)"),
       name: z.string().optional().describe("Optional name for the star"),
-      parentId: z.string().optional().describe("Optional parent node ID to append the star to"),
+      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
       fillColor: z
         .object({
           r: z.number().min(0).max(1).describe("Red component (0-1)"),

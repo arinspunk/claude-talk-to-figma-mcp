@@ -1,6 +1,30 @@
 // This is the main code file for the Claude MCP Figma plugin
 // It handles Figma API commands
 
+// Safe color channel parser: returns a valid 0-1 number or NaN.
+// Unlike `parseFloat(x) || 0`, this does NOT silently fall back to 0 (black).
+function safeChannel(value) {
+  if (value === undefined || value === null) return NaN;
+  var n = typeof value === "number" ? value : parseFloat(value);
+  return isNaN(n) ? NaN : Math.max(0, Math.min(1, n));
+}
+
+// Build a Figma paint from an {r, g, b, a?} color object.
+// Returns null if any RGB channel is invalid — caller should skip the fill.
+function safePaint(color) {
+  if (!color || typeof color !== "object") return null;
+  var r = safeChannel(color.r);
+  var g = safeChannel(color.g);
+  var b = safeChannel(color.b);
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return null;
+  var a = safeChannel(color.a);
+  return {
+    type: "SOLID",
+    color: { r: r, g: g, b: b },
+    opacity: isNaN(a) ? 1 : a,
+  };
+}
+
 // Plugin state
 const state = {
   serverPort: 3055, // Default port
@@ -455,32 +479,16 @@ async function createFrame(params) {
   frame.resize(width, height);
   frame.name = name;
 
-  // Set fill color if provided
+  // Set fill color if provided (invalid color → skip, keeping Figma default)
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    frame.fills = [paintStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) frame.fills = [fillPaint];
   }
 
-  // Set stroke color and weight if provided
+  // Set stroke color and weight if provided (invalid color → skip)
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    frame.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) frame.strokes = [strokePaint];
   }
 
   // Set stroke weight if provided
@@ -500,6 +508,41 @@ async function createFrame(params) {
     parentNode.appendChild(frame);
   } else {
     figma.currentPage.appendChild(frame);
+  }
+
+  // Auto-apply layout grids when frame is a direct child of a page node.
+  // Grids are hidden (visible: false) so they don't clutter the canvas,
+  // but are readable via the API for AI-assisted layout and alignment.
+  if (frame.parent && frame.parent.type === "PAGE") {
+    var colGrid = { pattern: "COLUMNS", visible: false, alignment: "STRETCH" };
+    var rowGrid = { pattern: "ROWS", visible: false, alignment: "MIN", sectionSize: 8, gutterSize: 0, offset: 0 };
+
+    if (width >= 1024) {
+      // Desktop: 12 columns, 30px gutters, 120px margins
+      colGrid.count = 12;
+      colGrid.gutterSize = 30;
+      colGrid.offset = 120;
+    } else if (width >= 768) {
+      // Tablet: 8 columns, 20px gutters, 40px margins
+      colGrid.count = 8;
+      colGrid.gutterSize = 20;
+      colGrid.offset = 40;
+    } else {
+      // Mobile: 4 columns, 16px gutters, 20px margins
+      colGrid.count = 4;
+      colGrid.gutterSize = 16;
+      colGrid.offset = 20;
+    }
+
+    // Row count: enough 8px rows to cover the frame height
+    rowGrid.count = Math.ceil(height / 8);
+
+    try {
+      frame.layoutGrids = [colGrid, rowGrid];
+    } catch (e) {
+      // Non-critical: don't fail frame creation if grid application fails
+      console.warn("Auto-grid: could not apply layout grids:", e.message);
+    }
   }
 
   return {
@@ -574,28 +617,26 @@ async function createText(params) {
   await setCharacters(textNode, text);
 
   // Set text color
-  const paintStyle = {
-    type: "SOLID",
-    color: {
-      r: parseFloat(fontColor.r) || 0,
-      g: parseFloat(fontColor.g) || 0,
-      b: parseFloat(fontColor.b) || 0,
-    },
-    opacity: parseFloat(fontColor.a) || 1,
-  };
-  textNode.fills = [paintStyle];
+  var fontPaint = safePaint(fontColor);
+  if (fontPaint) textNode.fills = [fontPaint];
 
   // Set text alignment if provided
   if (textAlignHorizontal && ["LEFT", "CENTER", "RIGHT", "JUSTIFIED"].includes(textAlignHorizontal)) {
     textNode.textAlignHorizontal = textAlignHorizontal;
   }
 
-  // Set text auto resize if provided (WIDTH_AND_HEIGHT, HEIGHT, NONE, TRUNCATE)
-  if (textAutoResize && ["WIDTH_AND_HEIGHT", "HEIGHT", "NONE", "TRUNCATE"].includes(textAutoResize)) {
-    textNode.textAutoResize = textAutoResize;
+  // Set text auto resize (WIDTH_AND_HEIGHT, HEIGHT, NONE, TRUNCATE)
+  // When width is provided without an explicit textAutoResize, default to "HEIGHT"
+  // so text wraps at the given width instead of staying on a single line.
+  var effectiveAutoResize = textAutoResize;
+  if (!effectiveAutoResize && width && typeof width === "number" && width > 0) {
+    effectiveAutoResize = "HEIGHT";
+  }
+  if (effectiveAutoResize && ["WIDTH_AND_HEIGHT", "HEIGHT", "NONE", "TRUNCATE"].includes(effectiveAutoResize)) {
+    textNode.textAutoResize = effectiveAutoResize;
   }
 
-  // Set width if provided (useful with textAutoResize "HEIGHT" for fixed-width wrapping text)
+  // Set width if provided (with "HEIGHT" auto-resize, text wraps at this width)
   if (width && typeof width === "number" && width > 0) {
     textNode.resize(width, textNode.height);
   }
@@ -1023,7 +1064,7 @@ async function getLocalComponents() {
 // }
 
 async function createComponentInstance(params) {
-  const { componentKey, x = 0, y = 0 } = params || {};
+  const { componentKey, x = 0, y = 0, parentId } = params || {};
 
   if (!componentKey) {
     throw new Error("Missing componentKey parameter");
@@ -1086,9 +1127,21 @@ async function createComponentInstance(params) {
       instance.x = x;
       instance.y = y;
 
-      figma.currentPage.appendChild(instance);
+      // Add to parent (explicit parentId or currentPage fallback)
+      if (parentId) {
+        const parentNode = await getNodeByIdSafe(parentId);
+        if (!parentNode) {
+          throw new Error(`Parent node not found with ID: ${parentId}`);
+        }
+        if (!("appendChild" in parentNode)) {
+          throw new Error(`Parent node does not support children: ${parentId}`);
+        }
+        parentNode.appendChild(instance);
+      } else {
+        figma.currentPage.appendChild(instance);
+      }
 
-      console.log(`Component instance created and added to page successfully`);
+      console.log(`Component instance created and added to ${parentId ? 'parent ' + parentId : 'page'} successfully`);
 
       return {
         id: instance.id,
@@ -1606,7 +1659,7 @@ const setCharactersWithSmartMatchFont = async (
 
 // Add the cloneNode function implementation
 async function cloneNode(params) {
-  const { nodeId, x, y } = params || {};
+  const { nodeId, x, y, parentId } = params || {};
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -1629,8 +1682,17 @@ async function cloneNode(params) {
     clone.y = y;
   }
 
-  // Add the clone to the same parent as the original node
-  if (node.parent) {
+  // Add the clone to the target parent, or fall back to the original node's parent
+  if (parentId) {
+    const parentNode = await getNodeByIdSafe(parentId);
+    if (!parentNode) {
+      throw new Error("Parent node not found with ID: " + parentId);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error("Parent node does not support children: " + parentId);
+    }
+    parentNode.appendChild(clone);
+  } else if (node.parent) {
     node.parent.appendChild(clone);
   } else {
     figma.currentPage.appendChild(clone);
@@ -3318,30 +3380,14 @@ async function createEllipse(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const fillStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1
-    };
-    ellipse.fills = [fillStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) ellipse.fills = [fillPaint];
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1
-    };
-    ellipse.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) ellipse.strokes = [strokePaint];
 
     if (strokeWeight) {
       ellipse.strokeWeight = strokeWeight;
@@ -3401,30 +3447,14 @@ async function createPolygon(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    polygon.fills = [paintStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) polygon.fills = [fillPaint];
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    polygon.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) polygon.strokes = [strokePaint];
   }
 
   // Set stroke weight if provided
@@ -3496,30 +3526,14 @@ async function createStar(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    star.fills = [paintStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) star.fills = [fillPaint];
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    star.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) star.strokes = [strokePaint];
   }
 
   // Set stroke weight if provided
@@ -3591,30 +3605,14 @@ async function createVector(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    vector.fills = [paintStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) vector.fills = [fillPaint];
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    vector.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) vector.strokes = [strokePaint];
   }
 
   // Set stroke weight if provided
@@ -3699,16 +3697,8 @@ async function createLine(params) {
   }];
 
   // Set stroke color
-  const strokeStyle = {
-    type: "SOLID",
-    color: {
-      r: parseFloat(strokeColor.r) || 0,
-      g: parseFloat(strokeColor.g) || 0,
-      b: parseFloat(strokeColor.b) || 0,
-    },
-    opacity: parseFloat(strokeColor.a) || 1
-  };
-  line.strokes = [strokeStyle];
+  var strokePaint = safePaint(strokeColor);
+  if (strokePaint) line.strokes = [strokePaint];
 
   // Set stroke weight
   line.strokeWeight = strokeWeight;
@@ -3923,8 +3913,21 @@ async function createComponentSet(params) {
     components.push(node);
   }
 
+  // Determine parent container
+  let container = figma.currentPage;
+  if (params.parentId) {
+    const parentNode = await getNodeByIdSafe(params.parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${params.parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${params.parentId}`);
+    }
+    container = parentNode;
+  }
+
   // Combine components into a component set
-  const componentSet = figma.combineAsVariants(components, figma.currentPage);
+  const componentSet = figma.combineAsVariants(components, container);
 
   if (name) {
     componentSet.name = name;
@@ -4993,11 +4996,23 @@ async function setGrid(params) {
     if (grid.pattern === "GRID") {
       layoutGrid.sectionSize = grid.sectionSize !== undefined ? grid.sectionSize : 10;
     } else {
-      // COLUMNS and ROWS require count, alignment, gutterSize, offset (NO sectionSize)
-      layoutGrid.count = grid.count !== undefined ? grid.count : 5;
+      // COLUMNS and ROWS: alignment determines the variant
+      // STRETCH: uses count, gutterSize, offset (evenly divided)
+      // MIN/CENTER/MAX: uses sectionSize, count, offset (fixed-size cells)
       layoutGrid.alignment = grid.alignment !== undefined ? grid.alignment : "STRETCH";
-      layoutGrid.gutterSize = grid.gutterSize !== undefined ? grid.gutterSize : 10;
-      layoutGrid.offset = grid.offset !== undefined ? grid.offset : 0;
+      if (layoutGrid.alignment === "STRETCH") {
+        layoutGrid.count = grid.count !== undefined ? grid.count : 5;
+        layoutGrid.gutterSize = grid.gutterSize !== undefined ? grid.gutterSize : 10;
+        layoutGrid.offset = grid.offset !== undefined ? grid.offset : 0;
+      } else {
+        // MIN/CENTER/MAX: fixed-size cells
+        layoutGrid.sectionSize = grid.sectionSize !== undefined ? grid.sectionSize : 10;
+        layoutGrid.gutterSize = grid.gutterSize !== undefined ? grid.gutterSize : 0;
+        layoutGrid.offset = grid.offset !== undefined ? grid.offset : 0;
+        if (grid.count !== undefined) {
+          layoutGrid.count = grid.count;
+        }
+      }
     }
 
     if (grid.color) {
@@ -5712,17 +5727,8 @@ async function createShapeWithText(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    shape.fills = [
-      {
-        type: "SOLID",
-        color: {
-          r: parseFloat(fillColor.r) || 0,
-          g: parseFloat(fillColor.g) || 0,
-          b: parseFloat(fillColor.b) || 0,
-        },
-        opacity: fillColor.a !== undefined ? parseFloat(fillColor.a) : 1,
-      },
-    ];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) shape.fills = [fillPaint];
   }
 
   // Set text via the text sub-layer
@@ -5780,6 +5786,7 @@ async function createConnector(params) {
     strokeColor,
     strokeWeight,
     name,
+    parentId,
   } = params || {};
 
   if (!figma.createConnector) {
@@ -5819,17 +5826,8 @@ async function createConnector(params) {
   connector.connectorEndStrokeCap = endStrokeCap;
 
   if (strokeColor) {
-    connector.strokes = [
-      {
-        type: "SOLID",
-        color: {
-          r: parseFloat(strokeColor.r) || 0,
-          g: parseFloat(strokeColor.g) || 0,
-          b: parseFloat(strokeColor.b) || 0,
-        },
-        opacity: strokeColor.a !== undefined ? parseFloat(strokeColor.a) : 1,
-      },
-    ];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) connector.strokes = [strokePaint];
   }
 
   if (strokeWeight !== undefined) {
@@ -5840,7 +5838,18 @@ async function createConnector(params) {
     connector.name = name;
   }
 
-  figma.currentPage.appendChild(connector);
+  if (parentId) {
+    const parentNode = await getNodeByIdSafe(parentId);
+    if (!parentNode) {
+      throw new Error("Parent node not found with ID: " + parentId);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error("Parent node does not support children: " + parentId);
+    }
+    parentNode.appendChild(connector);
+  } else {
+    figma.currentPage.appendChild(connector);
+  }
 
   return {
     id: connector.id,
@@ -5867,6 +5876,7 @@ async function createSection(params) {
     height = 600,
     name = "Section",
     fillColor,
+    parentId,
   } = params || {};
 
   if (!figma.createSection) {
@@ -5880,20 +5890,22 @@ async function createSection(params) {
   section.name = name;
 
   if (fillColor) {
-    section.fills = [
-      {
-        type: "SOLID",
-        color: {
-          r: parseFloat(fillColor.r) || 0,
-          g: parseFloat(fillColor.g) || 0,
-          b: parseFloat(fillColor.b) || 0,
-        },
-        opacity: fillColor.a !== undefined ? parseFloat(fillColor.a) : 1,
-      },
-    ];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) section.fills = [fillPaint];
   }
 
-  figma.currentPage.appendChild(section);
+  if (parentId) {
+    const parentNode = await getNodeByIdSafe(parentId);
+    if (!parentNode) {
+      throw new Error("Parent node not found with ID: " + parentId);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error("Parent node does not support children: " + parentId);
+    }
+    parentNode.appendChild(section);
+  } else {
+    figma.currentPage.appendChild(section);
+  }
 
   return {
     id: section.id,

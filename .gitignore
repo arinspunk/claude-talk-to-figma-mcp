@@ -39,3 +39,9 @@ dxt-*/
 
 # Claude Code local settings
 .claude/
+
+# Session-specific files
+.figma-channel
+.figma-url
+.serena/
+plans/
