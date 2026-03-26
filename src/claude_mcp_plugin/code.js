@@ -1,6 +1,30 @@
 // This is the main code file for the Claude MCP Figma plugin
 // It handles Figma API commands
 
+// Safe color channel parser: returns a valid 0-1 number or NaN.
+// Unlike `parseFloat(x) || 0`, this does NOT silently fall back to 0 (black).
+function safeChannel(value) {
+  if (value === undefined || value === null) return NaN;
+  var n = typeof value === "number" ? value : parseFloat(value);
+  return isNaN(n) ? NaN : Math.max(0, Math.min(1, n));
+}
+
+// Build a Figma paint from an {r, g, b, a?} color object.
+// Returns null if any RGB channel is invalid — caller should skip the fill.
+function safePaint(color) {
+  if (!color || typeof color !== "object") return null;
+  var r = safeChannel(color.r);
+  var g = safeChannel(color.g);
+  var b = safeChannel(color.b);
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return null;
+  var a = safeChannel(color.a);
+  return {
+    type: "SOLID",
+    color: { r: r, g: g, b: b },
+    opacity: isNaN(a) ? 1 : a,
+  };
+}
+
 // Plugin state
 const state = {
   serverPort: 3055, // Default port
@@ -455,32 +479,16 @@ async function createFrame(params) {
   frame.resize(width, height);
   frame.name = name;
 
-  // Set fill color if provided
+  // Set fill color if provided (invalid color → skip, keeping Figma default)
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    frame.fills = [paintStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) frame.fills = [fillPaint];
   }
 
-  // Set stroke color and weight if provided
+  // Set stroke color and weight if provided (invalid color → skip)
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    frame.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) frame.strokes = [strokePaint];
   }
 
   // Set stroke weight if provided
@@ -609,16 +617,8 @@ async function createText(params) {
   await setCharacters(textNode, text);
 
   // Set text color
-  const paintStyle = {
-    type: "SOLID",
-    color: {
-      r: parseFloat(fontColor.r) || 0,
-      g: parseFloat(fontColor.g) || 0,
-      b: parseFloat(fontColor.b) || 0,
-    },
-    opacity: parseFloat(fontColor.a) || 1,
-  };
-  textNode.fills = [paintStyle];
+  var fontPaint = safePaint(fontColor);
+  if (fontPaint) textNode.fills = [fontPaint];
 
   // Set text alignment if provided
   if (textAlignHorizontal && ["LEFT", "CENTER", "RIGHT", "JUSTIFIED"].includes(textAlignHorizontal)) {
@@ -3374,30 +3374,14 @@ async function createEllipse(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const fillStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1
-    };
-    ellipse.fills = [fillStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) ellipse.fills = [fillPaint];
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1
-    };
-    ellipse.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) ellipse.strokes = [strokePaint];
 
     if (strokeWeight) {
       ellipse.strokeWeight = strokeWeight;
@@ -3457,30 +3441,14 @@ async function createPolygon(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    polygon.fills = [paintStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) polygon.fills = [fillPaint];
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    polygon.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) polygon.strokes = [strokePaint];
   }
 
   // Set stroke weight if provided
@@ -3552,30 +3520,14 @@ async function createStar(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    star.fills = [paintStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) star.fills = [fillPaint];
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    star.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) star.strokes = [strokePaint];
   }
 
   // Set stroke weight if provided
@@ -3647,30 +3599,14 @@ async function createVector(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    vector.fills = [paintStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) vector.fills = [fillPaint];
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    vector.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) vector.strokes = [strokePaint];
   }
 
   // Set stroke weight if provided
@@ -3755,16 +3691,8 @@ async function createLine(params) {
   }];
 
   // Set stroke color
-  const strokeStyle = {
-    type: "SOLID",
-    color: {
-      r: parseFloat(strokeColor.r) || 0,
-      g: parseFloat(strokeColor.g) || 0,
-      b: parseFloat(strokeColor.b) || 0,
-    },
-    opacity: parseFloat(strokeColor.a) || 1
-  };
-  line.strokes = [strokeStyle];
+  var strokePaint = safePaint(strokeColor);
+  if (strokePaint) line.strokes = [strokePaint];
 
   // Set stroke weight
   line.strokeWeight = strokeWeight;
@@ -5793,17 +5721,8 @@ async function createShapeWithText(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    shape.fills = [
-      {
-        type: "SOLID",
-        color: {
-          r: parseFloat(fillColor.r) || 0,
-          g: parseFloat(fillColor.g) || 0,
-          b: parseFloat(fillColor.b) || 0,
-        },
-        opacity: fillColor.a !== undefined ? parseFloat(fillColor.a) : 1,
-      },
-    ];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) shape.fills = [fillPaint];
   }
 
   // Set text via the text sub-layer
@@ -5901,17 +5820,8 @@ async function createConnector(params) {
   connector.connectorEndStrokeCap = endStrokeCap;
 
   if (strokeColor) {
-    connector.strokes = [
-      {
-        type: "SOLID",
-        color: {
-          r: parseFloat(strokeColor.r) || 0,
-          g: parseFloat(strokeColor.g) || 0,
-          b: parseFloat(strokeColor.b) || 0,
-        },
-        opacity: strokeColor.a !== undefined ? parseFloat(strokeColor.a) : 1,
-      },
-    ];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) connector.strokes = [strokePaint];
   }
 
   if (strokeWeight !== undefined) {
@@ -5974,17 +5884,8 @@ async function createSection(params) {
   section.name = name;
 
   if (fillColor) {
-    section.fills = [
-      {
-        type: "SOLID",
-        color: {
-          r: parseFloat(fillColor.r) || 0,
-          g: parseFloat(fillColor.g) || 0,
-          b: parseFloat(fillColor.b) || 0,
-        },
-        opacity: fillColor.a !== undefined ? parseFloat(fillColor.a) : 1,
-      },
-    ];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) section.fills = [fillPaint];
   }
 
   if (parentId) {
