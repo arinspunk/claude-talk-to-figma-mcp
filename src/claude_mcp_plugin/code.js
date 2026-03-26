@@ -502,6 +502,41 @@ async function createFrame(params) {
     figma.currentPage.appendChild(frame);
   }
 
+  // Auto-apply layout grids when frame is a direct child of a page node.
+  // Grids are hidden (visible: false) so they don't clutter the canvas,
+  // but are readable via the API for AI-assisted layout and alignment.
+  if (frame.parent && frame.parent.type === "PAGE") {
+    var colGrid = { pattern: "COLUMNS", visible: false, alignment: "STRETCH" };
+    var rowGrid = { pattern: "ROWS", visible: false, alignment: "MIN", sectionSize: 8, gutterSize: 0, offset: 0 };
+
+    if (width >= 1024) {
+      // Desktop: 12 columns, 30px gutters, 120px margins
+      colGrid.count = 12;
+      colGrid.gutterSize = 30;
+      colGrid.offset = 120;
+    } else if (width >= 768) {
+      // Tablet: 8 columns, 20px gutters, 40px margins
+      colGrid.count = 8;
+      colGrid.gutterSize = 20;
+      colGrid.offset = 40;
+    } else {
+      // Mobile: 4 columns, 16px gutters, 20px margins
+      colGrid.count = 4;
+      colGrid.gutterSize = 16;
+      colGrid.offset = 20;
+    }
+
+    // Row count: enough 8px rows to cover the frame height
+    rowGrid.count = Math.ceil(height / 8);
+
+    try {
+      frame.layoutGrids = [colGrid, rowGrid];
+    } catch (e) {
+      // Non-critical: don't fail frame creation if grid application fails
+      console.warn("Auto-grid: could not apply layout grids:", e.message);
+    }
+  }
+
   return {
     id: frame.id,
     name: frame.name,
@@ -5018,11 +5053,23 @@ async function setGrid(params) {
     if (grid.pattern === "GRID") {
       layoutGrid.sectionSize = grid.sectionSize !== undefined ? grid.sectionSize : 10;
     } else {
-      // COLUMNS and ROWS require count, alignment, gutterSize, offset (NO sectionSize)
-      layoutGrid.count = grid.count !== undefined ? grid.count : 5;
+      // COLUMNS and ROWS: alignment determines the variant
+      // STRETCH: uses count, gutterSize, offset (evenly divided)
+      // MIN/CENTER/MAX: uses sectionSize, count, offset (fixed-size cells)
       layoutGrid.alignment = grid.alignment !== undefined ? grid.alignment : "STRETCH";
-      layoutGrid.gutterSize = grid.gutterSize !== undefined ? grid.gutterSize : 10;
-      layoutGrid.offset = grid.offset !== undefined ? grid.offset : 0;
+      if (layoutGrid.alignment === "STRETCH") {
+        layoutGrid.count = grid.count !== undefined ? grid.count : 5;
+        layoutGrid.gutterSize = grid.gutterSize !== undefined ? grid.gutterSize : 10;
+        layoutGrid.offset = grid.offset !== undefined ? grid.offset : 0;
+      } else {
+        // MIN/CENTER/MAX: fixed-size cells
+        layoutGrid.sectionSize = grid.sectionSize !== undefined ? grid.sectionSize : 10;
+        layoutGrid.gutterSize = grid.gutterSize !== undefined ? grid.gutterSize : 0;
+        layoutGrid.offset = grid.offset !== undefined ? grid.offset : 0;
+        if (grid.count !== undefined) {
+          layoutGrid.count = grid.count;
+        }
+      }
     }
 
     if (grid.color) {
