@@ -220,6 +220,8 @@ async function handleCommand(command, params) {
       return await setComponentProperty(params);
     case "create_page":
       return await createPage(params);
+    case "create_slide":
+      return await createSlide(params);
     case "delete_page":
       return await deletePage(params);
     case "rename_page":
@@ -376,19 +378,45 @@ async function getNodeInfo(nodeId) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
 
-  const response = await node.exportAsync({
-    format: "JSON_REST_V1",
-  });
+  let doc;
+  try {
+    const response = await node.exportAsync({
+      format: "JSON_REST_V1",
+    });
+    doc = response.document;
+  } catch (e) {
+    // Some node types (SLIDE_GRID, SLIDE) may not support JSON_REST_V1 export
+    doc = null;
+  }
+
+  // Fallback: build basic info manually if export failed
+  if (!doc) {
+    doc = {
+      id: node.id,
+      name: node.name,
+      type: node.type,
+    };
+    if ("children" in node) {
+      doc.children = node.children.map(c => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+      }));
+    }
+    if ("width" in node && "height" in node) {
+      doc.size = { x: node.width, y: node.height };
+    }
+  }
 
   // Add local coordinates if node supports positioning
   if ("x" in node && "y" in node) {
-    response.document.localPosition = {
+    doc.localPosition = {
       x: node.x,
       y: node.y
     };
   }
 
-  return response.document;
+  return doc;
 }
 
 async function getNodesInfo(nodeIds) {
@@ -4317,6 +4345,30 @@ async function createPage(params) {
   return {
     id: page.id,
     name: page.name
+  };
+}
+
+// Create a slide (Figma Slides only)
+async function createSlide(params) {
+  const { name } = params || {};
+
+  if (typeof figma.createSlide !== 'function') {
+    throw new Error("createSlide is not available. This command only works in Figma Slides documents.");
+  }
+
+  const slide = figma.createSlide();
+  if (name) {
+    slide.name = name;
+  }
+
+  return {
+    id: slide.id,
+    name: slide.name,
+    type: slide.type,
+    contentsId: slide.contents ? slide.contents.id : null,
+    backgroundsId: slide.backgrounds ? slide.backgrounds.id : null,
+    width: slide.width,
+    height: slide.height,
   };
 }
 

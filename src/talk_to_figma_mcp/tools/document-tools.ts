@@ -422,6 +422,46 @@ export function registerDocumentTools(server: McpServer): void {
     }
   );
 
+  // Create Slide Tool (Figma Slides only)
+  server.tool(
+    "create_slide",
+    "Create a new slide in a Figma Slides document. Returns the slide ID and its contents/backgrounds layer IDs for adding child elements.",
+    {
+      name: z.string().optional().describe("Optional name for the slide"),
+    },
+    async ({ name }) => {
+      try {
+        const result = await sendCommandToFigma("create_slide", { name });
+        const typedResult = result as {
+          id: string;
+          name: string;
+          type: string;
+          contentsId: string | null;
+          backgroundsId: string | null;
+          width: number;
+          height: number;
+        };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Created slide "${typedResult.name}" with ID: ${typedResult.id}. Contents layer ID: ${typedResult.contentsId}. Backgrounds layer ID: ${typedResult.backgroundsId}. Size: ${typedResult.width}x${typedResult.height}. Use contentsId as parentId to add text and shapes to this slide.`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error creating slide: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Delete Page Tool
   server.tool(
     "delete_page",
