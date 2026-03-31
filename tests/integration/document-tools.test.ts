@@ -78,40 +78,36 @@ describe("get_document_info tool", () => {
     ({ handlers } = makeServer());
   });
 
-  it("applies filterFigmaNode to strip boundVariables from fills", async () => {
-    mockSendCommand.mockResolvedValue({
-      id: "0:1",
-      name: "My Document",
-      type: "DOCUMENT",
-      fills: [
-        {
-          type: "SOLID",
-          color: { r: 1, g: 0, b: 0, a: 1 },
-          boundVariables: { color: "var:123" },
-        },
-      ],
-    });
-    const result = await handlers["get_document_info"]({}, { meta: {} });
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.fills[0].boundVariables).toBeUndefined();
-    expect(parsed.fills[0].color).toBeDefined();
-  });
-
-  it("filters out VECTOR children", async () => {
+  it("returns a shallow summary with pages and top-level frames", async () => {
     mockSendCommand.mockResolvedValue({
       id: "0:1",
       name: "My Document",
       type: "DOCUMENT",
       children: [
-        { id: "1:1", name: "Frame", type: "FRAME" },
-        { id: "1:2", name: "Arrow", type: "VECTOR" },
+        {
+          id: "1:0",
+          name: "Page 1",
+          type: "PAGE",
+          children: [
+            { id: "1:1", name: "Frame", type: "FRAME", absoluteBoundingBox: { x: 0, y: 0, width: 100, height: 100 } },
+            { id: "1:2", name: "Arrow", type: "VECTOR" },
+          ],
+        },
       ],
     });
     const result = await handlers["get_document_info"]({}, { meta: {} });
     const parsed = JSON.parse(result.content[0].text);
-    const childTypes = parsed.children.map((c: any) => c.type);
-    expect(childTypes).not.toContain("VECTOR");
-    expect(childTypes).toContain("FRAME");
+    expect(parsed.id).toBe("0:1");
+    expect(parsed.name).toBe("My Document");
+    expect(parsed.pages).toHaveLength(1);
+    expect(parsed.pages[0].name).toBe("Page 1");
+    // Top-level frames are included, VECTOR nodes are filtered out
+    const frameTypes = parsed.pages[0].frames.map((f: any) => f.type);
+    expect(frameTypes).toContain("FRAME");
+    expect(frameTypes).not.toContain("VECTOR");
+    // Frames include bounding box but no deep children
+    expect(parsed.pages[0].frames[0].absoluteBoundingBox).toBeDefined();
+    expect(parsed.pages[0].frames[0].children).toBeUndefined();
   });
 
   it("surfaces errors in the response text", async () => {

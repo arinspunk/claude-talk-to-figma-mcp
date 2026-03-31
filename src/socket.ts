@@ -1,5 +1,9 @@
 import { Server, ServerWebSocket } from "bun";
 
+interface WebSocketData {
+  clientId: string;
+}
+
 // Enhanced logging system
 const logger = {
   info: (message: string, ...args: any[]) => {
@@ -17,7 +21,7 @@ const logger = {
 };
 
 // Store clients by channel
-const channels = new Map<string, Set<ServerWebSocket<any>>>();
+const channels = new Map<string, Set<ServerWebSocket<WebSocketData>>>();
 
 // Keep track of channel statistics
 const stats = {
@@ -28,16 +32,12 @@ const stats = {
   errors: 0
 };
 
-function handleConnection(ws: ServerWebSocket<any>) {
+function handleConnection(ws: ServerWebSocket<WebSocketData>) {
   // Track connection statistics
   stats.totalConnections++;
   stats.activeConnections++;
-  
-  // Assign a unique client ID for better tracking
-  const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  ws.data = { clientId };
-  
-  // Don't add to clients immediately - wait for channel join
+
+  const clientId = ws.data.clientId;
   logger.info(`New client connected: ${clientId}`);
 
   // Send welcome message to the new client
@@ -86,7 +86,7 @@ const server = Bun.serve({
   port: 3055,
   // uncomment this to allow connections in windows wsl
   // hostname: "0.0.0.0",
-  fetch(req: Request, server: Server) {
+  fetch(req: Request, server: Server<WebSocketData>) {
     const url = new URL(req.url);
     
     // Log incoming requests
@@ -119,10 +119,12 @@ const server = Bun.serve({
 
     // Handle WebSocket upgrade
     try {
+      const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const success = server.upgrade(req, {
         headers: {
           "Access-Control-Allow-Origin": "*",
         },
+        data: { clientId },
       });
 
       if (success) {
@@ -144,7 +146,7 @@ const server = Bun.serve({
   },
   websocket: {
     open: handleConnection,
-    message(ws: ServerWebSocket<any>, message: string | Buffer) {
+    message(ws: ServerWebSocket<WebSocketData>, message: string | Buffer) {
       try {
         stats.messagesReceived++;
         const clientId = ws.data?.clientId || "unknown";
@@ -317,7 +319,7 @@ const server = Bun.serve({
         }
       }
     },
-    close(ws: ServerWebSocket<any>, code: number, reason: string) {
+    close(ws: ServerWebSocket<WebSocketData>, code: number, reason: string) {
       const clientId = ws.data?.clientId || "unknown";
       logger.info(`WebSocket closed for client ${clientId}: Code ${code}, Reason: ${reason || 'No reason provided'}`);
       
@@ -330,7 +332,7 @@ const server = Bun.serve({
       
       stats.activeConnections--;
     },
-    drain(ws: ServerWebSocket<any>) {
+    drain(ws: ServerWebSocket<WebSocketData>) {
       const clientId = ws.data?.clientId || "unknown";
       logger.debug(`WebSocket backpressure relieved for client ${clientId}`);
     }
