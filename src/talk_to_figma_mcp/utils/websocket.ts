@@ -205,6 +205,17 @@ export function getCurrentChannel(): string | null {
 }
 
 /**
+ * Get the current WebSocket connection status and active channel.
+ * @returns An object with the connection state and current channel
+ */
+export function getConnectionStatus(): { connected: boolean; channel: string | null } {
+  return {
+    connected: ws !== null && ws.readyState === WebSocket.OPEN,
+    channel: currentChannel,
+  };
+}
+
+/**
  * Send a command to Figma via WebSocket.
  * @param command - The command to send
  * @param params - Additional parameters for the command

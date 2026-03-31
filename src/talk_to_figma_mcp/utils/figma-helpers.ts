@@ -116,6 +116,32 @@ export function filterFigmaNode(node: any) {
 }
 
 /**
+ * Returns a shallow summary of a Figma document to minimise context window usage.
+ * Structure: { id, name, type, pages: [{ id, name, type, frames: [{ id, name, type, absoluteBoundingBox? }] }] }
+ * Call get_node_info / get_nodes_info for deeper inspection of specific nodes.
+ */
+export function summarizeFigmaDocument(doc: any): any {
+  if (!doc || typeof doc !== "object" || !doc.id || !doc.name) return doc;
+
+  const pages = (doc.children ?? []).map((page: any) => {
+    const frames = (page.children ?? [])
+      // Skip VECTOR nodes — they are low-level path data with no meaningful sub-structure
+      .filter((child: any) => child.type !== "VECTOR")
+      .map((child: any) => {
+        const frame: any = { id: child.id, name: child.name, type: child.type };
+        if (child.absoluteBoundingBox) {
+          frame.absoluteBoundingBox = child.absoluteBoundingBox;
+        }
+        return frame;
+      });
+
+    return { id: page.id, name: page.name, type: page.type, frames };
+  });
+
+  return { id: doc.id, name: doc.name, type: doc.type, pages };
+}
+
+/**
  * Convert global coordinates to local coordinates relative to a parent
  */
 export function globalToLocal(
