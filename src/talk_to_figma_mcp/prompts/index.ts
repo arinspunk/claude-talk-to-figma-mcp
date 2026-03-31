@@ -127,6 +127,98 @@ Example Login Screen Structure:
     }
   );
 
+  // Design System Strategy Prompt
+  server.prompt(
+    "design_system_strategy",
+    "Workflow for building designs with a remote library / design system",
+    (extra) => {
+      return {
+        messages: [
+          {
+            role: "assistant",
+            content: {
+              type: "text",
+              text: `# Design System One-Shot Workflow
+
+Follow this workflow when building screens or components using a remote library design system.
+
+## Step 1 – Discover available libraries
+\`\`\`
+get_available_libraries()
+\`\`\`
+This returns each library name together with its component count and variable-collection count.
+Pick the library that matches the design system you want to use.
+
+## Step 2 – Browse components in that library
+\`\`\`
+// Get all components from the chosen library (use the exact name returned by Step 1)
+get_remote_components({ libraryName: "<library name from Step 1>" })
+
+// Narrow down to a specific component type
+get_remote_components({ libraryName: "<library name from Step 1>", nameFilter: "Button" })
+\`\`\`
+Each returned component has a **key** (used to instantiate it), a **name**, and a **libraryName**.
+
+## Step 3 – Fetch design tokens / variables (optional but recommended)
+\`\`\`
+get_variables()
+\`\`\`
+Use the returned variable IDs to bind colors, spacing, and typography to the correct tokens.
+
+## Step 4 – Build the layout skeleton first
+Create all container frames before placing components inside them.
+\`\`\`
+// Top-level screen
+create_frame({ name: "Home Screen", x: 0, y: 0, width: 375, height: 812 })
+
+// Section inside the screen
+create_frame({ name: "Hero Section", parentId: "<screen-id>", x: 0, y: 0, width: 375, height: 300 })
+\`\`\`
+
+## Step 5 – Place component instances directly into containers
+Always pass **parentId** so the instance lands in the right frame without a separate insert_child call.
+\`\`\`
+create_component_instance({
+  componentKey: "<key from step 2>",
+  x: 16,
+  y: 24,
+  parentId: "<section-id>"
+})
+\`\`\`
+
+## Step 6 – Adjust variants as needed
+\`\`\`
+set_instance_variant({ nodeId: "<instance-id>", properties: { "State": "Hover", "Size": "Large" } })
+\`\`\`
+
+## Step 7 – Bind design tokens to instances
+\`\`\`
+apply_variable_to_node({ nodeId: "<instance-id>", variableId: "<color-token-id>", field: "fills/0/color" })
+\`\`\`
+
+## Step 8 – Verify visually
+\`\`\`
+export_node_as_image({ nodeId: "<screen-id>", format: "PNG", scale: 0.5 })
+\`\`\`
+
+---
+
+## Key rules
+- **Always call get_available_libraries first** – do not guess library names.
+- **Filter by nameFilter** when looking for a specific component type to avoid fetching thousands of components.
+- **Always pass parentId to create_component_instance** – this eliminates the extra insert_child step.
+- **Match variant property names exactly** – retrieve the component name from get_remote_components and infer likely variants; verify with set_instance_variant.
+- **Use design tokens** (variables) instead of hard-coded colors/sizes whenever the library exposes them.
+- **Export at reduced scale** (0.5 or lower) for quick visual checks mid-flow to keep context usage low.`,
+            },
+          },
+        ],
+        description: "Workflow for building designs with a remote library / design system",
+      };
+    }
+  );
+
+
   // Text Replacement Strategy Prompt
   server.prompt(
     "text_replacement_strategy",

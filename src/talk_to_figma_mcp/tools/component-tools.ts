@@ -11,18 +11,20 @@ export function registerComponentTools(server: McpServer): void {
   // Create Component Instance Tool
   server.tool(
     "create_component_instance",
-    "Create an instance of a component in Figma",
+    "Create an instance of a component in Figma. Use parentId to place the instance directly inside a frame or group instead of at the page root.",
     {
       componentKey: z.string().describe("Key of the component to instantiate"),
       x: z.number().describe("X position (local coordinates, relative to parent)"),
       y: z.number().describe("Y position (local coordinates, relative to parent)"),
+      parentId: z.string().optional().describe("ID of the parent node to place the instance in. If omitted the instance is added to the current page root."),
     },
-    async ({ componentKey, x, y }) => {
+    async ({ componentKey, x, y, parentId }) => {
       try {
         const result = await sendCommandToFigma("create_component_instance", {
           componentKey,
           x,
           y,
+          parentId,
         });
         const typedResult = result as any;
         return {

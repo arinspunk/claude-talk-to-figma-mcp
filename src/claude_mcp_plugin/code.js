@@ -1025,7 +1025,7 @@ async function getLocalComponents() {
 // }
 
 async function createComponentInstance(params) {
-  const { componentKey, x = 0, y = 0 } = params || {};
+  const { componentKey, x = 0, y = 0, parentId } = params || {};
 
   if (!componentKey) {
     throw new Error("Missing componentKey parameter");
@@ -1088,9 +1088,20 @@ async function createComponentInstance(params) {
       instance.x = x;
       instance.y = y;
 
-      figma.currentPage.appendChild(instance);
-
-      console.log(`Component instance created and added to page successfully`);
+      if (parentId) {
+        const parentNode = await figma.getNodeByIdAsync(parentId);
+        if (!parentNode) {
+          throw new Error(`Parent node not found with ID: ${parentId}`);
+        }
+        if (!("appendChild" in parentNode)) {
+          throw new Error(`Node ${parentId} (type: ${parentNode.type}) does not support children. Component instances can only be added to frames, groups, or pages.`);
+        }
+        parentNode.appendChild(instance);
+        console.log(`Component instance created and added to parent node ${parentId} successfully`);
+      } else {
+        figma.currentPage.appendChild(instance);
+        console.log(`Component instance created and added to page successfully`);
+      }
 
       return {
         id: instance.id,
@@ -1100,6 +1111,7 @@ async function createComponentInstance(params) {
         width: instance.width,
         height: instance.height,
         componentId: instance.componentId,
+        parentId: instance.parent ? instance.parent.id : null,
       };
     } catch (instanceError) {
       console.error(`Error creating component instance: ${instanceError.message}`);
@@ -2790,7 +2802,8 @@ async function loadFontAsyncWrapper(params) {
   }
 }
 
-async function getRemoteComponents() {
+async function getRemoteComponents(params) {
+  const { libraryName, nameFilter } = params || {};
   try {
     // Check if figma.teamLibrary is available
     if (!figma.teamLibrary) {
@@ -2818,12 +2831,23 @@ async function getRemoteComponents() {
     const fetchPromise = figma.teamLibrary.getAvailableComponentsAsync();
 
     // Use Promise.race to implement the timeout
-    const teamComponents = await Promise.race([fetchPromise, timeoutPromise])
+    let teamComponents = await Promise.race([fetchPromise, timeoutPromise])
       .finally(() => {
         clearTimeout(timeoutId); // Clear the timeout
       });
 
     console.log(`Retrieved ${teamComponents.length} remote components`);
+
+    // Apply optional filters
+    if (libraryName) {
+      teamComponents = teamComponents.filter(c => c.libraryName === libraryName);
+      console.log(`Filtered to ${teamComponents.length} components from library "${libraryName}"`);
+    }
+    if (nameFilter) {
+      const lowerFilter = nameFilter.toLowerCase();
+      teamComponents = teamComponents.filter(c => c.name.toLowerCase().includes(lowerFilter));
+      console.log(`Filtered to ${teamComponents.length} components matching "${nameFilter}"`);
+    }
 
     return {
       success: true,

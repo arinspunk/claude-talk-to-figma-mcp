@@ -208,11 +208,14 @@ export function registerDocumentTools(server: McpServer): void {
   // Get Remote Components Tool
   server.tool(
     "get_remote_components",
-    "Get available components from team libraries in Figma",
-    {},
-    async () => {
+    "Get available components from team libraries in Figma. Optionally filter by libraryName (exact match) or nameFilter (case-insensitive substring match on component name) to narrow results when a library is large.",
+    {
+      libraryName: z.string().optional().describe("Return only components from this library (exact name match from get_available_libraries)"),
+      nameFilter: z.string().optional().describe("Case-insensitive substring to filter component names (e.g. 'Button' returns all button variants)"),
+    },
+    async ({ libraryName, nameFilter }) => {
       try {
-        const result = await sendCommandToFigma("get_remote_components");
+        const result = await sendCommandToFigma("get_remote_components", { libraryName, nameFilter });
         return {
           content: [
             {
