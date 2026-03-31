@@ -153,4 +153,34 @@ export function registerComponentTools(server: McpServer): void {
       }
     }
   );
+
+  // Get Available Libraries Tool
+  server.tool(
+    "get_available_libraries",
+    "Get all available remote libraries in the Figma team, including component libraries and variable libraries. Lists libraries by name with their component and variable-collection counts. No libraries need to be enabled in the current document beforehand.",
+    {},
+    async () => {
+      try {
+        const result = await sendCommandToFigma("get_available_libraries");
+        const typedResult = result as { success: boolean; count: number; libraries: Array<{ name: string; componentCount: number; variableCollectionCount: number }> };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(typedResult),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting available libraries: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
 }

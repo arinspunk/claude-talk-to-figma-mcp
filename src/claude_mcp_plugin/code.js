@@ -182,6 +182,8 @@ async function handleCommand(command, params) {
       return await loadFontAsyncWrapper(params);
     case "get_remote_components":
       return await getRemoteComponents(params);
+    case "get_available_libraries":
+      return await getAvailableLibraries();
     case "set_effects":
       return await setEffects(params);
     case "set_effect_style_id":
@@ -2839,6 +2841,54 @@ async function getRemoteComponents() {
 
     // Instead of returning an error object, throw an exception with the error message
     throw new Error(`Error retrieving remote components: ${error.message}`);
+  }
+}
+
+async function getAvailableLibraries() {
+  try {
+    if (!figma.teamLibrary) {
+      throw new Error("The figma.teamLibrary API is not available in this context");
+    }
+
+    const libraryMap = new Map();
+
+    // Collect libraries from components
+    if (figma.teamLibrary.getAvailableComponentsAsync) {
+      const components = await figma.teamLibrary.getAvailableComponentsAsync();
+      for (const component of components) {
+        const libName = component.libraryName;
+        if (!libraryMap.has(libName)) {
+          libraryMap.set(libName, { name: libName, componentCount: 0, variableCollectionCount: 0 });
+        }
+        libraryMap.get(libName).componentCount++;
+      }
+    }
+
+    // Collect libraries from variable collections (if the API is available)
+    if (figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync) {
+      try {
+        const variableCollections = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+        for (const collection of variableCollections) {
+          const libName = collection.libraryName;
+          if (!libraryMap.has(libName)) {
+            libraryMap.set(libName, { name: libName, componentCount: 0, variableCollectionCount: 0 });
+          }
+          libraryMap.get(libName).variableCollectionCount++;
+        }
+      } catch (e) {
+        console.warn("Could not retrieve library variable collections:", e.message);
+      }
+    }
+
+    const libraries = Array.from(libraryMap.values());
+
+    return {
+      success: true,
+      count: libraries.length,
+      libraries
+    };
+  } catch (error) {
+    throw new Error(`Error retrieving available libraries: ${error.message}`);
   }
 }
 
