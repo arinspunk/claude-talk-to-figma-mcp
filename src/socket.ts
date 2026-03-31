@@ -1,9 +1,5 @@
 import { Server, ServerWebSocket } from "bun";
 
-interface WebSocketData {
-  clientId: string;
-}
-
 // Enhanced logging system
 const logger = {
   info: (message: string, ...args: any[]) => {
@@ -21,7 +17,29 @@ const logger = {
 };
 
 // Store clients by channel
-const channels = new Map<string, Set<ServerWebSocket<WebSocketData>>>();
+const channels = new Map<string, Set<ServerWebSocket<any>>>();
+
+// Session registry — tracks Figma plugin sessions with metadata
+interface FigmaSession {
+  channel: string;
+  documentName: string;
+  pageName: string;
+  registeredAt: number;
+  lastHeartbeat: number;
+  clientId: string;
+}
+const sessions = new Map<string, FigmaSession>();
+
+// Clean up stale sessions every 60s
+setInterval(() => {
+  const now = Date.now();
+  sessions.forEach((session, channel) => {
+    if (now - session.lastHeartbeat > 120_000) {
+      logger.info(`Removing stale session for channel ${channel} (document: "${session.documentName}")`);
+      sessions.delete(channel);
+    }
+  });
+}, 60_000);
 
 // Keep track of channel statistics
 const stats = {
@@ -32,12 +50,16 @@ const stats = {
   errors: 0
 };
 
-function handleConnection(ws: ServerWebSocket<WebSocketData>) {
+function handleConnection(ws: ServerWebSocket<any>) {
   // Track connection statistics
   stats.totalConnections++;
   stats.activeConnections++;
-
-  const clientId = ws.data.clientId;
+  
+  // Assign a unique client ID for better tracking
+  const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  ws.data = { clientId };
+  
+  // Don't add to clients immediately - wait for channel join
   logger.info(`New client connected: ${clientId}`);
 
   // Send welcome message to the new client
@@ -86,7 +108,7 @@ const server = Bun.serve({
   port: 3055,
   // uncomment this to allow connections in windows wsl
   // hostname: "0.0.0.0",
-  fetch(req: Request, server: Server<WebSocketData>) {
+  fetch(req: Request, server: Server) {
     const url = new URL(req.url);
     
     // Log incoming requests
@@ -117,14 +139,29 @@ const server = Bun.serve({
       });
     }
 
+    // Handle sessions endpoint — list active Figma plugin sessions
+    if (url.pathname === "/sessions") {
+      const sessionList = Array.from(sessions.values()).map(s => ({
+        channel: s.channel,
+        documentName: s.documentName,
+        pageName: s.pageName,
+        registeredAt: s.registeredAt,
+        lastHeartbeat: s.lastHeartbeat,
+      }));
+      return new Response(JSON.stringify(sessionList), {
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*"
+        }
+      });
+    }
+
     // Handle WebSocket upgrade
     try {
-      const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const success = server.upgrade(req, {
         headers: {
           "Access-Control-Allow-Origin": "*",
         },
-        data: { clientId },
       });
 
       if (success) {
@@ -146,7 +183,7 @@ const server = Bun.serve({
   },
   websocket: {
     open: handleConnection,
-    message(ws: ServerWebSocket<WebSocketData>, message: string | Buffer) {
+    message(ws: ServerWebSocket<any>, message: string | Buffer) {
       try {
         stats.messagesReceived++;
         const clientId = ws.data?.clientId || "unknown";
@@ -224,6 +261,34 @@ const server = Bun.serve({
             stats.errors++;
           }
           
+          return;
+        }
+
+        // Handle session registration from Figma plugins
+        if (data.type === "register") {
+          const channelName = data.channel;
+          const metadata = data.metadata || {};
+          if (channelName && typeof channelName === "string") {
+            const now = Date.now();
+            sessions.set(channelName, {
+              channel: channelName,
+              documentName: metadata.documentName || "Unknown",
+              pageName: metadata.pageName || "Unknown",
+              registeredAt: sessions.get(channelName)?.registeredAt || now,
+              lastHeartbeat: now,
+              clientId,
+            });
+            logger.info(`Session registered for channel ${channelName}: "${metadata.documentName}" / "${metadata.pageName}"`);
+          }
+          return;
+        }
+
+        // Handle heartbeat from Figma plugins
+        if (data.type === "heartbeat") {
+          const channelName = data.channel;
+          if (channelName && sessions.has(channelName)) {
+            sessions.get(channelName)!.lastHeartbeat = Date.now();
+          }
           return;
         }
 
@@ -319,20 +384,26 @@ const server = Bun.serve({
         }
       }
     },
-    close(ws: ServerWebSocket<WebSocketData>, code: number, reason: string) {
+    close(ws: ServerWebSocket<any>, code: number, reason: string) {
       const clientId = ws.data?.clientId || "unknown";
       logger.info(`WebSocket closed for client ${clientId}: Code ${code}, Reason: ${reason || 'No reason provided'}`);
-      
-      // Remove client from their channel
+
+      // Remove client from their channel and clean up sessions
       channels.forEach((clients, channelName) => {
         if (clients.delete(ws)) {
           logger.debug(`Removed client ${clientId} from channel ${channelName} due to connection close`);
+          // Remove session if this was the registering client
+          const session = sessions.get(channelName);
+          if (session && session.clientId === clientId) {
+            sessions.delete(channelName);
+            logger.info(`Removed session for channel ${channelName} (client disconnected)`);
+          }
         }
       });
-      
+
       stats.activeConnections--;
     },
-    drain(ws: ServerWebSocket<WebSocketData>) {
+    drain(ws: ServerWebSocket<any>) {
       const clientId = ws.data?.clientId || "unknown";
       logger.debug(`WebSocket backpressure relieved for client ${clientId}`);
     }

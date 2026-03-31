@@ -270,6 +270,8 @@
             serverPort: 3055,
             pendingRequests: new Map(),
             channel: null,
+            metadata: {},
+            heartbeatInterval: null,
           };
 
           // Cache DOM elements
@@ -371,6 +373,12 @@
                       `Connected on port ${port}!<br>Copy the channel ID: <span class="mcp-plugin__channel-name" title="Click to copy">${channelName}</span>`
                     );
 
+                    // Register session with metadata so MCP can discover us
+                    this.registerSession();
+
+                    // Start heartbeat to keep session alive
+                    this.startHeartbeat();
+
                     parent.postMessage(
                       {
                         pluginMessage: {
@@ -418,6 +426,7 @@
          * Disconnect from WebSocket server
          */
         disconnect() {
+          this.stopHeartbeat();
           if (this.state.socket) {
             this.updateStatus(false, "Disconnecting...");
             this.ui.connectionStatus.className = "mcp-plugin__connection-status info";
@@ -477,7 +486,12 @@
               this.updateStatus(message.connected, message.message);
               break;
             case "auto-connect":
+              this.state.metadata = message.metadata || {};
               this.connect();
+              break;
+            case "metadata-update":
+              this.state.metadata = message.metadata || {};
+              this.registerSession();
               break;
             case "auto-disconnect":
               this.disconnect();
@@ -628,6 +642,43 @@
               message: `Channel ID copied: ${text}`,
             },
           }, "*");
+        }
+
+        /**
+         * Register this plugin session with the relay server
+         */
+        registerSession() {
+          if (!this.state.connected || !this.state.socket || !this.state.channel) return;
+          this.state.socket.send(JSON.stringify({
+            type: "register",
+            channel: this.state.channel,
+            metadata: this.state.metadata,
+          }));
+        }
+
+        /**
+         * Start periodic heartbeat to keep session alive
+         */
+        startHeartbeat() {
+          this.stopHeartbeat();
+          this.state.heartbeatInterval = setInterval(() => {
+            if (this.state.connected && this.state.socket && this.state.channel) {
+              this.state.socket.send(JSON.stringify({
+                type: "heartbeat",
+                channel: this.state.channel,
+              }));
+            }
+          }, 30000);
+        }
+
+        /**
+         * Stop the heartbeat interval
+         */
+        stopHeartbeat() {
+          if (this.state.heartbeatInterval) {
+            clearInterval(this.state.heartbeatInterval);
+            this.state.heartbeatInterval = null;
+          }
         }
 
         /**

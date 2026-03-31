@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { sendCommandToFigma, joinChannel, getConnectionStatus } from "../utils/websocket";
-import { filterFigmaNode, summarizeFigmaDocument } from "../utils/figma-helpers";
+import { sendCommandToFigma, joinChannel } from "../utils/websocket.js";
+import { filterFigmaNode } from "../utils/figma-helpers.js";
+import { defaultPort } from "../config/config.js";
 
 /**
  * Register document-related tools to the MCP server
@@ -11,17 +12,16 @@ export function registerDocumentTools(server: McpServer): void {
   // Document Info Tool
   server.tool(
     "get_document_info",
-    "Get a shallow summary of the current Figma document: document name/id, list of pages, and top-level frames per page (id, name, type, bounding box). Use get_node_info or get_nodes_info to inspect specific nodes in detail.",
+    "Get detailed information about the current Figma document",
     {},
     async () => {
       try {
         const result = await sendCommandToFigma("get_document_info");
-        const summary = summarizeFigmaDocument(result);
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(summary)
+              text: JSON.stringify(result)
             }
           ]
         };
@@ -46,17 +46,11 @@ export function registerDocumentTools(server: McpServer): void {
     async () => {
       try {
         const result = await sendCommandToFigma("get_selection");
-        let filtered: any;
-        if (Array.isArray(result)) {
-          filtered = result.map((node: any) => filterFigmaNode(node)).filter(Boolean);
-        } else {
-          filtered = filterFigmaNode(result) ?? result;
-        }
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(filtered)
+              text: JSON.stringify(result)
             }
           ]
         };
@@ -125,12 +119,7 @@ export function registerDocumentTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                results.map((result) => {
-                  const node = result.document ?? result.info ?? result;
-                  return filterFigmaNode(node);
-                }).filter(Boolean)
-              )
+              text: JSON.stringify(results.map((result) => filterFigmaNode(result.document || result.info)))
             }
           ]
         };
@@ -208,14 +197,11 @@ export function registerDocumentTools(server: McpServer): void {
   // Get Remote Components Tool
   server.tool(
     "get_remote_components",
-    "Get available components from team libraries in Figma. Optionally filter by libraryName (exact match) or nameFilter (case-insensitive substring match on component name) to narrow results when a library is large.",
-    {
-      libraryName: z.string().optional().describe("Return only components from this library (exact name match from get_available_libraries)"),
-      nameFilter: z.string().optional().describe("Case-insensitive substring to filter component names (e.g. 'Button' returns all button variants)"),
-    },
-    async ({ libraryName, nameFilter }) => {
+    "Get remote library components currently used in the Figma document",
+    {},
+    async () => {
       try {
-        const result = await sendCommandToFigma("get_remote_components", { libraryName, nameFilter });
+        const result = await sendCommandToFigma("get_remote_components");
         return {
           content: [
             {
@@ -362,21 +348,62 @@ export function registerDocumentTools(server: McpServer): void {
     }
   );
 
-  // Get Connection Status Tool
+  // List Sessions Tool
   server.tool(
-    "get_connection_status",
-    "Check the current WebSocket connection status and active Figma channel. Use this before sending commands to verify the connection is ready.",
+    "list_sessions",
+    "List active Figma plugin sessions available for connection. Returns channel IDs, document names, and page names.",
     {},
     async () => {
-      const status = getConnectionStatus();
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(status),
-          },
-        ],
-      };
+      try {
+        const response = await fetch(`http://localhost:${defaultPort}/sessions`);
+        const sessions = await response.json();
+        if (!Array.isArray(sessions) || sessions.length === 0) {
+          return {
+            content: [{ type: "text", text: "No active Figma sessions found. Please open a Figma file and run the Claude MCP plugin." }],
+          };
+        }
+        return {
+          content: [{ type: "text", text: JSON.stringify(sessions, null, 2) }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error listing sessions: ${error instanceof Error ? error.message : String(error)}` }],
+        };
+      }
+    }
+  );
+
+  // Auto Join Session Tool
+  server.tool(
+    "auto_join_session",
+    "Automatically connect to a Figma session. If one session is active, joins it directly. If multiple, returns the list for selection.",
+    {},
+    async () => {
+      try {
+        const response = await fetch(`http://localhost:${defaultPort}/sessions`);
+        const sessions = await response.json();
+
+        if (!Array.isArray(sessions) || sessions.length === 0) {
+          return {
+            content: [{ type: "text", text: "No active Figma sessions found. Please open a Figma file and run the Claude MCP plugin." }],
+          };
+        }
+
+        if (sessions.length === 1) {
+          await joinChannel(sessions[0].channel);
+          return {
+            content: [{ type: "text", text: `Auto-joined session: "${sessions[0].documentName}" on page "${sessions[0].pageName}" (channel: ${sessions[0].channel})` }],
+          };
+        }
+
+        return {
+          content: [{ type: "text", text: `Multiple sessions found. Use join_channel with one of:\n${JSON.stringify(sessions, null, 2)}` }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error auto-joining session: ${error instanceof Error ? error.message : String(error)}` }],
+        };
+      }
     }
   );
 
@@ -448,6 +475,46 @@ export function registerDocumentTools(server: McpServer): void {
             {
               type: "text",
               text: `Error creating page: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Create Slide Tool (Figma Slides only)
+  server.tool(
+    "create_slide",
+    "Create a new slide in a Figma Slides document. Returns the slide ID and its contents/backgrounds layer IDs for adding child elements.",
+    {
+      name: z.string().optional().describe("Optional name for the slide"),
+    },
+    async ({ name }) => {
+      try {
+        const result = await sendCommandToFigma("create_slide", { name });
+        const typedResult = result as {
+          id: string;
+          name: string;
+          type: string;
+          contentsId: string | null;
+          backgroundsId: string | null;
+          width: number;
+          height: number;
+        };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Created slide "${typedResult.name}" with ID: ${typedResult.id}. Contents layer ID: ${typedResult.contentsId}. Backgrounds layer ID: ${typedResult.backgroundsId}. Size: ${typedResult.width}x${typedResult.height}. Use contentsId as parentId to add text and shapes to this slide.`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error creating slide: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
         };

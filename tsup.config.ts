@@ -11,4 +11,5 @@ export default defineConfig({
   minify: false,
   splitting: false,
   bundle: true,
+  noExternal: [/.*/],
 }); 

@@ -11,20 +11,18 @@ export function registerComponentTools(server: McpServer): void {
   // Create Component Instance Tool
   server.tool(
     "create_component_instance",
-    "Create an instance of a component in Figma. Use parentId to place the instance directly inside a frame or group instead of at the page root.",
+    "Create an instance of a component in Figma",
     {
       componentKey: z.string().describe("Key of the component to instantiate"),
       x: z.number().describe("X position (local coordinates, relative to parent)"),
       y: z.number().describe("Y position (local coordinates, relative to parent)"),
-      parentId: z.string().optional().describe("ID of the parent node to place the instance in. If omitted the instance is added to the current page root."),
     },
-    async ({ componentKey, x, y, parentId }) => {
+    async ({ componentKey, x, y }) => {
       try {
         const result = await sendCommandToFigma("create_component_instance", {
           componentKey,
           x,
           y,
-          parentId,
         });
         const typedResult = result as any;
         return {
@@ -120,6 +118,154 @@ export function registerComponentTools(server: McpServer): void {
     }
   );
 
+  // Add Component Property Tool
+  server.tool(
+    "add_component_property",
+    "Add a component property (text, boolean, instance swap, or variant) to a component in Figma. This creates per-instance editable inputs — e.g., a TEXT property lets each instance override a text value independently.",
+    {
+      nodeId: z.string().describe("The ID of the component node to add the property to"),
+      propertyName: z.string().describe("Display name for the property (e.g., 'Button Label', 'Show Icon')"),
+      type: z.enum(["TEXT", "BOOLEAN", "INSTANCE_SWAP", "VARIANT"]).describe("The type of component property"),
+      defaultValue: z.union([z.string(), z.boolean()]).optional().describe("Default value for the property. String for TEXT/VARIANT/INSTANCE_SWAP, boolean for BOOLEAN."),
+    },
+    async ({ nodeId, propertyName, type, defaultValue }) => {
+      try {
+        const result = await sendCommandToFigma("add_component_property", {
+          nodeId,
+          propertyName,
+          type,
+          defaultValue,
+        });
+        const typedResult = result as any;
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Added "${propertyName}" (${type}) property to component "${typedResult.name}" (ID: ${typedResult.id}). Property key: ${typedResult.propertyKey}. Use this key with set_component_property to set values on instances.`,
+            }
+          ]
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error adding component property: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Get Component Properties Tool
+  server.tool(
+    "get_component_properties",
+    "Get the component property definitions from a component, or the current property values from an instance. Useful for inspecting what properties are available before setting them.",
+    {
+      nodeId: z.string().describe("The ID of the component or instance node"),
+    },
+    async ({ nodeId }) => {
+      try {
+        const result = await sendCommandToFigma("get_component_properties", {
+          nodeId,
+        });
+        const typedResult = result as any;
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(typedResult, null, 2),
+            }
+          ]
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting component properties: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Set Component Property on Instance Tool
+  server.tool(
+    "set_component_property",
+    "Set component property values on an instance. Use get_component_properties first to discover the property keys, then pass them here with new values.",
+    {
+      nodeId: z.string().describe("The ID of the instance node"),
+      properties: z.record(z.union([z.string(), z.boolean()])).describe("Object mapping property keys to new values. Keys come from get_component_properties (e.g., 'ClientName#1234:0')."),
+    },
+    async ({ nodeId, properties }) => {
+      try {
+        const result = await sendCommandToFigma("set_component_property", {
+          nodeId,
+          properties,
+        });
+        const typedResult = result as any;
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Updated properties on instance "${typedResult.name}" (ID: ${typedResult.id}). Current properties: ${JSON.stringify(typedResult.componentProperties)}`,
+            }
+          ]
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting component property: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Link Component Property to Text Node Tool
+  server.tool(
+    "link_component_property",
+    "Link a component property to a child text node, so the text node's content is controlled by the property. Use add_component_property first to create the property and get its key, then use this to bind it to a specific text node.",
+    {
+      nodeId: z.string().describe("The ID of the component node"),
+      textNodeId: z.string().describe("The ID of the child text node to link"),
+      propertyKey: z.string().describe("The property key returned by add_component_property (e.g., 'ClientName#1234:0')"),
+    },
+    async ({ nodeId, textNodeId, propertyKey }) => {
+      try {
+        const result = await sendCommandToFigma("link_component_property", {
+          nodeId,
+          textNodeId,
+          propertyKey,
+        });
+        const typedResult = result as any;
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Linked property "${typedResult.linkedPropertyKey}" to text node "${typedResult.textNodeName}" (ID: ${typedResult.textNodeId}) in component "${typedResult.componentName}". The text node's content is now controlled by this component property.`,
+            }
+          ]
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error linking component property: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Set Instance Variant Tool
   server.tool(
     "set_instance_variant",
@@ -149,36 +295,6 @@ export function registerComponentTools(server: McpServer): void {
             {
               type: "text",
               text: `Error setting instance variant: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-        };
-      }
-    }
-  );
-
-  // Get Available Libraries Tool
-  server.tool(
-    "get_available_libraries",
-    "Get all available remote libraries in the Figma team, including component libraries and variable libraries. Lists libraries by name with their component and variable-collection counts. No libraries need to be enabled in the current document beforehand.",
-    {},
-    async () => {
-      try {
-        const result = await sendCommandToFigma("get_available_libraries");
-        const typedResult = result as { success: boolean; count: number; libraries: Array<{ name: string; componentCount: number; variableCollectionCount: number }> };
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(typedResult),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error getting available libraries: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
         };
