@@ -36,9 +36,9 @@ async function main() {
     // Register all prompts with the server
     registerPrompts(server);
     
-    // Try to connect to Figma socket server
+    // Start embedded WebSocket server (if no other instance is running) and connect
     try {
-      connectToFigma();
+      await connectToFigma();
     } catch (error) {
       logger.warn(`Could not connect to Figma initially: ${error instanceof Error ? error.message : String(error)}`);
       logger.warn('Will try to connect when the first command is sent');

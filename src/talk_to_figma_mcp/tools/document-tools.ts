@@ -2,6 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma, joinChannel } from "../utils/websocket.js";
 import { filterFigmaNode } from "../utils/figma-helpers.js";
+import { defaultPort } from "../config/config.js";
 
 /**
  * Register document-related tools to the MCP server
@@ -342,6 +343,65 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error joining channel: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+        };
+      }
+    }
+  );
+
+  // List Sessions Tool
+  server.tool(
+    "list_sessions",
+    "List active Figma plugin sessions available for connection. Returns channel IDs, document names, and page names.",
+    {},
+    async () => {
+      try {
+        const response = await fetch(`http://localhost:${defaultPort}/sessions`);
+        const sessions = await response.json();
+        if (!Array.isArray(sessions) || sessions.length === 0) {
+          return {
+            content: [{ type: "text", text: "No active Figma sessions found. Please open a Figma file and run the Claude MCP plugin." }],
+          };
+        }
+        return {
+          content: [{ type: "text", text: JSON.stringify(sessions, null, 2) }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error listing sessions: ${error instanceof Error ? error.message : String(error)}` }],
+        };
+      }
+    }
+  );
+
+  // Auto Join Session Tool
+  server.tool(
+    "auto_join_session",
+    "Automatically connect to a Figma session. If one session is active, joins it directly. If multiple, returns the list for selection.",
+    {},
+    async () => {
+      try {
+        const response = await fetch(`http://localhost:${defaultPort}/sessions`);
+        const sessions = await response.json();
+
+        if (!Array.isArray(sessions) || sessions.length === 0) {
+          return {
+            content: [{ type: "text", text: "No active Figma sessions found. Please open a Figma file and run the Claude MCP plugin." }],
+          };
+        }
+
+        if (sessions.length === 1) {
+          await joinChannel(sessions[0].channel);
+          return {
+            content: [{ type: "text", text: `Auto-joined session: "${sessions[0].documentName}" on page "${sessions[0].pageName}" (channel: ${sessions[0].channel})` }],
+          };
+        }
+
+        return {
+          content: [{ type: "text", text: `Multiple sessions found. Use join_channel with one of:\n${JSON.stringify(sessions, null, 2)}` }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error auto-joining session: ${error instanceof Error ? error.message : String(error)}` }],
         };
       }
     }

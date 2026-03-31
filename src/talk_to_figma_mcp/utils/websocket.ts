@@ -2,7 +2,8 @@ import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "./logger";
 import { serverUrl, defaultPort, WS_URL, reconnectInterval } from "../config/config";
-import { FigmaCommand, FigmaResponse, CommandProgressUpdate, PendingRequest, ProgressMessage } from "../types";
+import { FigmaCommand, CommandProgressUpdate, PendingRequest, ProgressMessage } from "../types";
+import { startEmbeddedServer, isServerRunning } from "./embedded-server";
 
 // WebSocket connection and request tracking
 let ws: WebSocket | null = null;
@@ -12,10 +13,13 @@ let currentChannel: string | null = null;
 const pendingRequests = new Map<string, PendingRequest>();
 
 /**
- * Connects to the Figma server via WebSocket.
- * @param port - Optional port for the connection (defaults to defaultPort from config)
+ * Ensure the WebSocket server is available, starting the embedded one if needed.
+ * Then connect as a client. This handles the singleton pattern:
+ * - First MCP instance starts the embedded server + connects
+ * - Subsequent instances detect EADDRINUSE and just connect
+ * - On reconnect after host dies, a surviving instance takes over as server
  */
-export function connectToFigma(port: number = defaultPort) {
+export async function connectToFigma(port: number = defaultPort) {
   // If already connected, do nothing
   if (ws && ws.readyState === WebSocket.OPEN) {
     logger.info('Already connected to Figma');
@@ -34,12 +38,23 @@ export function connectToFigma(port: number = defaultPort) {
     ws = null;
   }
 
+  // Try to start the embedded server (no-op if port is taken or already running)
+  if (!isServerRunning()) {
+    const started = await startEmbeddedServer(port);
+    if (started) {
+      logger.info('This instance is hosting the WebSocket server');
+    } else {
+      logger.info('Another instance is hosting the WebSocket server');
+    }
+  }
+
+  // Now connect as a WebSocket client
   const wsUrl = serverUrl === 'localhost' ? `${WS_URL}:${port}` : WS_URL;
   logger.info(`Connecting to Figma socket server at ${wsUrl}...`);
-  
+
   try {
     ws = new WebSocket(wsUrl);
-    
+
     // Add connection timeout
     const connectionTimeout = setTimeout(() => {
       if (ws && ws.readyState === WebSocket.CONNECTING) {
@@ -47,7 +62,7 @@ export function connectToFigma(port: number = defaultPort) {
         ws.terminate();
       }
     }, 10000); // 10 second connection timeout
-    
+
     ws.on('open', () => {
       clearTimeout(connectionTimeout);
       logger.info('Connected to Figma socket server');
@@ -85,13 +100,8 @@ export function connectToFigma(port: number = defaultPort) {
             // Log progress
             logger.info(`Progress update for ${progressData.commandType}: ${progressData.progress}% - ${progressData.message}`);
 
-            // For completed updates, we could resolve the request early if desired
+            // For completed updates, just log and wait for final result from Figma
             if (progressData.status === 'completed' && progressData.progress === 100) {
-              // Optionally resolve early with partial data
-              // request.resolve(progressData.payload);
-              // pendingRequests.delete(requestId);
-
-              // Instead, just log the completion, wait for final result from Figma
               logger.info(`Operation ${progressData.commandType} completed, waiting for final result`);
             }
           }
@@ -153,11 +163,12 @@ export function connectToFigma(port: number = defaultPort) {
       }
 
       // Attempt to reconnect with exponential backoff
+      // On reconnect, connectToFigma will try to become the server if the old host died
       const backoff = Math.min(30000, reconnectInterval * Math.pow(1.5, Math.floor(Math.random() * 5))); // Max 30s
       logger.info(`Attempting to reconnect in ${backoff/1000} seconds...`);
       setTimeout(() => connectToFigma(port), backoff);
     });
-    
+
   } catch (error) {
     logger.error(`Failed to create WebSocket connection: ${error instanceof Error ? error.message : String(error)}`);
     // Attempt to reconnect after a delay

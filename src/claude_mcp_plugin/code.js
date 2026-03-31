@@ -75,7 +75,24 @@ figma.ui.onmessage = async (msg) => {
 
 // Listen for plugin commands from menu
 figma.on("run", ({ command }) => {
-  figma.ui.postMessage({ type: "auto-connect" });
+  figma.ui.postMessage({
+    type: "auto-connect",
+    metadata: {
+      documentName: figma.root.name,
+      pageName: figma.currentPage.name,
+    },
+  });
+});
+
+// Push metadata updates when the user switches pages
+figma.on("currentpagechange", () => {
+  figma.ui.postMessage({
+    type: "metadata-update",
+    metadata: {
+      documentName: figma.root.name,
+      pageName: figma.currentPage.name,
+    },
+  });
 });
 
 // Update plugin settings

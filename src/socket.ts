@@ -19,6 +19,28 @@ const logger = {
 // Store clients by channel
 const channels = new Map<string, Set<ServerWebSocket<any>>>();
 
+// Session registry — tracks Figma plugin sessions with metadata
+interface FigmaSession {
+  channel: string;
+  documentName: string;
+  pageName: string;
+  registeredAt: number;
+  lastHeartbeat: number;
+  clientId: string;
+}
+const sessions = new Map<string, FigmaSession>();
+
+// Clean up stale sessions every 60s
+setInterval(() => {
+  const now = Date.now();
+  sessions.forEach((session, channel) => {
+    if (now - session.lastHeartbeat > 120_000) {
+      logger.info(`Removing stale session for channel ${channel} (document: "${session.documentName}")`);
+      sessions.delete(channel);
+    }
+  });
+}, 60_000);
+
 // Keep track of channel statistics
 const stats = {
   totalConnections: 0,
@@ -110,6 +132,23 @@ const server = Bun.serve({
         uptime: process.uptime(),
         stats
       }), {
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*"
+        }
+      });
+    }
+
+    // Handle sessions endpoint — list active Figma plugin sessions
+    if (url.pathname === "/sessions") {
+      const sessionList = Array.from(sessions.values()).map(s => ({
+        channel: s.channel,
+        documentName: s.documentName,
+        pageName: s.pageName,
+        registeredAt: s.registeredAt,
+        lastHeartbeat: s.lastHeartbeat,
+      }));
+      return new Response(JSON.stringify(sessionList), {
         headers: {
           "Content-Type": "application/json",
           "Access-Control-Allow-Origin": "*"
@@ -225,6 +264,34 @@ const server = Bun.serve({
           return;
         }
 
+        // Handle session registration from Figma plugins
+        if (data.type === "register") {
+          const channelName = data.channel;
+          const metadata = data.metadata || {};
+          if (channelName && typeof channelName === "string") {
+            const now = Date.now();
+            sessions.set(channelName, {
+              channel: channelName,
+              documentName: metadata.documentName || "Unknown",
+              pageName: metadata.pageName || "Unknown",
+              registeredAt: sessions.get(channelName)?.registeredAt || now,
+              lastHeartbeat: now,
+              clientId,
+            });
+            logger.info(`Session registered for channel ${channelName}: "${metadata.documentName}" / "${metadata.pageName}"`);
+          }
+          return;
+        }
+
+        // Handle heartbeat from Figma plugins
+        if (data.type === "heartbeat") {
+          const channelName = data.channel;
+          if (channelName && sessions.has(channelName)) {
+            sessions.get(channelName)!.lastHeartbeat = Date.now();
+          }
+          return;
+        }
+
         // Handle regular messages
         if (data.type === "message") {
           const channelName = data.channel;
@@ -320,14 +387,20 @@ const server = Bun.serve({
     close(ws: ServerWebSocket<any>, code: number, reason: string) {
       const clientId = ws.data?.clientId || "unknown";
       logger.info(`WebSocket closed for client ${clientId}: Code ${code}, Reason: ${reason || 'No reason provided'}`);
-      
-      // Remove client from their channel
+
+      // Remove client from their channel and clean up sessions
       channels.forEach((clients, channelName) => {
         if (clients.delete(ws)) {
           logger.debug(`Removed client ${clientId} from channel ${channelName} due to connection close`);
+          // Remove session if this was the registering client
+          const session = sessions.get(channelName);
+          if (session && session.clientId === clientId) {
+            sessions.delete(channelName);
+            logger.info(`Removed session for channel ${channelName} (client disconnected)`);
+          }
         }
       });
-      
+
       stats.activeConnections--;
     },
     drain(ws: ServerWebSocket<any>) {
