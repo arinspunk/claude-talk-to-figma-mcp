@@ -294,6 +294,8 @@ async function handleCommand(command, params) {
       return await setReactions(params);
     case "get_reactions":
       return await getReactions(params);
+    case "detach_instance":
+      return await detachInstance(params);
     case "create_text_style":
       return await createTextStyle(params);
     case "create_paint_style":
@@ -6135,6 +6137,34 @@ async function getReactions(params) {
     type: node.type,
     reactionsCount: reactions ? reactions.length : 0,
     reactions: reactions ? JSON.parse(JSON.stringify(reactions)) : [],
+  };
+}
+
+/**
+ * Detach a component instance
+ */
+async function detachInstance(params) {
+  const { nodeId } = params || {};
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type !== "INSTANCE") {
+    throw new Error(`Node with ID ${nodeId} is not a component INSTANCE`);
+  }
+
+  const detachedFrame = node.detachInstance();
+
+  return {
+    success: true,
+    frameId: detachedFrame.id,
+    frameName: detachedFrame.name,
+    frameType: detachedFrame.type,
   };
 }
 

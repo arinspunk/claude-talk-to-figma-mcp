@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **✨ Prototype Interaction Tools**: Added two new tools for managing Figma prototype logic. (Thanks to [ravszmig](https://github.com/ravszmig) - [PR #82](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/82))
   - `set_reactions` – Programmatically configure triggers (CLICK, HOVER, etc.), actions (NAVIGATE, OVERLAY, BACK), and transitions. Includes smart logic to handle overlay position and background behavior.
   - `get_reactions` – Inspect and debug existing interactions on any node.
+- **🧱 Component Detaching**: Added `detach_instance` tool to convert component instances back into regular frames. (Thanks to [hoxinzhen](https://github.com/hoxinzhen) - [PR #85](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/85))
 - **🎨 Local Style Creation**: New tools to create and manage reusable styles in Figma's local library. (Thanks to [Kejsaren](https://github.com/hello-amed) - [PR #83](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/83))
   - `create_text_style` – Create typography styles (font, size, spacing, etc).
   - `create_paint_style` – Create reusable SOLID color styles.

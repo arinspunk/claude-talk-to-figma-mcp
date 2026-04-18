@@ -300,4 +300,37 @@ export function registerComponentTools(server: McpServer): void {
       }
     }
   );
+
+  // Detach Instance Tool
+  server.tool(
+    "detach_instance",
+    "Detach a component instance, converting it into a regular frame. This breaks the link with the main component.",
+    {
+      instanceId: z.string().describe("The ID of the instance to detach"),
+    },
+    async ({ instanceId }) => {
+      try {
+        const result = await sendCommandToFigma("detach_instance", { nodeId: instanceId });
+        const typedResult = result as { success: boolean; frameId: string; frameName: string; frameType: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `✅ Detached instance "${typedResult.frameName}" (Original ID: ${instanceId})\nNew regular frame ID: ${typedResult.frameId}\nType: ${typedResult.frameType}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `❌ Error detaching instance: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
 }
