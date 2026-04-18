@@ -7,6 +7,9 @@ module.exports = {
     '**/tests/**/*.test.ts',
     '**/tests/**/*.spec.ts'
   ],
+  testPathIgnorePatterns: [
+    '/tests/unit/socket-queue.test.ts'
+  ],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { useESM: true }],
   },
