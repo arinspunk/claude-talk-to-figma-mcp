@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `set_reactions` – Programmatically configure triggers (CLICK, HOVER, etc.), actions (NAVIGATE, OVERLAY, BACK), and transitions. Includes smart logic to handle overlay position and background behavior.
   - `get_reactions` – Inspect and debug existing interactions on any node.
 - **🛡️ Robust Type Coercion**: Implementation of Zod-based coercion helpers (`coerce.number()`, `coerceBoolean`, `coerceJson`) to guarantee that all tools correctly handle parameters sent as strings (common in MCP/WebSocket environments). (Thanks to [ehs208](https://github.com/ehs208) - [PR #79](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/79))
+- **🛠️ Integration & DX Fixes**:
+  - **Fixed `get_pages`**: Added automatic `figma.loadAllPagesAsync()` to prevent "unloaded page" runtime errors.
+  - **`parentId` in Components**: Added `parentId` support to `create_component_from_node` for deterministic container injection via the relay server.
+  - **Plugin Compatibility**: Fixed syntax errors in `code.js` to ensure support for diverse Figma plugin execution environments.
+
 
 ### Changed
 - **⚠️ Breaking Changes for State Independence**: To guarantee race-condition-free parallel execution, implicit page caching has been completely ripped out:

@@ -3757,7 +3757,7 @@ async function renameNode(params) {
 
 // Create component from an existing node
 async function createComponentFromNode(params) {
-  const { nodeId, name } = params || {};
+  const { nodeId, name, parentId } = params || {};
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -3808,6 +3808,20 @@ async function createComponentFromNode(params) {
       const clone = node.clone();
       clone.x = 0;
       clone.y = 0;
+
+      // If parentId is provided, append to that node, otherwise append to current page
+      if (parentId) {
+        const parentNode = await getNodeByIdSafe(parentId);
+        if (!parentNode) {
+          throw new Error(`Parent node not found with ID: ${parentId}`);
+        }
+        if (!("appendChild" in parentNode)) {
+          throw new Error(`Parent node does not support children: ${parentId}`);
+        }
+        parentNode.appendChild(component);
+      } else {
+        figma.currentPage.appendChild(component);
+      }
       component.appendChild(clone);
 
       // Add component to the same parent at the same position
@@ -4044,6 +4058,8 @@ async function renamePage(params) {
 
 // Get all pages in the document
 async function getPages() {
+  await figma.loadAllPagesAsync();
+
   return {
     pages: figma.root.children.map(page => ({
       id: page.id,
@@ -6203,7 +6219,7 @@ async function createEffectStyle(params) {
     radius: effect.radius || 0,
     visible: effect.visible !== false,
     color: effect.color
-      ? { r: effect.color.r, g: effect.color.g, b: effect.color.b, a: effect.color.a ?? 1 }
+      ? { r: effect.color.r, g: effect.color.g, b: effect.color.b, a: effect.color.a !== undefined ? effect.color.a : 1 }
       : { r: 0, g: 0, b: 0, a: 0.25 },
     offset: effect.offset ? { x: effect.offset.x, y: effect.offset.y } : { x: 0, y: 0 },
     spread: effect.spread || 0,

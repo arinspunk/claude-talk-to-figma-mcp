@@ -56,12 +56,14 @@ export function registerComponentTools(server: McpServer): void {
     {
       nodeId: z.string().describe("The ID of the node to convert into a component"),
       name: z.string().optional().describe("Optional new name for the component"),
+      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
-    async ({ nodeId, name }) => {
+    async ({ nodeId, name, parentId }) => {
       try {
         const result = await sendCommandToFigma("create_component_from_node", {
           nodeId,
           name,
+          parentId,
         });
         const typedResult = result as { id: string; name: string; key: string };
         return {
