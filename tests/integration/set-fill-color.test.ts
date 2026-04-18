@@ -201,28 +201,32 @@ describe("set_fill_color tool integration", () => {
       expect(mockSendCommand).not.toHaveBeenCalled();
     });
 
-    it("rejects null g component", async () => {
-      await expect(callToolWithValidation({
+    it("coerces null g component to 0", async () => {
+      const result = await callToolWithValidation({
         nodeId: "nodeF5",
         r: 0.5,
-        g: null, // Invalid type
+        g: null, // coerced to 0 by z.coerce.number()
         b: 0.8,
         a: 1,
-      })).rejects.toThrow();
-      
-      expect(mockSendCommand).not.toHaveBeenCalled();
+      });
+
+      expect(mockSendCommand).toHaveBeenCalledWith("set_fill_color", expect.objectContaining({
+        color: expect.objectContaining({ g: 0 }),
+      }));
     });
 
-    it("rejects boolean b component", async () => {
-      await expect(callToolWithValidation({
+    it("coerces boolean b component to number", async () => {
+      const result = await callToolWithValidation({
         nodeId: "nodeF6",
         r: 0.5,
         g: 0.8,
-        b: true, // Invalid type
+        b: true, // coerced to 1 by z.coerce.number()
         a: 1,
-      })).rejects.toThrow();
-      
-      expect(mockSendCommand).not.toHaveBeenCalled();
+      });
+
+      expect(mockSendCommand).toHaveBeenCalledWith("set_fill_color", expect.objectContaining({
+        color: expect.objectContaining({ b: 1 }),
+      }));
     });
 
     it("rejects NaN values", async () => {

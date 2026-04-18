@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
+import { coerceJson } from "../utils/schema-helpers";
 
 /**
  * Register text-related tools to the MCP server
@@ -52,13 +53,13 @@ export function registerTextTools(server: McpServer): void {
       nodeId: z
         .string()
         .describe("The ID of the node containing the text nodes to replace"),
-      text: z
+      text: coerceJson(z
         .array(
           z.object({
             nodeId: z.string().describe("The ID of the text node"),
             text: z.string().describe("The replacement text"),
           })
-        )
+        ))
         .describe("Array of text node IDs and their replacement texts"),
     },
     async ({ nodeId, text }, extra) => {
@@ -196,7 +197,7 @@ export function registerTextTools(server: McpServer): void {
     "Set the font size of a text node in Figma",
     {
       nodeId: z.string().describe("The ID of the text node to modify"),
-      fontSize: z.number().positive().describe("Font size in pixels"),
+      fontSize: z.coerce.number().positive().describe("Font size in pixels"),
     },
     async ({ nodeId, fontSize }) => {
       try {
@@ -232,7 +233,7 @@ export function registerTextTools(server: McpServer): void {
     "Set the font weight of a text node in Figma",
     {
       nodeId: z.string().describe("The ID of the text node to modify"),
-      weight: z.number().describe("Font weight (100, 200, 300, 400, 500, 600, 700, 800, 900)"),
+      weight: z.coerce.number().describe("Font weight (100, 200, 300, 400, 500, 600, 700, 800, 900)"),
     },
     async ({ nodeId, weight }) => {
       try {
@@ -268,7 +269,7 @@ export function registerTextTools(server: McpServer): void {
     "Set the letter spacing of a text node in Figma",
     {
       nodeId: z.string().describe("The ID of the text node to modify"),
-      letterSpacing: z.number().describe("Letter spacing value"),
+      letterSpacing: z.coerce.number().describe("Letter spacing value"),
       unit: z.enum(["PIXELS", "PERCENT"]).optional().describe("Unit type (PIXELS or PERCENT)"),
     },
     async ({ nodeId, letterSpacing, unit }) => {
@@ -306,7 +307,7 @@ export function registerTextTools(server: McpServer): void {
     "Set the line height of a text node in Figma",
     {
       nodeId: z.string().describe("The ID of the text node to modify"),
-      lineHeight: z.number().describe("Line height value"),
+      lineHeight: z.coerce.number().describe("Line height value"),
       unit: z.enum(["PIXELS", "PERCENT", "AUTO"]).optional().describe("Unit type (PIXELS, PERCENT, or AUTO)"),
     },
     async ({ nodeId, lineHeight, unit }) => {
@@ -344,7 +345,7 @@ export function registerTextTools(server: McpServer): void {
     "Set the paragraph spacing of a text node in Figma",
     {
       nodeId: z.string().describe("The ID of the text node to modify"),
-      paragraphSpacing: z.number().describe("Paragraph spacing value in pixels"),
+      paragraphSpacing: z.coerce.number().describe("Paragraph spacing value in pixels"),
     },
     async ({ nodeId, paragraphSpacing }) => {
       try {
