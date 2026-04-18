@@ -1023,7 +1023,7 @@ async function getLocalComponents() {
 // }
 
 async function createComponentInstance(params) {
-  const { componentKey, x = 0, y = 0 } = params || {};
+  const { componentKey, x = 0, y = 0, parentId } = params || {};
 
   if (!componentKey) {
     throw new Error("Missing componentKey parameter");
@@ -1086,9 +1086,21 @@ async function createComponentInstance(params) {
       instance.x = x;
       instance.y = y;
 
-      figma.currentPage.appendChild(instance);
+      // Add to parent (explicit parentId or currentPage fallback)
+      if (parentId) {
+        const parentNode = await getNodeByIdSafe(parentId);
+        if (!parentNode) {
+          throw new Error(`Parent node not found with ID: ${parentId}`);
+        }
+        if (!("appendChild" in parentNode)) {
+          throw new Error(`Parent node does not support children: ${parentId}`);
+        }
+        parentNode.appendChild(instance);
+      } else {
+        figma.currentPage.appendChild(instance);
+      }
 
-      console.log(`Component instance created and added to page successfully`);
+      console.log(`Component instance created and added to ${parentId ? 'parent ' + parentId : 'page'} successfully`);
 
       return {
         id: instance.id,
@@ -3923,8 +3935,21 @@ async function createComponentSet(params) {
     components.push(node);
   }
 
+  // Determine parent container
+  let container = figma.currentPage;
+  if (params.parentId) {
+    const parentNode = await getNodeByIdSafe(params.parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${params.parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${params.parentId}`);
+    }
+    container = parentNode;
+  }
+
   // Combine components into a component set
-  const componentSet = figma.combineAsVariants(components, figma.currentPage);
+  const componentSet = figma.combineAsVariants(components, container);
 
   if (name) {
     componentSet.name = name;
@@ -5780,6 +5805,7 @@ async function createConnector(params) {
     strokeColor,
     strokeWeight,
     name,
+    parentId,
   } = params || {};
 
   if (!figma.createConnector) {
@@ -5840,7 +5866,18 @@ async function createConnector(params) {
     connector.name = name;
   }
 
-  figma.currentPage.appendChild(connector);
+  if (parentId) {
+    const parentNode = await getNodeByIdSafe(parentId);
+    if (!parentNode) {
+      throw new Error("Parent node not found with ID: " + parentId);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error("Parent node does not support children: " + parentId);
+    }
+    parentNode.appendChild(connector);
+  } else {
+    figma.currentPage.appendChild(connector);
+  }
 
   return {
     id: connector.id,
@@ -5867,6 +5904,7 @@ async function createSection(params) {
     height = 600,
     name = "Section",
     fillColor,
+    parentId,
   } = params || {};
 
   if (!figma.createSection) {
@@ -5893,7 +5931,18 @@ async function createSection(params) {
     ];
   }
 
-  figma.currentPage.appendChild(section);
+  if (parentId) {
+    const parentNode = await getNodeByIdSafe(parentId);
+    if (!parentNode) {
+      throw new Error("Parent node not found with ID: " + parentId);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error("Parent node does not support children: " + parentId);
+    }
+    parentNode.appendChild(section);
+  } else {
+    figma.currentPage.appendChild(section);
+  }
 
   return {
     id: section.id,
