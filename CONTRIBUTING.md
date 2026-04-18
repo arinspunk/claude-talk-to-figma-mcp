@@ -172,6 +172,7 @@ git checkout -b feature/my-new-feature
 - **[Beomsu Koh](https://github.com/GoBeromsu)** — `rename_node` tool.
 - **[Timur](https://github.com/Mirsmog)** — Zod validation improvements.
 - **[Taylor Smits](https://github.com/smitstay)** — DXT package support, CI/CD workflows, and tests.
+- **[Kejsaren](https://github.com/hello-amed)** — Style creation tools (`create_text_style`, `create_paint_style`, `create_effect_style`).
 - **[ravszmig](https://github.com/ravszmig)** — Prototype interaction tools (`set_reactions`, `get_reactions`) and overlay navigation logic.
 - **[easyhak](https://github.com/easyhak)** — Windows script compatibility.
 
