@@ -73,11 +73,12 @@ export function registerDocumentTools(server: McpServer): void {
     "Get detailed information about a specific node in Figma",
     {
       nodeId: z.string().describe("The ID of the node to get information about"),
+      depth: z.number().int().min(0).optional().describe("How many child levels to include in full detail. Deeper levels return only id/name/type stubs."),
     },
-    async ({ nodeId }) => {
+    async ({ nodeId, depth }) => {
       try {
         const result = await sendCommandToFigma("get_node_info", { nodeId });
-        const filtered = filterFigmaNode(result);
+        const filtered = filterFigmaNode(result, depth ?? 1);
         const coordinateNote = filtered.absoluteBoundingBox && filtered.localPosition
           ? "absoluteBoundingBox contains global coordinates (relative to canvas). localPosition contains local coordinates (relative to parent, use these for move_node)."
           : undefined;
@@ -110,16 +111,17 @@ export function registerDocumentTools(server: McpServer): void {
     "get_nodes_info",
     "Get detailed information about multiple nodes in Figma",
     {
-      nodeIds: coerceJson(z.array(z.string())).describe("Array of node IDs to get information about")
+      nodeIds: coerceJson(z.array(z.string())).describe("Array of node IDs to get information about"),
+      depth: z.number().int().min(0).optional().describe("How many child levels to include in full detail. Deeper levels return only id/name/type stubs.")
     },
-    async ({ nodeIds }) => {
+    async ({ nodeIds, depth }) => {
       try {
         const results = await sendCommandToFigma('get_nodes_info', { nodeIds }) as any[];
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(results.map((result) => filterFigmaNode(result.document || result.info)))
+              text: JSON.stringify(results.map((result) => filterFigmaNode(result.document || result.info, depth ?? 1)))
             }
           ]
         };

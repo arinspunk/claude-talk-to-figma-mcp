@@ -166,7 +166,7 @@ git checkout -b feature/my-new-feature
 - **[Rob Dearborn](https://github.com/rfdearborn)** — Comprehensive FigJam support (6 new tools), component optimization, and `set_text_style_id` tool.
 - **[sometimesdante](https://github.com/sometimesdante)** — Full instruction copy on channel click.
 - **[ehs208](https://github.com/ehs208)** — Configuration script, Korean localization, channel verification ping, `set_instance_variant` tool, coordinate system unification, Docker orchestration, image manipulation tools, and Zod coercion helpers for robust serialization.
-- **[mmabas77](https://github.com/mmabas77)** — Full text alignment support, RTL/Arabic languages, `set_selection_colors` tool, massive expansion with 20+ new tools (variables, gradients, grids, and transformations), and the multi-agent parallel command queue architecture.
+- **[mmabas77](https://github.com/mmabas77)** — Full text alignment support, RTL/Arabic languages, `set_selection_colors` tool, massive expansion with 20+ new tools (variables, gradients, grids, and transformations), the multi-agent parallel command queue architecture, and node info depth control.
 - **[leeyc09](https://github.com/leeyc09)** — Fixed-width text support and dependency stability improvements.
 - **[sk (kovalevsky)](https://github.com/kovalevsky)** — Page management tools and SVG export fix.
 - **[Beomsu Koh](https://github.com/GoBeromsu)** — `rename_node` tool.
@@ -178,6 +178,10 @@ git checkout -b feature/my-new-feature
 - **[easyhak](https://github.com/easyhak)** — Windows script compatibility.
 
 ### Ported Community Contributions (Manual Integration)
+- **PR #90 (mmabas77)**: Node Info Depth Control.
+  - Added `depth` parameter to `get_node_info` and `get_nodes_info` to prevent token overflow.
+  - Smart truncation: deeper nodes are returned as stubs (`{id, name, type}`) instead of being fully expanded.
+  - Significant reduction (~98%) of payload size for large Figma documents.
 - **PR #87 (mmabas77)**: Plugin Quality Improvements.
   - Robust layout grids (handling STRETCH vs fixed-pixel modes).
   - Enhanced `clone_node` with `parentId` support.

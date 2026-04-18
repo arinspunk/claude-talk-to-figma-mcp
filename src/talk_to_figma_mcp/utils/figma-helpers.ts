@@ -20,9 +20,11 @@ export function rgbaToHex(color: any): string {
  * Filtra un nodo de Figma para reducir su complejidad y tamaño.
  * Convierte colores a formato hexadecimal y elimina datos innecesarios.
  * @param node - El nodo de Figma a filtrar
+ * @param maxDepth - Profundidad máxima de recursión para los hijos (default: Infinity)
+ * @param currentDepth - Profundidad actual de recursión
  * @returns El nodo filtrado o null si debe ser ignorado
  */
-export function filterFigmaNode(node: any) {
+export function filterFigmaNode(node: any, maxDepth: number = Infinity, currentDepth: number = 0) {
   // Skip VECTOR type nodes
   if (node.type === "VECTOR") {
     return null;
@@ -107,9 +109,19 @@ export function filterFigmaNode(node: any) {
   }
 
   if (node.children) {
-    filtered.children = node.children
-      .map((child: any) => filterFigmaNode(child))
-      .filter((child: any) => child !== null); // Remove null children (VECTOR nodes)
+    if (currentDepth >= maxDepth) {
+      // Beyond depth: return only minimal child stubs so the model can request deeper info on demand
+      filtered.children = node.children
+        .filter((child: any) => child.type !== "VECTOR")
+        .map((child: any) => ({ id: child.id, name: child.name, type: child.type }));
+      if (filtered.children.length > 0) {
+        filtered._childrenTruncated = true;
+      }
+    } else {
+      filtered.children = node.children
+        .map((child: any) => filterFigmaNode(child, maxDepth, currentDepth + 1))
+        .filter((child: any) => child !== null); // Remove null children (VECTOR nodes)
+    }
   }
 
   return filtered;
