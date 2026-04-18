@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - Unreleased
+## [1.0.0] - 2026-04-18
 
 ### Added
 - **🤖 Multi-Agent / Parallel Execution**: Added a server-side FIFO command queue to the WebSocket relay. This allows multiple AI agents (e.g. Claude Code sub-agents or Cursor parallel processes) to work on the same Figma file simultaneously without blocking the single-threaded Figma plugin or causing timeouts. Achieves up to ~1.87x speedup for complex generation tasks. (Thanks to [mmabas77](https://github.com/mmabas77) - [PR #77](https://github.com/arinspunk/claude-talk-to-figma-mcp/pull/77))
