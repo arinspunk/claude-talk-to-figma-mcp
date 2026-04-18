@@ -130,6 +130,14 @@ To use the MCP again in day-to-day work, you don't need to repeat the entire pro
 2. **Open the plugin in Figma**: You'll find it in your recent plugins list.
 3. **Connect the AI**: Copy the channel ID and tell your agent: `Connect to Figma, channel {your-ID}`.
 
+## 🤖 Multi-Agent & Parallel execution
+
+This MCP server supports **safe parallel execution** out of the box, allowing multiple AI agents (e.g. Claude Code's sub-agents or team swarms) to work simultaneously on your Figma file without locking up the plugin. A built-in command queue processes requests sequentially on the server side, preventing the Figma API from timing out.
+
+> **Note**: Because multiple agents can modify the document simultaneously, relying on implicit page context is unsafe. As a result, stateful commands like `set_current_page` are **blocked**. All agents must explicitly provide the intended `parentId` parameter when executing any creation or structural modification command (e.g., `create_frame`, `create_text`).
+
+*(Special thanks to [@mmabas77](https://github.com/mmabas77) for architecting and contributing this feature!)*
+
 ## 🐳 Alternative: Using Docker
 
 If you prefer Docker or need to run the WebSocket server in a team environment, see the [Docker installation guide](INSTALLATION.md#alternative-using-docker) in the detailed installation documentation.
