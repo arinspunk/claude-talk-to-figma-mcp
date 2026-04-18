@@ -195,10 +195,10 @@ export function registerImageTools(server: McpServer): void {
     {
       nodeId: z.string().describe("The ID of the node to transform image on"),
       scaleMode: z.enum(["FILL", "FIT", "CROP", "TILE"]).optional().describe("Change scale mode"),
-      rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional().describe("Rotation in 90-degree increments (0, 90, 180, 270). Rotates the IMAGE inside the node, not the node itself."),
-      translateX: z.number().optional().describe("Horizontal translation offset"),
-      translateY: z.number().optional().describe("Vertical translation offset"),
-      scale: z.number().positive().optional().describe("Scale factor (1 = 100%)"),
+      rotation: z.coerce.number().optional().describe("Rotation in 90-degree increments (0, 90, 180, 270). Rotates the IMAGE inside the node, not the node itself."),
+      translateX: z.coerce.number().optional().describe("Horizontal translation offset"),
+      translateY: z.coerce.number().optional().describe("Vertical translation offset"),
+      scale: z.coerce.number().positive().optional().describe("Scale factor (1 = 100%)"),
     },
     async ({ nodeId, scaleMode, rotation, translateX, translateY, scale }) => {
       try {
