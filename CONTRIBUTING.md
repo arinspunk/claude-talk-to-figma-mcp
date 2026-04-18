@@ -177,6 +177,17 @@ git checkout -b feature/my-new-feature
 - **[ravszmig](https://github.com/ravszmig)** — Prototype interaction tools (`set_reactions`, `get_reactions`) and overlay navigation logic.
 - **[easyhak](https://github.com/easyhak)** — Windows script compatibility.
 
+### Ported Community Contributions (Manual Integration)
+- **PR #87 (mmabas77)**: Plugin Quality Improvements.
+  - Robust layout grids (handling STRETCH vs fixed-pixel modes).
+  - Enhanced `clone_node` with `parentId` support.
+  - Smart text wrapping and numeric font weight mapping.
+  - Unified styling (fill/stroke) for all basic shape creation tools.
+  - Automatic column grids for top-level frames.
+  - Safe color utilities to prevent accidental black-fills on corrupt data.
+- **PR #85 (hoxinzhen)**: Component Detaching.
+- **PR #83 (Kejsaren)**: Local Style Creation.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).

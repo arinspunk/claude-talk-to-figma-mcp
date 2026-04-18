@@ -23,8 +23,25 @@ export function registerCreationTools(server: McpServer): void {
         .string()
         .optional()
         .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+      fillColor: coerceJson(z.object({
+          r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
+          g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
+          b: z.coerce.number().min(0).max(1).describe("Blue component (0-1)"),
+          a: z.coerce.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
+        }))
+        .optional()
+        .describe("Fill color in RGBA format"),
+      strokeColor: coerceJson(z.object({
+          r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
+          g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
+          b: z.coerce.number().min(0).max(1).describe("Blue component (0-1)"),
+          a: z.coerce.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
+        }))
+        .optional()
+        .describe("Stroke color in RGBA format"),
+      strokeWeight: z.coerce.number().positive().optional().describe("Stroke weight"),
     },
-    async ({ x, y, width, height, name, parentId }) => {
+    async ({ x, y, width, height, name, parentId, fillColor, strokeColor, strokeWeight }) => {
       try {
         const result = await sendCommandToFigma("create_rectangle", {
           x,
@@ -33,6 +50,9 @@ export function registerCreationTools(server: McpServer): void {
           height,
           name: name || "Rectangle",
           parentId,
+          fillColor,
+          strokeColor,
+          strokeWeight,
         });
         return {
           content: [
@@ -501,11 +521,12 @@ export function registerCreationTools(server: McpServer): void {
     {
       nodeId: z.string().describe("The ID of the node to clone"),
       x: z.coerce.number().optional().describe("New X position for the clone (local coordinates, relative to parent)"),
-      y: z.coerce.number().optional().describe("New Y position for the clone (local coordinates, relative to parent)")
+      y: z.coerce.number().optional().describe("New Y position for the clone (local coordinates, relative to parent)"),
+      parentId: z.string().optional().describe("The ID of the parent node to place the clone into. REQUIRED — server enforces this. Use page node ID for top-level elements.")
     },
-    async ({ nodeId, x, y }) => {
+    async ({ nodeId, x, y, parentId }) => {
       try {
-        const result = await sendCommandToFigma('clone_node', { nodeId, x, y });
+        const result = await sendCommandToFigma('clone_node', { nodeId, x, y, parentId });
         const typedResult = result as { name: string, id: string };
         return {
           content: [

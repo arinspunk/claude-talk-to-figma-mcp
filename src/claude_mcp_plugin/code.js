@@ -1,6 +1,29 @@
 // This is the main code file for the Claude MCP Figma plugin
 // It handles Figma API commands
 
+// Safe color channel parser: returns a valid 0-1 number or NaN.
+// Unlike `parseFloat(x) || 0`, this does NOT silently fall back to 0 (black).
+function safeChannel(value) {
+  if (value === undefined || value === null) return NaN;
+  var n = typeof value === "number" ? value : parseFloat(value);
+  return isNaN(n) ? NaN : Math.max(0, Math.min(1, n));
+}
+
+// Build a Figma paint from an {r, g, b, a?} color object.
+function safePaint(color) {
+  if (!color || typeof color !== "object") return null;
+  var r = safeChannel(color.r);
+  var g = safeChannel(color.g);
+  var b = safeChannel(color.b);
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return null;
+  var a = safeChannel(color.a);
+  return {
+    type: "SOLID",
+    color: { r: r, g: g, b: b },
+    opacity: isNaN(a) ? 1 : a,
+  };
+}
+
 // Plugin state
 const state = {
   serverPort: 3055, // Default port
@@ -415,6 +438,9 @@ async function createRectangle(params) {
     height = 100,
     name = "Rectangle",
     parentId,
+    fillColor,
+    strokeColor,
+    strokeWeight,
   } = params || {};
 
   const rect = figma.createRectangle();
@@ -422,6 +448,23 @@ async function createRectangle(params) {
   rect.y = y;
   rect.resize(width, height);
   rect.name = name;
+
+  // Set fill color if provided
+  if (fillColor) {
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) rect.fills = [fillPaint];
+  }
+
+  // Set stroke color and weight if provided
+  if (strokeColor) {
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) rect.strokes = [strokePaint];
+  }
+
+  // Set stroke weight if provided
+  if (strokeWeight !== undefined) {
+    rect.strokeWeight = strokeWeight;
+  }
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
@@ -467,32 +510,16 @@ async function createFrame(params) {
   frame.resize(width, height);
   frame.name = name;
 
-  // Set fill color if provided
+  // Set fill color if provided (invalid color → skip, keeping Figma default)
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    frame.fills = [paintStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) frame.fills = [fillPaint];
   }
 
-  // Set stroke color and weight if provided
+  // Set stroke color and weight if provided (invalid color → skip)
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    frame.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) frame.strokes = [strokePaint];
   }
 
   // Set stroke weight if provided
@@ -501,6 +528,7 @@ async function createFrame(params) {
   }
 
   // If parentId is provided, append to that node, otherwise append to current page
+  var targetParent = figma.currentPage;
   if (parentId) {
     const parentNode = await getNodeByIdSafe(parentId);
     if (!parentNode) {
@@ -509,9 +537,27 @@ async function createFrame(params) {
     if (!("appendChild" in parentNode)) {
       throw new Error(`Parent node does not support children: ${parentId}`);
     }
-    parentNode.appendChild(frame);
-  } else {
-    figma.currentPage.appendChild(frame);
+    targetParent = parentNode;
+  }
+  targetParent.appendChild(frame);
+
+  // Auto-Grid logic: if parent is a PAGE, add a standard column grid (hidden by default)
+  if (targetParent.type === "PAGE") {
+    var colCount = 4; // Mobile
+    if (width >= 1024) colCount = 12; // Desktop
+    else if (width >= 768) colCount = 8; // Tablet
+
+    frame.layoutGrids = [
+      {
+        pattern: "COLUMNS",
+        alignment: "STRETCH",
+        count: colCount,
+        gutterSize: 20,
+        offset: 20,
+        visible: false,
+        color: { r: 1, g: 0, b: 0, a: 0.1 },
+      },
+    ];
   }
 
   return {
@@ -644,10 +690,9 @@ async function createText(params) {
 }
 
 async function setFillColor(params) {
-  console.log("setFillColor", params);
   const {
     nodeId,
-    color: { r, g, b, a },
+    color,
   } = params || {};
 
   if (!nodeId) {
@@ -663,50 +708,24 @@ async function setFillColor(params) {
     throw new Error(`Node does not support fills: ${nodeId}`);
   }
 
-  // Validate that MCP layer provided complete data
-  if (r === undefined || g === undefined || b === undefined || a === undefined) {
-    throw new Error("Incomplete color data received from MCP layer. All RGBA components must be provided.");
+  const fillPaint = safePaint(color);
+  if (!fillPaint) {
+    throw new Error("Invalid color data received from MCP layer.");
   }
 
-  // Parse values - no defaults, just format conversion
-  const rgbColor = {
-    r: parseFloat(r),
-    g: parseFloat(g),
-    b: parseFloat(b),
-    a: parseFloat(a)
-  };
-
-  // Validate parsing succeeded
-  if (isNaN(rgbColor.r) || isNaN(rgbColor.g) || isNaN(rgbColor.b) || isNaN(rgbColor.a)) {
-    throw new Error("Invalid color values received - all components must be valid numbers");
-  }
-
-  // Set fill - pure translation to Figma API format
-  const paintStyle = {
-    type: "SOLID",
-    color: {
-      r: rgbColor.r,
-      g: rgbColor.g,
-      b: rgbColor.b,
-    },
-    opacity: rgbColor.a,
-  };
-
-  console.log("paintStyle", paintStyle);
-
-  node.fills = [paintStyle];
+  node.fills = [fillPaint];
 
   return {
     id: node.id,
     name: node.name,
-    fills: [paintStyle],
+    fills: [fillPaint],
   };
 }
 
 async function setStrokeColor(params) {
   const {
     nodeId,
-    color: { r, g, b, a },
+    color,
     strokeWeight,
   } = params || {};
 
@@ -723,45 +742,15 @@ async function setStrokeColor(params) {
     throw new Error(`Node does not support strokes: ${nodeId}`);
   }
 
-  if (r === undefined || g === undefined || b === undefined || a === undefined) {
-    throw new Error("Incomplete color data received from MCP layer. All RGBA components must be provided.");
+  const strokePaint = safePaint(color);
+  if (!strokePaint) {
+    throw new Error("Invalid color data received from MCP layer.");
   }
 
-  if (strokeWeight === undefined) {
-    throw new Error("Stroke weight must be provided by MCP layer.");
-  }
+  node.strokes = [strokePaint];
 
-  const rgbColor = {
-    r: parseFloat(r),
-    g: parseFloat(g),
-    b: parseFloat(b),
-    a: parseFloat(a)
-  };
-  const strokeWeightParsed = parseFloat(strokeWeight);
-
-  if (isNaN(rgbColor.r) || isNaN(rgbColor.g) || isNaN(rgbColor.b) || isNaN(rgbColor.a)) {
-    throw new Error("Invalid color values received - all components must be valid numbers");
-  }
-
-  if (isNaN(strokeWeightParsed)) {
-    throw new Error("Invalid stroke weight - must be a valid number");
-  }
-
-  const paintStyle = {
-    type: "SOLID",
-    color: {
-      r: rgbColor.r,
-      g: rgbColor.g,
-      b: rgbColor.b,
-    },
-    opacity: rgbColor.a,
-  };
-
-  node.strokes = [paintStyle];
-
-  // Set stroke weight if available
-  if ("strokeWeight" in node) {
-    node.strokeWeight = strokeWeightParsed;
+  if (strokeWeight !== undefined) {
+    node.strokeWeight = parseFloat(strokeWeight);
   }
 
   return {
@@ -1630,7 +1619,7 @@ const setCharactersWithSmartMatchFont = async (
 
 // Add the cloneNode function implementation
 async function cloneNode(params) {
-  const { nodeId, x, y } = params || {};
+  const { nodeId, x, y, parentId } = params || {};
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -1653,8 +1642,17 @@ async function cloneNode(params) {
     clone.y = y;
   }
 
-  // Add the clone to the same parent as the original node
-  if (node.parent) {
+  // Add the clone to the target parent, or fall back to the original node's parent
+  if (parentId) {
+    const parentNode = await getNodeByIdSafe(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    parentNode.appendChild(clone);
+  } else if (node.parent) {
     node.parent.appendChild(clone);
   } else {
     figma.currentPage.appendChild(clone);
@@ -3342,34 +3340,18 @@ async function createEllipse(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const fillStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1
-    };
-    ellipse.fills = [fillStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) ellipse.fills = [fillPaint];
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1
-    };
-    ellipse.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) ellipse.strokes = [strokePaint];
+  }
 
-    if (strokeWeight) {
-      ellipse.strokeWeight = strokeWeight;
-    }
+  if (strokeWeight !== undefined) {
+    ellipse.strokeWeight = strokeWeight;
   }
 
   // If parentId is provided, append to that node, otherwise append to current page
@@ -3425,33 +3407,16 @@ async function createPolygon(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    polygon.fills = [paintStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) polygon.fills = [fillPaint];
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    polygon.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) polygon.strokes = [strokePaint];
   }
 
-  // Set stroke weight if provided
   if (strokeWeight !== undefined) {
     polygon.strokeWeight = strokeWeight;
   }
@@ -3520,33 +3485,16 @@ async function createStar(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    star.fills = [paintStyle];
+    var fillPaint = safePaint(fillColor);
+    if (fillPaint) star.fills = [fillPaint];
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    star.strokes = [strokeStyle];
+    var strokePaint = safePaint(strokeColor);
+    if (strokePaint) star.strokes = [strokePaint];
   }
 
-  // Set stroke weight if provided
   if (strokeWeight !== undefined) {
     star.strokeWeight = strokeWeight;
   }
@@ -5030,11 +4978,22 @@ async function setGrid(params) {
     if (grid.pattern === "GRID") {
       layoutGrid.sectionSize = grid.sectionSize !== undefined ? grid.sectionSize : 10;
     } else {
-      // COLUMNS and ROWS require count, alignment, gutterSize, offset (NO sectionSize)
-      layoutGrid.count = grid.count !== undefined ? grid.count : 5;
+      // COLUMNS and ROWS: alignment determines the variant
+      // STRETCH: uses count, gutterSize, offset (evenly divided)
+      // MIN/CENTER/MAX: uses sectionSize, count, offset (fixed-size cells)
       layoutGrid.alignment = grid.alignment !== undefined ? grid.alignment : "STRETCH";
-      layoutGrid.gutterSize = grid.gutterSize !== undefined ? grid.gutterSize : 10;
-      layoutGrid.offset = grid.offset !== undefined ? grid.offset : 0;
+
+      if (layoutGrid.alignment === "STRETCH") {
+        layoutGrid.count = grid.count !== undefined ? grid.count : 5;
+        layoutGrid.gutterSize = grid.gutterSize !== undefined ? grid.gutterSize : 10;
+        layoutGrid.offset = grid.offset !== undefined ? grid.offset : 0;
+      } else {
+        // MIN/CENTER/MAX: fixed-size cells
+        layoutGrid.sectionSize = grid.sectionSize !== undefined ? grid.sectionSize : 10;
+        layoutGrid.count = grid.count !== undefined ? grid.count : 1;
+        layoutGrid.gutterSize = grid.gutterSize !== undefined ? grid.gutterSize : 0;
+        layoutGrid.offset = grid.offset !== undefined ? grid.offset : 0;
+      }
     }
 
     if (grid.color) {
