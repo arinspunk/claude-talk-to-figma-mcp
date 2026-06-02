@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
+import { coerceBoolean } from "../utils/schema-helpers";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -11,6 +12,93 @@ import os from "os";
  * @param server - The MCP server instance
  */
 export function registerImageTools(server: McpServer): void {
+  // Visual Snapshot Tool — multimodal "eyes" on the canvas
+  server.tool(
+    "get_visual_snapshot",
+    "Capture a PNG image of the current Figma selection (or a specific node) so you can SEE the rendered result — layout, spacing, alignment, fonts, and colors. Use this to verify your work after creating or editing nodes: render, look, and correct any placement drift or font mismatch before telling the user you're done. Defaults to the current selection at 2x scale; no nodeId needed.",
+    {
+      nodeId: z
+        .string()
+        .optional()
+        .describe("Node to snapshot. Omit to snapshot the current Figma selection."),
+      scale: z.coerce
+        .number()
+        .positive()
+        .optional()
+        .describe("Render scale (default 2 for crisp detail). Auto-reduced if the result would exceed maxDimension."),
+      maxDimension: z.coerce
+        .number()
+        .positive()
+        .optional()
+        .describe("Cap on the longest output side in px (default 2000). Keeps very large frames fast and reviewable."),
+    },
+    async ({ nodeId, scale, maxDimension }) => {
+      try {
+        const result = await sendCommandToFigma(
+          "get_visual_snapshot",
+          { nodeId, scale: scale ?? 2, maxDimension: maxDimension ?? 2000 },
+          120000 // 120s: large frames can take a while to rasterize
+        );
+        const typed = result as {
+          nodeId: string;
+          name: string;
+          type: string;
+          mimeType: string;
+          imageData: string;
+          scale: number;
+          requestedScale: number;
+          capped: boolean;
+          width: number;
+          height: number;
+          absoluteBoundingBox: { x: number; y: number; width: number; height: number } | null;
+          selectionCount: number;
+        };
+
+        const box = typed.absoluteBoundingBox;
+        const lines = [
+          `Snapshot of "${typed.name}" (${typed.type}, id ${typed.nodeId}) @${typed.scale.toFixed(2)}x`,
+          `Logical size: ${Math.round(typed.width)}×${Math.round(typed.height)} px`,
+          box
+            ? `Absolute position: x=${Math.round(box.x)}, y=${Math.round(box.y)} (canvas coordinates)`
+            : `Absolute position: unavailable for this node type`,
+        ];
+        if (typed.capped) {
+          lines.push(
+            `Note: scale auto-reduced from ${typed.requestedScale}x to fit within the ${maxDimension ?? 2000}px cap (large frame).`
+          );
+        }
+        if (typed.selectionCount > 1) {
+          lines.push(
+            `Note: ${typed.selectionCount} nodes were selected — snapshot shows the first. Pass an explicit nodeId to target a specific one.`
+          );
+        }
+
+        return {
+          content: [
+            {
+              type: "image",
+              data: typed.imageData,
+              mimeType: typed.mimeType || "image/png",
+            },
+            {
+              type: "text",
+              text: lines.join("\n"),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error capturing visual snapshot: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
   // Set Image Fill Tool
   server.tool(
     "set_image_fill",
@@ -40,7 +128,7 @@ export function registerImageTools(server: McpServer): void {
           ],
         };
       } catch (error) {
-        throw new Error(`Error setting image fill: ${error instanceof Error ? error.message : String(error)}`);
+        return { content: [{ type: "text", text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}` }] };
       }
     }
   );
@@ -126,67 +214,13 @@ export function registerImageTools(server: McpServer): void {
           ],
         };
       } catch (error) {
-        throw new Error(`Error replacing image fill: ${error instanceof Error ? error.message : String(error)}`);
+        return { content: [{ type: "text", text: `Error replacing image fill: ${error instanceof Error ? error.message : String(error)}` }] };
       }
     }
   );
 
-  // COMMENTED OUT: get_image_bytes - Issues pending investigation
-  // Known issues: 400 errors, inconsistent behavior (black images), file save path needs discussion
-  /*
-  server.tool(
-    "get_image_bytes",
-    "Download image from Figma and save to local file",
-    {
-      imageHash: z.string().optional().describe("Image hash to download"),
-      nodeId: z.string().optional().describe("Node ID to get image from (alternative to imageHash)"),
-    },
-    async ({ imageHash, nodeId }) => {
-      try {
-        if (!imageHash && !nodeId) {
-          throw new Error("Either imageHash or nodeId must be provided");
-        }
-
-        const result = await sendCommandToFigma("get_image_bytes", {
-          imageHash,
-          nodeId,
-        }, 120000); // 120 second timeout for download
-
-        const typedResult = result as {
-          imageData: string;
-          mimeType: string;
-          size: number;
-        };
-
-        const imageBuffer = Buffer.from(typedResult.imageData, "base64");
-        const ext = typedResult.mimeType === "image/png" ? "png" : "jpg";
-        const hashOrId = imageHash?.substring(0, 8) || nodeId?.replace(/:/g, "-") || "unknown";
-        const filename = `figma-${hashOrId}-${Date.now()}.${ext}`;
-        const filepath = path.join(os.tmpdir(), filename);
-
-        fs.writeFileSync(filepath, imageBuffer);
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Image saved successfully!\n\nFile: ${filepath}\nSize: ${typedResult.size} bytes\nMIME: ${typedResult.mimeType}\n\nUse Read tool to view the image.`,
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error getting image bytes: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-        };
-      }
-    }
-  );
-  */
+  // (get_image_bytes was removed — superseded by get_asset, which reliably
+  //  extracts image-fill bytes by hash and writes them to disk.)
 
   // Apply Image Transform Tool
   server.tool(
@@ -221,7 +255,7 @@ export function registerImageTools(server: McpServer): void {
           ],
         };
       } catch (error) {
-        throw new Error(`Error applying image transform: ${error instanceof Error ? error.message : String(error)}`);
+        return { content: [{ type: "text", text: `Error applying image transform: ${error instanceof Error ? error.message : String(error)}` }] };
       }
     }
   );
@@ -266,7 +300,137 @@ export function registerImageTools(server: McpServer): void {
           ],
         };
       } catch (error) {
-        throw new Error(`Error setting image filters: ${error instanceof Error ? error.message : String(error)}`);
+        return { content: [{ type: "text", text: `Error setting image filters: ${error instanceof Error ? error.message : String(error)}` }] };
+      }
+    }
+  );
+
+  // Scan Assets Tool — inventory images + vector/icon nodes in a subtree
+  server.tool(
+    "scan_assets",
+    "Inventory all extractable assets within a node's subtree: image fills (deduped by hash, with dimensions, byte size, suggested filename, and which nodes use them) and vector/icon nodes. Lightweight (no raw bytes) — use it to decide what to pull, then call get_asset for each. Defaults to the current selection.",
+    {
+      nodeId: z.string().optional().describe("Subtree root to scan. Omit to use the current selection."),
+      includeImages: coerceBoolean.optional().describe("Include image fills (default true)."),
+      includeVectors: coerceBoolean.optional().describe("Include vector/icon nodes (default true)."),
+    },
+    async ({ nodeId, includeImages, includeVectors }) => {
+      try {
+        const result = await sendCommandToFigma(
+          "scan_assets",
+          { nodeId, includeImages: includeImages ?? true, includeVectors: includeVectors ?? true },
+          60000
+        );
+        const typed = result as {
+          root: string;
+          imageCount: number;
+          vectorCount: number;
+          images: { hash: string; width?: number; height?: number; bytes?: number; suggestedName: string; scaleMode?: string; usedBy: { id: string; name: string }[] }[];
+          vectors: { nodeId: string; name: string; type: string; width: number; height: number; suggestedName: string }[];
+        };
+
+        const lines: string[] = [
+          `Assets in ${typed.root}: ${typed.imageCount} image(s), ${typed.vectorCount} vector/icon(s).`,
+        ];
+        if (typed.images.length) {
+          lines.push("", "IMAGES (fetch with get_asset { hash }):");
+          for (const im of typed.images) {
+            const dim = im.width && im.height ? `${im.width}×${im.height}` : "?";
+            const kb = im.bytes ? `${Math.round(im.bytes / 1024)}KB` : "?";
+            lines.push(`  • ${im.suggestedName}  [${dim}, ${kb}]  hash=${im.hash}  scaleMode=${im.scaleMode ?? "?"}  usedBy=${im.usedBy.map((u) => u.name).join(", ")}`);
+          }
+        }
+        if (typed.vectors.length) {
+          lines.push("", "VECTORS/ICONS (fetch with get_asset { nodeId }, default SVG):");
+          for (const v of typed.vectors) {
+            lines.push(`  • ${v.suggestedName}  [${v.type}, ${v.width}×${v.height}]  nodeId=${v.nodeId}`);
+          }
+        }
+
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error scanning assets: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Get Asset Tool — fetch one asset's bytes and write it to a file
+  server.tool(
+    "get_asset",
+    "Extract a single asset to a local file so you can use it in code. Provide either 'hash' (an image fill from scan_assets) to save the original image bytes, or 'nodeId' to export a node (default SVG for icons/vectors; or PNG/JPG via format). Writes the file to disk and returns its path — raw bytes don't enter the conversation. SVG content is also returned inline so you can embed icons directly.",
+    {
+      hash: z.string().optional().describe("Image fill hash from scan_assets (extracts original image bytes)."),
+      nodeId: z.string().optional().describe("Node to export (alternative to hash)."),
+      format: z.enum(["SVG", "PNG", "JPG"]).optional().describe("Export format when using nodeId (default SVG)."),
+      scale: z.coerce.number().positive().optional().describe("Scale for raster (PNG/JPG) node exports (default 2)."),
+      outDir: z.string().optional().describe("Directory to write the asset into (default: ./figma-assets under the server's working directory)."),
+      filename: z.string().optional().describe("Override the output filename (extension is set automatically from the asset type)."),
+    },
+    async ({ hash, nodeId, format, scale, outDir, filename }) => {
+      try {
+        if (!hash && !nodeId) {
+          throw new Error("Provide either 'hash' (image fill) or 'nodeId' (node to export).");
+        }
+
+        const result = await sendCommandToFigma(
+          "get_asset",
+          { hash, nodeId, format: format || "SVG", scale: scale ?? 2 },
+          120000
+        );
+        const typed = result as {
+          kind: "image" | "svg";
+          name?: string;
+          mimeType: string;
+          dataBase64: string;
+          bytesLength: number;
+        };
+
+        const buffer = Buffer.from(typed.dataBase64, "base64");
+        const extByMime: Record<string, string> = {
+          "image/png": "png",
+          "image/jpeg": "jpg",
+          "image/gif": "gif",
+          "image/webp": "webp",
+          "image/svg+xml": "svg",
+        };
+        const ext = extByMime[typed.mimeType] || "bin";
+
+        const baseName =
+          (filename && filename.replace(/\.[^.]+$/, "")) ||
+          (typed.name && typed.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40)) ||
+          (hash ? `image-${hash.slice(0, 8)}` : `asset-${Date.now()}`);
+
+        const dir = outDir || path.join(process.cwd(), "figma-assets");
+        fs.mkdirSync(dir, { recursive: true });
+        const filepath = path.join(dir, `${baseName}.${ext}`);
+        fs.writeFileSync(filepath, buffer);
+
+        const lines = [
+          `Saved ${typed.kind} asset → ${filepath}`,
+          `Type: ${typed.mimeType} | Size: ${typed.bytesLength} bytes`,
+        ];
+        if (typed.kind === "svg") {
+          const svgText = buffer.toString("utf8");
+          lines.push("", "Inline SVG:", svgText);
+        }
+
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting asset: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
       }
     }
   );

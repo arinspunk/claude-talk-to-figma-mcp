@@ -1,8 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

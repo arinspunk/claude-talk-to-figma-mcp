@@ -98,7 +98,16 @@ figma.ui.onmessage = async (msg) => {
 
 // Listen for plugin commands from menu
 figma.on("run", ({ command }) => {
-  figma.ui.postMessage({ type: "auto-connect" });
+  // Restore any saved server port before auto-connecting.
+  figma.clientStorage.getAsync("settings").then((settings) => {
+    if (settings && settings.serverPort) {
+      state.serverPort = settings.serverPort;
+      figma.ui.postMessage({ type: "init-settings", serverPort: settings.serverPort });
+    }
+    figma.ui.postMessage({ type: "auto-connect" });
+  }).catch(() => {
+    figma.ui.postMessage({ type: "auto-connect" });
+  });
 });
 
 // Update plugin settings
@@ -168,6 +177,18 @@ async function handleCommand(command, params) {
       return await createComponentInstance(params);
     case "export_node_as_image":
       return await exportNodeAsImage(params);
+    case "get_visual_snapshot":
+      return await getVisualSnapshot(params);
+    case "batch_operations":
+      return await batchOperations(params);
+    case "get_css":
+      return await getCSS(params);
+    case "get_fonts_used":
+      return await getFontsUsed(params);
+    case "scan_assets":
+      return await scanAssets(params);
+    case "get_asset":
+      return await getAsset(params);
     case "set_corner_radius":
       return await setCornerRadius(params);
     case "set_text_content":
@@ -1195,8 +1216,8 @@ async function exportNodeAsImage(params) {
         mimeType = "application/octet-stream";
     }
 
-    // Proper way to convert Uint8Array to base64
-    const base64 = customBase64Encode(bytes);
+    // Proper way to convert Uint8Array to base64 (native-fast when available)
+    const base64 = bytesToBase64(bytes);
     // const imageData = `data:${mimeType};base64,${base64}`;
 
     return {
@@ -1210,6 +1231,435 @@ async function exportNodeAsImage(params) {
     throw new Error(`Error exporting node as image: ${error.message}`);
   }
 }
+
+/**
+ * Capture a visual snapshot (Base64 PNG) of a node for multimodal review.
+ *
+ * Unlike exportNodeAsImage, this is selection-aware: when no nodeId is given it
+ * snapshots the current Figma selection, which lets the agent "look at what the
+ * user clicked". It also returns geometry (absolute bounding box) so the agent
+ * can correlate the rendered pixels with real coordinates — the key to catching
+ * placement drift and verifying layout/padding.
+ */
+async function getVisualSnapshot(params) {
+  const { nodeId, scale = 2, maxDimension = 2000 } = params || {};
+
+  // Resolve the target node: explicit nodeId wins, otherwise use the selection.
+  let node;
+  let selectionCount = 0;
+  if (nodeId) {
+    node = await getNodeByIdSafe(nodeId);
+    if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+  } else {
+    const selection = figma.currentPage.selection;
+    selectionCount = selection.length;
+    if (selectionCount === 0) {
+      throw new Error(
+        "Nothing is selected. Ask the user to select a node in Figma, or pass an explicit nodeId."
+      );
+    }
+    // When multiple nodes are selected we snapshot the first and report the count.
+    node = selection[0];
+  }
+
+  if (!("exportAsync" in node)) {
+    throw new Error(`Node "${node.name}" (${node.type}) does not support visual export.`);
+  }
+
+  // Cap the longest output dimension. Very tall/wide frames (e.g. a 10000px
+  // brochure) blow past the export timeout at 2x AND exceed the resolution the
+  // model can actually use. Clamp the effective scale so the longest side stays
+  // within maxDimension; normal-sized selections still render at the full scale.
+  const longest = Math.max(node.width || 1, node.height || 1);
+  let effectiveScale = scale;
+  let capped = false;
+  if (maxDimension && longest * effectiveScale > maxDimension) {
+    effectiveScale = maxDimension / longest;
+    capped = true;
+  }
+
+  const startTime = Date.now();
+  try {
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`Snapshot timed out after 90s for "${node.name}" (${node.width}x${node.height})`));
+      }, 90000);
+    });
+
+    const bytes = await Promise.race([
+      node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: effectiveScale } }),
+      timeoutPromise,
+    ]).finally(() => clearTimeout(timeoutId));
+
+    console.log(`[getVisualSnapshot] Exported "${node.name}" in ${Date.now() - startTime}ms, ${bytes.length} bytes @${effectiveScale.toFixed(3)}x (requested ${scale}x, capped=${capped})`);
+
+    const box = node.absoluteBoundingBox || null;
+    return {
+      nodeId: node.id,
+      name: node.name,
+      type: node.type,
+      mimeType: "image/png",
+      imageData: bytesToBase64(bytes),
+      scale: effectiveScale,
+      requestedScale: scale,
+      capped,
+      width: node.width,
+      height: node.height,
+      // Absolute canvas position — lets the agent map pixels back to coordinates.
+      absoluteBoundingBox: box ? { x: box.x, y: box.y, width: box.width, height: box.height } : null,
+      selectionCount,
+    };
+  } catch (error) {
+    throw new Error(`Error capturing visual snapshot: ${error.message}`);
+  }
+}
+
+/**
+ * Convert bytes to Base64, preferring Figma's native encoder.
+ *
+ * The fallback customBase64Encode uses string concatenation in a loop, which is
+ * effectively O(n^2) and blocks the plugin thread for seconds on large images
+ * (which then stalls the heartbeat). figma.base64Encode is native and fast — use
+ * it whenever the running Figma build provides it.
+ */
+function bytesToBase64(bytes) {
+  if (typeof figma !== "undefined" && typeof figma.base64Encode === "function") {
+    return figma.base64Encode(bytes);
+  }
+  return customBase64Encode(bytes);
+}
+
+/**
+ * Apply an array of operations in a single pass.
+ *
+ * Each operation is dispatched through the same handleCommand() used by single
+ * tool calls, so every existing command works in a batch for free. Progress
+ * updates are streamed throughout — this both shows an optimistic "Processing
+ * started…" status in the plugin UI AND keeps the MCP request alive (each update
+ * resets the client's inactivity timeout), so large batches never time out.
+ *
+ * Returns a per-operation success/failure summary so the agent can retry only
+ * the operations that failed.
+ */
+async function batchOperations(params) {
+  const { operations, stopOnError = false } = params || {};
+  // Use the incoming commandId (== the MCP request id) so progress updates route
+  // back to the waiting request and reset its timeout.
+  const commandId = (params && params.commandId) || generateCommandId();
+
+  if (!Array.isArray(operations) || operations.length === 0) {
+    throw new Error("batch_operations requires a non-empty 'operations' array");
+  }
+
+  const total = operations.length;
+  const results = [];
+  let succeeded = 0;
+  let failed = 0;
+
+  // Throttle progress messages on very large batches (still frequent enough to
+  // keep the timeout reset and the UI moving).
+  const step = Math.max(1, Math.floor(total / 50));
+
+  sendProgressUpdate(
+    commandId, "batch_operations", "started", 0, total, 0,
+    `Processing started… 0/${total} operations`
+  );
+
+  for (let i = 0; i < total; i++) {
+    const op = operations[i] || {};
+    const cmd = op.command;
+    const opParams = op.params || {};
+
+    if (cmd === "batch_operations") {
+      results.push({ index: i, command: cmd, ok: false, error: "Nested batch_operations is not allowed" });
+      failed++;
+      if (stopOnError) break;
+      continue;
+    }
+
+    try {
+      await handleCommand(cmd, opParams);
+      results.push({ index: i, command: cmd, ok: true });
+      succeeded++;
+    } catch (error) {
+      results.push({ index: i, command: cmd, ok: false, error: error && error.message ? error.message : String(error) });
+      failed++;
+      if (stopOnError) break;
+    }
+
+    const processed = i + 1;
+    if (processed % step === 0 || processed === total) {
+      sendProgressUpdate(
+        commandId, "batch_operations",
+        processed === total ? "completed" : "in_progress",
+        Math.round((processed / total) * 100),
+        total, processed,
+        `Processed ${processed}/${total} (${succeeded} ok, ${failed} failed)`
+      );
+    }
+  }
+
+  // Ensure a terminal "completed" update even if stopOnError broke out early.
+  const processedCount = results.length;
+  sendProgressUpdate(
+    commandId, "batch_operations", "completed",
+    100, total, processedCount,
+    `Batch finished: ${succeeded} ok, ${failed} failed${processedCount < total ? `, ${total - processedCount} skipped` : ""}`
+  );
+
+  return { total, succeeded, failed, results };
+}
+
+// ─── Resolve a node from params (explicit nodeId or current selection) ───────
+async function resolveTargetNode(params, what) {
+  const nodeId = params && params.nodeId;
+  if (nodeId) {
+    const node = await getNodeByIdSafe(nodeId);
+    if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+    return node;
+  }
+  const sel = figma.currentPage.selection;
+  if (!sel || sel.length === 0) {
+    throw new Error(`Nothing is selected. Select a node in Figma or pass an explicit nodeId to ${what}.`);
+  }
+  return sel[0];
+}
+
+/**
+ * Return Figma's own computed CSS (Dev Mode) for a node, optionally for the
+ * whole subtree. This is far more faithful than reconstructing CSS from raw
+ * node JSON — exact sizing, colors, gradients, radius, shadows, and typography.
+ */
+async function getCSS(params) {
+  const { recursive = false, maxNodes = 200 } = params || {};
+  const node = await resolveTargetNode(params, "get_css");
+
+  if (typeof node.getCSSAsync !== "function") {
+    throw new Error(`Node "${node.name}" (${node.type}) does not support getCSSAsync in this Figma build.`);
+  }
+
+  async function cssFor(n) {
+    let css = {};
+    try { css = await n.getCSSAsync(); } catch (e) { css = { error: e.message }; }
+    return { id: n.id, name: n.name, type: n.type, css };
+  }
+
+  if (!recursive) {
+    return await cssFor(node);
+  }
+
+  const nodes = [];
+  let truncated = false;
+  async function walk(n) {
+    if (nodes.length >= maxNodes) { truncated = true; return; }
+    if (typeof n.getCSSAsync === "function") nodes.push(await cssFor(n));
+    if ("children" in n) {
+      for (const child of n.children) {
+        if (nodes.length >= maxNodes) { truncated = true; break; }
+        await walk(child);
+      }
+    }
+  }
+  await walk(node);
+  return { root: node.id, count: nodes.length, truncated, nodes };
+}
+
+/**
+ * Inventory every font (family/style/size) used within a node's subtree, so the
+ * agent can set up @font-face or pick correct web-font equivalents up front.
+ */
+async function getFontsUsed(params) {
+  const node = await resolveTargetNode(params, "get_fonts_used");
+  const fonts = new Map(); // "family|style" -> { family, style, sizes:Set, occurrences }
+
+  function record(family, style, size) {
+    const key = `${family}|${style}`;
+    if (!fonts.has(key)) fonts.set(key, { family, style, sizes: new Set(), occurrences: 0 });
+    const f = fonts.get(key);
+    if (typeof size === "number") f.sizes.add(Math.round(size));
+    f.occurrences++;
+  }
+
+  function processText(t) {
+    try {
+      const segs = t.getStyledTextSegments(["fontName", "fontSize"]);
+      for (const s of segs) {
+        if (s.fontName && s.fontName.family) record(s.fontName.family, s.fontName.style, s.fontSize);
+      }
+    } catch (e) {
+      // Fallback to node-level font if segments unavailable
+      if (t.fontName && t.fontName !== figma.mixed) {
+        record(t.fontName.family, t.fontName.style, typeof t.fontSize === "number" ? t.fontSize : undefined);
+      }
+    }
+  }
+
+  function walk(n) {
+    if (n.type === "TEXT") processText(n);
+    if ("children" in n) n.children.forEach(walk);
+  }
+  walk(node);
+
+  return {
+    root: node.id,
+    fonts: Array.from(fonts.values()).map((f) => ({
+      family: f.family,
+      style: f.style,
+      sizes: Array.from(f.sizes).sort((a, b) => a - b),
+      occurrences: f.occurrences,
+    })),
+  };
+}
+
+// Detect image mime type from magic bytes (getBytesAsync returns original bytes).
+function detectImageMime(bytes) {
+  if (!bytes || bytes.length < 4) return "application/octet-stream";
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) return "image/png";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) return "image/jpeg";
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return "image/gif";
+  if (bytes.length > 11 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[8] === 0x57 && bytes[9] === 0x45) return "image/webp";
+  return "application/octet-stream";
+}
+
+function slugifyName(s) {
+  return (String(s || "asset").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40)) || "asset";
+}
+
+const VECTOR_NODE_TYPES = new Set([
+  "VECTOR", "BOOLEAN_OPERATION", "STAR", "LINE", "ELLIPSE", "POLYGON",
+]);
+
+/**
+ * Inventory the assets in a node's subtree: image fills (deduped by hash) and
+ * vector/icon nodes. Lightweight — no raw bytes — so the agent can choose what
+ * to pull via get_asset.
+ */
+async function scanAssets(params) {
+  const { includeImages = true, includeVectors = true } = params || {};
+  const node = await resolveTargetNode(params, "scan_assets");
+
+  const images = new Map(); // hash -> { hash, scaleMode, width, height, bytes, nodes:[] }
+  const vectors = [];
+
+  async function inspectImageFills(n) {
+    if (!("fills" in n) || !Array.isArray(n.fills)) return;
+    for (const fill of n.fills) {
+      if (fill && fill.type === "IMAGE" && fill.imageHash) {
+        if (!images.has(fill.imageHash)) {
+          let width, height, byteLen;
+          try {
+            const img = figma.getImageByHash(fill.imageHash);
+            if (img) {
+              const size = await img.getSizeAsync();
+              width = size.width; height = size.height;
+              const bytes = await img.getBytesAsync();
+              byteLen = bytes.length;
+            }
+          } catch (e) { /* metadata best-effort */ }
+          images.set(fill.imageHash, { hash: fill.imageHash, scaleMode: fill.scaleMode, width, height, bytes: byteLen, nodes: [] });
+        }
+        images.get(fill.imageHash).nodes.push({ id: n.id, name: n.name });
+      }
+    }
+  }
+
+  async function walk(n) {
+    if (includeImages) await inspectImageFills(n);
+    if (includeVectors && VECTOR_NODE_TYPES.has(n.type)) {
+      vectors.push({ nodeId: n.id, name: n.name, type: n.type, width: Math.round(n.width), height: Math.round(n.height) });
+    }
+    if ("children" in n) {
+      for (const child of n.children) await walk(child);
+    }
+  }
+  await walk(node);
+
+  const imageList = Array.from(images.values()).map((im) => ({
+    kind: "image",
+    hash: im.hash,
+    scaleMode: im.scaleMode,
+    width: im.width,
+    height: im.height,
+    bytes: im.bytes,
+    usedBy: im.nodes,
+    suggestedName: slugifyName(im.nodes[0] && im.nodes[0].name),
+  }));
+  const vectorList = vectors.map((v) => ({
+    kind: "vector",
+    nodeId: v.nodeId,
+    name: v.name,
+    type: v.type,
+    width: v.width,
+    height: v.height,
+    suggestedName: slugifyName(v.name) + ".svg",
+  }));
+
+  return {
+    root: node.id,
+    imageCount: imageList.length,
+    vectorCount: vectorList.length,
+    images: imageList,
+    vectors: vectorList,
+  };
+}
+
+/**
+ * Fetch a single asset's bytes:
+ *  - by image-fill `hash`  → original uploaded image bytes (PNG/JPG/…)
+ *  - by `nodeId`           → export the node, default SVG (for icons/vectors),
+ *                            or a raster format (PNG/JPG) at `scale`.
+ * Returns base64 so the MCP server can write it to a file (raw bytes never enter
+ * the agent's context). SVG is also returned base64 and decoded server-side.
+ */
+async function getAsset(params) {
+  const { hash, nodeId, format, scale = 2 } = params || {};
+
+  if (hash) {
+    const img = figma.getImageByHash(hash);
+    if (!img) throw new Error(`No image found for hash: ${hash}`);
+    const bytes = await img.getBytesAsync();
+    return {
+      kind: "image",
+      hash,
+      mimeType: detectImageMime(bytes),
+      dataBase64: bytesToBase64(bytes),
+      bytesLength: bytes.length,
+    };
+  }
+
+  if (nodeId) {
+    const node = await getNodeByIdSafe(nodeId);
+    if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+    if (!("exportAsync" in node)) throw new Error(`Node "${node.name}" (${node.type}) cannot be exported.`);
+
+    const fmt = (format || "SVG").toUpperCase();
+    if (fmt === "SVG") {
+      const svgBytes = await node.exportAsync({ format: "SVG" });
+      return {
+        kind: "svg",
+        nodeId,
+        name: node.name,
+        mimeType: "image/svg+xml",
+        dataBase64: bytesToBase64(svgBytes), // decoded to text server-side
+        bytesLength: svgBytes.length,
+      };
+    }
+
+    const raster = await node.exportAsync({ format: fmt, constraint: { type: "SCALE", value: scale } });
+    return {
+      kind: "image",
+      nodeId,
+      name: node.name,
+      mimeType: fmt === "JPG" ? "image/jpeg" : "image/png",
+      dataBase64: bytesToBase64(raster),
+      bytesLength: raster.length,
+    };
+  }
+
+  throw new Error("get_asset requires either 'hash' (an image fill) or 'nodeId' (a node to export).");
+}
+
 function customBase64Encode(bytes) {
   const chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -4286,60 +4736,8 @@ async function replaceImageFill(params) {
   }
 }
 
-// COMMENTED OUT: getImageBytes - Issues pending investigation
-// Known issues: 400 errors, inconsistent behavior (black images), file save path needs discussion
-/*
-async function getImageBytes(params) {
-  try {
-    const { imageHash, nodeId } = params || {};
-
-    if (!imageHash && !nodeId) {
-      throw new Error("Either imageHash or nodeId must be provided");
-    }
-    let image;
-
-    if (imageHash) {
-      image = figma.getImageByHash(imageHash);
-      if (!image) {
-        throw new Error(`Image not found with hash: ${imageHash}`);
-      }
-    } else {
-      const node = await figma.getNodeByIdAsync(nodeId);
-      if (!node) {
-        throw new Error(`Node not found with ID: ${nodeId}`);
-      }
-
-      if (!("fills" in node)) {
-        throw new Error(`Node type ${node.type} does not support fills`);
-      }
-
-      const fills = Array.isArray(node.fills) ? node.fills : [];
-      const imageFill = fills.find(fill => fill.type === "IMAGE");
-
-      if (!imageFill) {
-        throw new Error(`Node does not have an image fill`);
-      }
-
-      image = figma.getImageByHash(imageFill.imageHash);
-      if (!image) {
-        throw new Error(`Image not found for node`);
-      }
-    }
-
-    const bytes = await image.getBytesAsync();
-    const base64 = customBase64Encode(bytes);
-
-    return {
-      imageData: base64,
-      mimeType: "image/png",
-      size: bytes.length,
-    };
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    throw new Error(`Error getting image bytes: ${errorMsg}`);
-  }
-}
-*/
+// (getImageBytes was removed — superseded by getAsset, which extracts image-fill
+//  bytes by hash with correct mime detection.)
 
 async function applyImageTransform(params) {
   try {

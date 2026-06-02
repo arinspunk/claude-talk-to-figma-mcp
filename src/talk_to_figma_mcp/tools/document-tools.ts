@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { sendCommandToFigma, joinChannel } from "../utils/websocket.js";
-import { filterFigmaNode } from "../utils/figma-helpers.js";
-import { coerceJson } from "../utils/schema-helpers";
+import { sendCommandToFigma, joinChannel } from "../utils/websocket";
+import { filterFigmaNode } from "../utils/figma-helpers";
+import { coerceJson, coerceBoolean } from "../utils/schema-helpers";
 
 /**
  * Register document-related tools to the MCP server
@@ -304,7 +304,7 @@ export function registerDocumentTools(server: McpServer): void {
   // Join Channel Tool
   server.tool(
     "join_channel",
-    "Join a specific channel to communicate with Figma",
+    "ADVANCED / rarely needed. Connection is zero-config: Figma tools auto-route to the connected plugin, so you normally do NOT call this. Only use it to disambiguate when MULTIPLE Figma files are connected, passing the specific channel ID the user provides.",
     {
       channel: z.string().describe("The name of the channel to join"),
     },
@@ -577,6 +577,46 @@ export function registerDocumentTools(server: McpServer): void {
             {
               type: "text",
               text: `Error duplicating page: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Get CSS Tool — Figma's own Dev Mode CSS (highest-fidelity styling source)
+  server.tool(
+    "get_css",
+    "Get Figma's exact computed CSS (Dev Mode) for a node — sizing, padding, colors, gradients, border-radius, box-shadow, and the full font/line-height/letter-spacing. Prefer this over reconstructing styles from get_node_info: it removes guesswork and is the most faithful source for 1:1 code. Defaults to the current selection. Use recursive=true to get CSS for the whole subtree.",
+    {
+      nodeId: z.string().optional().describe("Node to inspect. Omit to use the current selection."),
+      recursive: coerceBoolean.optional().describe("If true, return CSS for the node and all descendants (capped). Default false."),
+    },
+    async ({ nodeId, recursive }) => {
+      try {
+        const result = await sendCommandToFigma("get_css", { nodeId, recursive: recursive ?? false }, 60000);
+
+        const fmtBlock = (n: { id: string; name: string; type: string; css: Record<string, string> }) => {
+          const decls = Object.entries(n.css).map(([k, v]) => `  ${k}: ${v};`).join("\n");
+          return `/* "${n.name}" (${n.type}, ${n.id}) */\n${decls || "  /* no CSS */"}`;
+        };
+
+        let text: string;
+        if (recursive) {
+          const typed = result as { root: string; count: number; truncated: boolean; nodes: any[] };
+          text = typed.nodes.map(fmtBlock).join("\n\n");
+          if (typed.truncated) text += `\n\n/* … output truncated at ${typed.count} nodes; query a sub-node for the rest */`;
+        } else {
+          text = fmtBlock(result as any);
+        }
+
+        return { content: [{ type: "text", text }] };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting CSS: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
         };

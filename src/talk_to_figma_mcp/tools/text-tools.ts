@@ -603,4 +603,51 @@ export function registerTextTools(server: McpServer): void {
       }
     }
   );
+
+  // Get Fonts Used Tool — inventory fonts in a selection for web-font setup
+  server.tool(
+    "get_fonts_used",
+    "List every font (family, style, sizes, occurrence count) used within a node's subtree. Use this before generating code to set up @font-face or pick correct web-font equivalents and avoid font mismatches. Defaults to the current selection.",
+    {
+      nodeId: z.string().optional().describe("Node to inspect. Omit to use the current selection."),
+    },
+    async ({ nodeId }) => {
+      try {
+        const result = await sendCommandToFigma("get_fonts_used", { nodeId }, 60000);
+        const typed = result as {
+          root: string;
+          fonts: { family: string; style: string; sizes: number[]; occurrences: number }[];
+        };
+
+        if (!typed.fonts.length) {
+          return { content: [{ type: "text", text: "No text nodes / fonts found in the selection." }] };
+        }
+
+        const lines = typed.fonts
+          .sort((a, b) => b.occurrences - a.occurrences)
+          .map(
+            (f) =>
+              `• ${f.family} — ${f.style}  | sizes: ${f.sizes.join(", ")}px  | used ${f.occurrences}×`
+          );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Fonts used (${typed.fonts.length}):\n${lines.join("\n")}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting fonts used: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
 }

@@ -306,3 +306,4 @@ Confirm it works by typing `#` in the Copilot chat to see the available MCP tool
 5. Save and restart Roo Code
 
 **Note:** Roo Code also supports per-project configuration by creating a `.roo/mcp.json` file in the project root with the same structure.
+

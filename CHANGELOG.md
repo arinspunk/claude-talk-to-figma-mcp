@@ -7,6 +7,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-03
+
+### Added
+- **🔌 Zero-config connection**: The MCP server auto-routes tool calls to the single connected Figma plugin — no more copying a channel ID or saying "connect to channel XYZ". Clients self-identify on join (`role`), a friendly error tells the user to open the plugin when none is connected, and `join_channel` remains as an advanced override for multi-file disambiguation.
+- **❤️ Heartbeat & auto-reconnect**: Application-level ping/pong prunes stale/crashed plugin sockets so routing stays accurate; the Figma plugin now auto-reconnects (exponential backoff) through socket restarts and network blips. The plugin server port is restored from saved settings.
+- **👁️ Multimodal vision** — `get_visual_snapshot`: returns a PNG of the selection (auto-scaled to a max dimension for large frames) so the agent can *see* layout, spacing, and fonts and verify its work.
+- **🎯 High-fidelity extraction**:
+  - `get_css` — Figma's exact Dev-Mode CSS per node (optionally recursive).
+  - `get_fonts_used` — inventory of every font/style/size in a subtree.
+  - `scan_assets` + `get_asset` — inventory and extract real image bytes & SVG icons to files.
+- **📦 Operation batching** — `batch_operations`: apply many edits in one payload; streams progress (timeout-safe) and returns a per-operation success/failure summary.
+- **🧩 Native MCP surface**: live Resources (`figma://local/selection`, `figma://local/document`) and Prompts (`/audit-accessibility`, `/export-to-tailwind`).
+- **📦 Standalone executables** (`npm run build:compile`): compiles the MCP server and socket relay into single-file native binaries via `bun build --compile` (no Bun/Node needed at runtime). Cross-compile for all platforms with `npm run compile:all-platforms`. The relay port is now configurable via `--port=` or `FIGMA_SOCKET_PORT`, and `FIGMA_SOCKET_HOST` allows binding for WSL.
+
+### Fixed
+- **Type-safety gate restored**: the inner tsconfig used `NodeNext` resolution that broke `tsc`; switched to `bundler` so `npm run typecheck` works. This immediately surfaced and fixed 8 commands missing from the `FigmaCommand` union (`get_nodes_info`, `set_text_align`, `set_reactions`, `get_reactions`, `detach_instance`, `create_text_style`, `create_paint_style`, `create_effect_style`).
+- Progress updates now reset the relay's per-command timeout, so long-running operations (batches, bulk text/colour) aren't reaped mid-flight.
+- Standardized error handling in image tools (return error content instead of throwing protocol errors).
+
+### Changed
+- Removed dead, commented-out `get_image_bytes` (superseded by `get_asset`).
+- Re-enabled the 16 socket-queue unit tests via `bun test` (`npm run test:socket`); added `npm run typecheck` and `npm run test:all`.
+
 ## [1.0.0] - 2026-04-18
 
 ### Added

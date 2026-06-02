@@ -117,18 +117,28 @@ For other tools (Claude Code, Windsurf, VS Code + GitHub Copilot, Cline, Roo Cod
 ### Step 4: Start working
 
 1. Open the plugin in Figma
-2. Copy the channel ID (bold code inside the green box)
-3. Type in the chat: `Connect to Figma, channel {your-ID}`
+2. Click **Connect**
 
-✅ Ready to design with AI!
+✅ Ready to design with AI! Just start talking to your agent about your Figma file — **no channel ID, no copy-paste**. Thanks to zero-config auto-routing, the MCP server automatically targets the connected plugin. (See [Zero-config connection](#-zero-config-connection) below.)
 
 ## Subsequent work sessions
 
 To use the MCP again in day-to-day work, you don't need to repeat the entire process:
 
 1. **Start the socket**: In the terminal, enter the project folder `your-project/claude-talk-to-figma-mcp` and run `bun run socket` (or `npm run socket`).
-2. **Open the plugin in Figma**: You'll find it in your recent plugins list.
-3. **Connect the AI**: Copy the channel ID and tell your agent: `Connect to Figma, channel {your-ID}`.
+2. **Open the plugin in Figma**: You'll find it in your recent plugins list, then click **Connect** (the plugin auto-reconnects if the socket restarts).
+3. **Just talk to your agent** — tool calls route to the plugin automatically.
+
+## 🔌 Zero-config connection
+
+There's no channel handshake. As long as **one** Figma plugin is connected to the socket server, the MCP server auto-routes every tool call to it:
+
+- **No channel ID** — you never copy/paste anything; just say what you want to do.
+- **Friendly errors** — if the plugin isn't open, the agent is told to ask you to open it (instead of hanging).
+- **Auto-reconnect** — the plugin reconnects automatically through socket restarts and network blips.
+- **Heartbeat** — stale/crashed plugin connections are pruned so routing stays accurate.
+
+> Need to target a specific file when **multiple** plugins are connected? Use the `join_channel` tool with the channel ID shown in the plugin (the classic handshake still works as an advanced override).
 
 ## 🤖 Multi-Agent & Parallel execution
 
@@ -138,24 +148,47 @@ This MCP server supports **safe parallel execution** out of the box, allowing mu
 
 *(Special thanks to [@mmabas77](https://github.com/mmabas77) for architecting and contributing this feature!)*
 
+## 📦 Alternative: Standalone executables
+
+Compile single-file native binaries that run **without Bun or Node installed** — handy for clean machines or shipping in releases:
+
+```bash
+npm run build:compile        # builds dist/bin/figma-mcp-server and dist/bin/figma-socket for your OS
+npm run compile:all-platforms  # cross-compile Linux x64 / macOS arm64 / Windows x64
+```
+
+Then run them directly:
+
+```bash
+./dist/bin/figma-socket --port=3055      # the relay (port via --port= or FIGMA_SOCKET_PORT)
+./dist/bin/figma-mcp-server              # the MCP server (point your agent's MCP config at this path)
+```
+
 ## 🐳 Alternative: Using Docker
 
 If you prefer Docker or need to run the WebSocket server in a team environment, see the [Docker installation guide](INSTALLATION.md#alternative-using-docker) in the detailed installation documentation.
 
 ## 🛠️ Capabilities
 
-**Design analysis**
-- Get document information, current selection, styles
-- Scan text, audit components, export assets
+**Design analysis & high-fidelity extraction**
+- Get document info, current selection, styles, variables/tokens
+- **`get_css`** — Figma's exact Dev-Mode CSS per node (the most faithful source for 1:1 code)
+- **`get_visual_snapshot`** — a PNG of the selection so the agent can *see* layout, spacing and fonts (auto-scaled for large frames)
+- **`get_fonts_used`** — every font/style/size in a selection, for correct `@font-face`/web-font setup
+- **`scan_assets`** + **`get_asset`** — inventory and extract real image bytes & SVG icons straight to files
 
 **Element creation**
 - Shapes, text, frames with full style control
 - Clone, group, organize elements
 
 **Modification**
-- Colors, borders, corners, shadows
-- Auto-layout, advanced typography
+- Colors, borders, corners, shadows; auto-layout, advanced typography
 - Local components and team library components
+- **`batch_operations`** — apply many edits in one payload (timeout-safe, with per-op results)
+
+**Native MCP surface**
+- **Resources**: `figma://local/selection` and `figma://local/document` (live, auto-indexed)
+- **Prompts**: `/audit-accessibility` (WCAG audit) and `/export-to-tailwind` (Figma → HTML+Tailwind)
 
 See [complete command list](COMMANDS.md).
 

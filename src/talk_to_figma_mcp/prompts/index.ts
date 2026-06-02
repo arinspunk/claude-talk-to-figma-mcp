@@ -260,38 +260,81 @@ Remember that text is never just text—it's a core design element that must wor
       };
     }
   );
-}
 
-// Export individual prompt registration functions
-export function registerDesignStrategyPrompt(server: McpServer): void {
+  // Accessibility Audit Prompt (/audit-accessibility)
   server.prompt(
-    "design_strategy",
-    "Best practices for working with Figma designs",
+    "audit-accessibility",
+    "Audit the current Figma selection for accessibility issues (contrast, text size, touch targets, hierarchy)",
     (extra) => {
-      // Implementation is the same as above
-      // This function is exported for individual usage if needed
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `Perform an accessibility (WCAG) audit of the current Figma selection.
+
+## Step 1 — Gather context
+- Read the live selection resource (figma://local/selection), or call get_selection() if needed.
+- If nothing is selected, ask the user to select a frame or screen, then stop.
+- Capture a visual reference with get_visual_snapshot() so you can SEE colors, sizing, and layout — don't rely on JSON alone.
+- Use get_node_info()/get_nodes_info() on the selection and scan_text_nodes() to enumerate text, and get_styled_text_segments() for per-segment font/color details.
+
+## Step 2 — Check against WCAG 2.1 AA
+For each issue, report the node name + id, the rule, the measured value, and a concrete fix.
+1. **Color contrast** — text vs. its background: ≥ 4.5:1 for normal text, ≥ 3:1 for large text (≥ 24px, or ≥ 18.66px bold) and UI/graphical elements. Compute ratios from the actual fill colors.
+2. **Text size & legibility** — flag body text below ~14–16px; check line-height and letter spacing aren't cramped.
+3. **Touch targets** — interactive elements (buttons, inputs, icons) should be ≥ 44×44px.
+4. **Hierarchy & semantics** — meaningful, non-generic layer names; logical heading order; clear focus/grouping.
+5. **Non-text cues** — information not conveyed by color alone; images/icons have descriptive names (alt-text proxy).
+6. **Spacing & density** — adequate spacing so targets and text don't collide.
+
+## Step 3 — Report
+Produce a prioritized list grouped by severity (Critical / Serious / Minor), each with: node, problem, measured vs. required, and the exact change (e.g. "darken text from #8A8A8A to #595959 for 4.6:1"). Offer to apply the fixes with the modify tools (set_fill_color, set_font_size, resize_node, etc.) if the user approves.`,
+            },
+          },
+        ],
+        description: "Accessibility (WCAG AA) audit of the current Figma selection",
+      };
     }
   );
-}
 
-export function registerReadDesignStrategyPrompt(server: McpServer): void {
+  // Export to Tailwind Prompt (/export-to-tailwind)
   server.prompt(
-    "read_design_strategy",
-    "Best practices for reading Figma designs",
+    "export-to-tailwind",
+    "Convert the current Figma selection into clean HTML + Tailwind CSS markup",
     (extra) => {
-      // Implementation is the same as above
-      // This function is exported for individual usage if needed
-    }
-  );
-}
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `Convert the current Figma selection into responsive HTML + Tailwind CSS.
 
-export function registerTextReplacementStrategyPrompt(server: McpServer): void {
-  server.prompt(
-    "text_replacement_strategy",
-    "Systematic approach for replacing text in Figma designs",
-    (extra) => {
-      // Implementation is the same as above
-      // This function is exported for individual usage if needed
+## Step 1 — Read the design accurately
+- Read figma://local/selection (or call get_selection()); if nothing is selected, ask the user to select a frame and stop.
+- Call get_node_info()/get_nodes_info() to read the full node tree: sizes, positions, fills, strokes, corner radii, effects, and especially **auto-layout** (layoutMode, padding, itemSpacing, alignment).
+- Use get_styled_text_segments() for fonts, weights, sizes, line-height, letter-spacing, and colors.
+- Call get_visual_snapshot() and use it as ground truth — verify your output matches what you SEE (placement and fonts), since JSON alone misses visual nuance.
+
+## Step 2 — Map Figma → Tailwind
+- **Auto-layout → flexbox**: HORIZONTAL → \`flex\`, VERTICAL → \`flex flex-col\`; itemSpacing → \`gap-*\`; padding → \`p-*\`/\`px-*\`/\`py-*\`; primary/counter axis alignment → \`justify-*\`/\`items-*\`.
+- **Spacing/sizing**: snap px to the nearest Tailwind scale step (4px = 1 unit); use exact values via arbitrary syntax (\`w-[437px]\`) only when no close step exists.
+- **Colors**: map fills/strokes to the closest Tailwind palette token; fall back to arbitrary \`bg-[#RRGGBB]\` when there's no good match. Note these as candidate design tokens.
+- **Typography**: map font-size/weight/line-height/tracking to \`text-*\`, \`font-*\`, \`leading-*\`, \`tracking-*\`; include the font-family.
+- **Radius/shadow/border**: corner radius → \`rounded-*\`; effects → \`shadow-*\`; strokes → \`border\` + \`border-*\`.
+- Preserve hierarchy with semantic elements (\`header\`, \`nav\`, \`button\`, \`ul/li\`, \`section\`) and use layer names to derive class/semantic intent.
+
+## Step 3 — Output
+- Emit a single clean, indented HTML snippet with Tailwind classes, matching the visual structure top-to-bottom.
+- Use real text content from the design.
+- After the code, list: (a) any arbitrary values used and the design tokens they suggest, and (b) anything ambiguous you approximated (e.g. fonts not available in Tailwind defaults). Keep it production-ready, not pixel-perfect-absolute-positioned.`,
+            },
+          },
+        ],
+        description: "Convert the current Figma selection into HTML + Tailwind CSS",
+      };
     }
   );
 }

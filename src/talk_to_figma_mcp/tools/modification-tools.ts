@@ -947,4 +947,74 @@ export function registerModificationTools(server: McpServer): void {
       }
     }
   );
+
+  // Batch Operations Tool — apply many edits in ONE payload (timeout-safe)
+  server.tool(
+    "batch_operations",
+    "Apply MANY edits to Figma in a single call instead of one tool call per node. " +
+      "Pass an array of { command, params } operations (e.g. set_text_content, move_node, resize_node, " +
+      "set_fill_color, set_corner_radius, rename_node, …). The plugin processes them in one pass while " +
+      "streaming progress (so the connection never times out) and returns a per-operation success/failure " +
+      "summary so you can retry only what failed. Use this whenever you need to update 3+ nodes.",
+    {
+      operations: coerceJson(
+        z
+          .array(
+            z.object({
+              command: z
+                .string()
+                .describe("The Figma command to run, e.g. 'set_text_content', 'move_node', 'set_fill_color'."),
+              params: z
+                .record(z.any())
+                .describe("Parameters object for that command (must include nodeId where the command requires one)."),
+            })
+          )
+          .min(1)
+          .describe("Array of operations to apply in order.")
+      ),
+      stopOnError: coerceBoolean
+        .optional()
+        .describe("If true, halt at the first failed operation. Default false (apply all, collect failures)."),
+    },
+    async ({ operations, stopOnError }) => {
+      try {
+        const result = await sendCommandToFigma(
+          "batch_operations",
+          { operations, stopOnError: stopOnError ?? false },
+          600000 // 10 min ceiling; progress updates keep the request alive
+        );
+        const typed = result as {
+          total: number;
+          succeeded: number;
+          failed: number;
+          results: { index: number; command: string; ok: boolean; error?: string }[];
+        };
+
+        const failures = typed.results.filter((r) => !r.ok);
+        const lines = [
+          `Batch complete: ${typed.succeeded}/${typed.total} succeeded, ${typed.failed} failed.`,
+        ];
+        if (failures.length > 0) {
+          lines.push("", "Failed operations:");
+          for (const f of failures) {
+            lines.push(`  [#${f.index}] ${f.command}: ${f.error}`);
+          }
+          lines.push("", "Fix the inputs above and re-send just the failed operations.");
+        }
+
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error running batch operations: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    }
+  );
 }

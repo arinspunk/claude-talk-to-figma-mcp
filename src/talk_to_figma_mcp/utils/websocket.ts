@@ -8,6 +8,11 @@ import { FigmaCommand, FigmaResponse, CommandProgressUpdate, PendingRequest, Pro
 let ws: WebSocket | null = null;
 let currentChannel: string | null = null;
 
+// Zero-config sentinel channel. When the MCP is joined to this channel, the relay
+// transparently routes commands to the single connected Figma plugin — no manual
+// channel handshake required. A manual join_channel() call overrides this.
+export const AUTO_CHANNEL = "__auto__";
+
 // Stable session ID for this MCP process — survives reconnections.
 // Sent in join messages so the server can deduplicate reconnecting agents
 // (e.g., after context compaction) instead of counting them as separate agents.
@@ -56,8 +61,13 @@ export function connectToFigma(port: number = defaultPort) {
     ws.on('open', () => {
       clearTimeout(connectionTimeout);
       logger.info('Connected to Figma socket server');
-      // Reset channel on new connection
+      // Zero-config: auto-join the sentinel channel so Figma tool calls work
+      // immediately without a manual join_channel handshake. If the user had
+      // manually joined a named channel before a reconnect, restore that instead.
+      const previous = currentChannel;
       currentChannel = null;
+      const channelToJoin = previous && previous !== AUTO_CHANNEL ? previous : AUTO_CHANNEL;
+      autoJoinChannel(channelToJoin);
     });
 
     ws.on("message", (data: any) => {
@@ -190,6 +200,29 @@ export function connectToFigma(port: number = defaultPort) {
 }
 
 /**
+ * Auto-join a channel without the strict plugin-verification ping.
+ *
+ * Used on (re)connect for zero-config routing: the agent just needs to be a
+ * member of the channel on the relay. Unlike joinChannel(), this does NOT fail
+ * when no plugin is present yet — the friendly "open the plugin" error is raised
+ * later, by the relay, only when an actual command is issued.
+ */
+function autoJoinChannel(channelName: string): void {
+  sendCommandToFigma("join", { channel: channelName })
+    .then(() => {
+      currentChannel = channelName;
+      if (channelName === AUTO_CHANNEL) {
+        logger.info("Zero-config routing active: Figma tools will target the single connected plugin");
+      } else {
+        logger.info(`Re-joined channel after reconnect: ${channelName}`);
+      }
+    })
+    .catch((err) => {
+      logger.warn(`Auto-join of channel "${channelName}" failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+}
+
+/**
  * Join a specific channel in Figma.
  * @param channelName - Name of the channel to join
  * @returns Promise that resolves when successfully joined the channel
@@ -260,7 +293,7 @@ export function sendCommandToFigma(
       id,
       type: command === "join" ? "join" : "message",
       ...(command === "join"
-        ? { channel: (params as any).channel, sessionId: SESSION_ID }
+        ? { channel: (params as any).channel, sessionId: SESSION_ID, role: "agent" }
         : { channel: currentChannel }),
       message: {
         id,

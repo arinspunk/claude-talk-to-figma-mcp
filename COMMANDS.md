@@ -4,6 +4,8 @@
 
 Complete reference of the tools Claude can use to interact with Figma.
 
+> **Zero-config:** you don't need to "connect to a channel" — tool calls auto-route to the single connected plugin. `join_channel` is only needed to disambiguate when multiple Figma files are connected.
+
 ## Document and page tools
 
 | Command | Purpose | Usage example |
@@ -12,15 +14,26 @@ Complete reference of the tools Claude can use to interact with Figma.
 | `get_selection` | Current selection | What is currently selected |
 | `get_node_info` | Element details | Inspect a specific component |
 | `get_nodes_info` | Multiple elements info | Batch inspection |
+| `get_css` | Figma Dev-Mode CSS | Faithful styles for 1:1 code |
 | `scan_text_nodes` | Find all text nodes | Text audit and update |
 | `get_styles` | Document styles | Color and text style audit |
-| `join_channel` | Connect to Figma | Establish communication |
+| `join_channel` | (Advanced) target a specific file | Only when multiple plugins are connected |
 | `export_node_as_image` | Export assets | Generate design assets |
 | `get_pages` | List pages | View all document pages |
 | `create_page` | Create page | Add a new page to the document |
 | `delete_page` | Delete page | Remove a specific page |
 | `rename_page` | Rename page | Change a page's name |
 | `set_current_page` | Switch page | Go to a specific page |
+
+## Vision & fidelity tools
+
+| Command | Purpose | Usage example |
+|---------|---------|---------------|
+| `get_visual_snapshot` | PNG of the selection so the agent can *see* it | Verify layout/spacing/fonts before finishing |
+| `get_css` | Figma's exact computed CSS (Dev Mode) | Generate pixel-faithful styles |
+| `get_fonts_used` | Inventory fonts in a subtree | Set up `@font-face` / web fonts |
+| `scan_assets` | Inventory images + vector/icon nodes | Decide which assets to extract |
+| `get_asset` | Extract one asset to a file (image bytes / SVG) | Pull photos, logos, icons into your project |
 
 ## Image tools
 
@@ -68,6 +81,7 @@ Complete reference of the tools Claude can use to interact with Figma.
 | `set_auto_layout` | Flexbox-like layout | Component spacing |
 | `set_effects` | Shadows/blurs | Visual finishing |
 | `set_effect_style_id` | Apply effect styles | Consistent shadows |
+| `batch_operations` | Apply many edits in one call | Update 50 nodes without 50 round-trips |
 
 ## Text tools
 
@@ -86,6 +100,7 @@ Complete reference of the tools Claude can use to interact with Figma.
 | `set_text_case` | Case transformation | UPPERCASE/lowercase/Title |
 | `set_text_decoration` | Text styles | Underline/strikethrough |
 | `get_styled_text_segments` | Text analysis | Rich text inspection |
+| `get_fonts_used` | Font inventory | List fonts for web-font setup |
 | `load_font_async` | Font loading | Custom font access |
 
 ## Component tools
@@ -107,6 +122,24 @@ Complete reference of the tools Claude can use to interact with Figma.
 | `create_shape_with_text` | Create labeled shape | Flowchart nodes, process boxes, decision diamonds |
 | `create_connector` | Draw connector arrow | Link stickies or shapes with flow arrows |
 | `create_section` | Create section region | Group and organise content areas on the board |
+
+## MCP Resources
+
+Live, read-only resources the agent can read directly (no tool call needed):
+
+| Resource URI | Contents |
+|--------------|----------|
+| `figma://local/selection` | The current selection (ids, names, types) — live |
+| `figma://local/document` | Active document overview: current page, pages, top-level children |
+
+## MCP Prompts
+
+Pre-built workflows (slash commands):
+
+| Prompt | Purpose |
+|--------|---------|
+| `/audit-accessibility` | WCAG AA audit of the selection (contrast, text size, 44px touch targets, hierarchy) |
+| `/export-to-tailwind` | Convert the selection to HTML + Tailwind CSS (auto-layout → flex, fills → palette, type → `text-*`) |
 
 ## Understanding coordinate systems
 

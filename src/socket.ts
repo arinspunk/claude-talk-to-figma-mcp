@@ -84,6 +84,64 @@ const COMMAND_TIMEOUT_MS = 120_000; // 2 minutes
 const channelQueues = new Map<string, ChannelQueueState>();
 const MAX_QUEUE_SIZE = 100;
 
+// ─── Zero-Config Auto-Routing ────────────────────────────────────────────────
+
+// Sentinel channel used by the MCP agent when it has NOT explicitly joined a
+// named channel. Commands arriving on this channel are transparently routed to
+// the single connected Figma plugin (if exactly one exists).
+const AUTO_CHANNEL = "__auto__";
+
+// Heartbeat: server pings every connected client; a plugin that misses pongs for
+// longer than the timeout is force-closed so the "connected plugin" count stays
+// accurate (a crashed Figma tab can leave a half-open socket otherwise).
+const HEARTBEAT_INTERVAL_MS = 10_000;  // ping cadence
+const HEARTBEAT_TIMEOUT_MS = 25_000;   // ~2.5 missed pongs → considered dead
+
+/**
+ * Resolve the effective target channel for an incoming command.
+ * - For a normal named channel, returns it unchanged.
+ * - For the AUTO_CHANNEL sentinel, resolves to the single connected plugin's
+ *   channel, or returns a friendly error when zero / multiple plugins exist.
+ */
+function resolveTargetChannel(
+  requestedChannel: string
+): { channel: string } | { error: string } {
+  if (requestedChannel !== AUTO_CHANNEL) {
+    return { channel: requestedChannel };
+  }
+
+  const livePlugins = Array.from(pluginClients).filter(
+    (p) => p.readyState === WebSocket.OPEN
+  );
+
+  if (livePlugins.length === 0) {
+    return {
+      error:
+        "No Figma plugin is connected. Tell the user to open their Figma file, " +
+        "run the \"Claude Talk to Figma\" plugin, and click Connect.",
+    };
+  }
+
+  if (livePlugins.length > 1) {
+    return {
+      error:
+        `${livePlugins.length} Figma plugins are connected, so auto-routing is ambiguous. ` +
+        "Ask the user which Figma file to target, then call join_channel with that file's channel ID.",
+    };
+  }
+
+  const pluginChannel = livePlugins[0].data?.channel;
+  if (!pluginChannel || typeof pluginChannel !== "string") {
+    return {
+      error:
+        "A Figma plugin is connected but has not joined a channel yet. " +
+        "Tell the user to click Connect in the plugin, then retry.",
+    };
+  }
+
+  return { channel: pluginChannel };
+}
+
 // ─── Client Classification & Command Validation ──────────────────────────
 
 function getPluginClient(channelName: string): ServerWebSocket<any> | null {
@@ -489,7 +547,7 @@ function handleConnection(ws: ServerWebSocket<any>) {
   stats.activeConnections++;
 
   const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  ws.data = { clientId };
+  ws.data = { clientId, lastPong: Date.now() };
 
   logger.info(`New client connected: ${clientId}`);
 
@@ -506,10 +564,22 @@ function handleConnection(ws: ServerWebSocket<any>) {
 
 // ─── Server ────────────────────────────────────────────────────────────────
 
+// Port resolution (useful for the standalone compiled binary): --port=NNNN arg,
+// then FIGMA_SOCKET_PORT env, else the default 3055.
+const portArg = process.argv.find((a) => a.startsWith("--port="));
+const SOCKET_PORT = portArg
+  ? parseInt(portArg.split("=")[1], 10)
+  : process.env.FIGMA_SOCKET_PORT
+    ? parseInt(process.env.FIGMA_SOCKET_PORT, 10)
+    : 3055;
+
+// Optional: bind to 0.0.0.0 (e.g. Windows WSL) via FIGMA_SOCKET_HOST=0.0.0.0.
+// WARNING: the relay has no auth — only do this on a trusted network.
+const SOCKET_HOST = process.env.FIGMA_SOCKET_HOST || undefined;
+
 const server = Bun.serve({
-  port: 3055,
-  // uncomment this to allow connections in windows wsl
-  // hostname: "0.0.0.0",
+  port: SOCKET_PORT,
+  ...(SOCKET_HOST ? { hostname: SOCKET_HOST } : {}),
   fetch(req: Request, server: Server) {
     const url = new URL(req.url);
 
@@ -575,6 +645,9 @@ const server = Bun.serve({
     });
   },
   websocket: {
+    // Visual snapshots (Base64 PNG @2x) can be several MB; the default 16MB cap
+    // would silently drop large frame exports, so raise it generously.
+    maxPayloadLength: 100 * 1024 * 1024, // 100 MB
     open: handleConnection,
     message(ws: ServerWebSocket<any>, message: string | Buffer) {
       try {
@@ -583,6 +656,16 @@ const server = Bun.serve({
 
         logger.debug(`Received message from client ${clientId}:`, typeof message === 'string' ? message : '<binary>');
         const data = JSON.parse(message as string);
+
+        // Any inbound traffic counts as liveness for the heartbeat (a plugin
+        // busy executing a long command shouldn't be reaped mid-operation).
+        if (ws.data) ws.data.lastPong = Date.now();
+
+        // ─── Heartbeat pong ────────────────────────────────────────────
+        // Application-level pong reply to our {type:"ping"} probe.
+        if (data.type === "pong") {
+          return;
+        }
 
         // ─── Join ──────────────────────────────────────────────────────
         if (data.type === "join") {
@@ -629,6 +712,22 @@ const server = Bun.serve({
           const channelClients = channels.get(channelName)!;
           channelClients.add(ws);
           logger.info(`Client ${clientId} joined channel: ${channelName}`);
+
+          // Role tagging: clients self-identify on join so we can count connected
+          // plugins reliably the instant they connect (rather than waiting for the
+          // first command/response to infer their role). This is what makes
+          // zero-config auto-routing dependable.
+          const role = data.role;
+          if (role === "plugin") {
+            pluginClients.add(ws);
+            ws.data.role = "plugin";
+            ws.data.channel = channelName; // remembered for AUTO_CHANNEL resolution
+            logger.info(`Client ${clientId} registered as Figma plugin on channel ${channelName}`);
+          } else if (role === "agent") {
+            agentClients.add(ws);
+            ws.data.role = "agent";
+            logger.info(`Client ${clientId} registered as MCP agent`);
+          }
 
           // Notify client they joined successfully
           try {
@@ -720,10 +819,27 @@ const server = Bun.serve({
           }
 
           if (isCommand) {
-            // Command from an agent → validate & queue
+            // Command from an agent → resolve target, validate & queue
+
+            // Zero-config auto-routing: if the agent is on the AUTO_CHANNEL
+            // sentinel, resolve to the single connected plugin's real channel.
+            // Returns a friendly error when zero / multiple plugins are connected.
+            const resolution = resolveTargetChannel(channelName);
+            if ("error" in resolution) {
+              ws.send(JSON.stringify({
+                type: "broadcast",
+                message: { id: data.message.id, error: resolution.error },
+                sender: "You",
+                channel: channelName,
+              }));
+              stats.blockedCommands++;
+              stats.messagesSent++;
+              return;
+            }
+            const targetChannel = resolution.channel;
 
             // Command validation (parentId required, stateful commands blocked)
-            const validationError = validateCommand(data, channelName);
+            const validationError = validateCommand(data, targetChannel);
             if (validationError) {
               ws.send(JSON.stringify({
                 type: "broadcast",
@@ -736,8 +852,10 @@ const server = Bun.serve({
               return;
             }
 
-            // Enqueue the command
-            enqueueCommand(data, ws, channelName);
+            // Enqueue the command under the resolved target channel. The agent's
+            // ws (senderWs) is tracked directly, and responses route by requestId,
+            // so cross-channel resolution stays correct.
+            enqueueCommand(data, ws, targetChannel);
             return;
           }
 
@@ -778,6 +896,41 @@ const server = Bun.serve({
           }
 
           logger.debug(`Progress update for command ${data.id} in channel ${channelName}: ${data.message?.data?.status || 'unknown'} - ${data.message?.data?.progress || 0}%`);
+
+          // Progress = liveness: reset the per-command timeout for the in-flight
+          // command so long-running operations (e.g. large batch_operations) are
+          // not reaped by COMMAND_TIMEOUT_MS while they're actively making progress.
+          const progressQueueState = channelQueues.get(channelName);
+          if (
+            progressQueueState &&
+            data.id &&
+            data.id === progressQueueState.currentRequestId &&
+            progressQueueState.currentCommandTimeout
+          ) {
+            const item_requestId = data.id;
+            clearTimeout(progressQueueState.currentCommandTimeout);
+            progressQueueState.currentCommandTimeout = setTimeout(() => {
+              if (progressQueueState.currentRequestId !== item_requestId) return;
+              logger.warn(`Command ${item_requestId} timed out after ${COMMAND_TIMEOUT_MS}ms (no progress) in channel ${channelName}`);
+              const e = requestToClient.get(item_requestId);
+              if (e && e.ws.readyState === WebSocket.OPEN) {
+                try {
+                  e.ws.send(JSON.stringify({
+                    type: "broadcast",
+                    message: { id: item_requestId, error: "Command timed out waiting for Figma plugin response" },
+                    sender: "User",
+                    channel: channelName,
+                  }));
+                  stats.messagesSent++;
+                } catch {}
+              }
+              requestToClient.delete(item_requestId);
+              progressQueueState.isProcessing = false;
+              progressQueueState.currentCommandTimeout = undefined;
+              progressQueueState.currentRequestId = undefined;
+              processQueue(channelName);
+            }, COMMAND_TIMEOUT_MS);
+          }
 
           // Route progress update to the requesting agent (unicast) if tracked
           const requestId = data.id;
@@ -878,9 +1031,54 @@ const server = Bun.serve({
     drain(ws: ServerWebSocket<any>) {
       const clientId = ws.data?.clientId || "unknown";
       logger.debug(`WebSocket backpressure relieved for client ${clientId}`);
+    },
+    // Heartbeat: record the latest pong so the heartbeat sweep can tell live
+    // plugins from dead ones. Browsers (the Figma plugin runs in one) answer
+    // protocol-level pings automatically, so no plugin-side code is required.
+    pong(ws: ServerWebSocket<any>) {
+      if (ws.data) ws.data.lastPong = Date.now();
     }
   }
 });
+
+// ─── Heartbeat sweep ─────────────────────────────────────────────────────────
+// Force-close any plugin that has gone silent past the timeout, otherwise probe
+// it with an application-level ping. Keeping the plugin set free of dead sockets
+// is what makes the single-plugin auto-routing decision trustworthy.
+//
+// NOTE: Figma's plugin UI runs in a sandboxed iframe that does NOT auto-answer
+// protocol-level WebSocket pings, so we cannot rely on ws.ping()/pong. Instead we
+// ping over the message channel ({type:"ping"}) and the plugin replies
+// ({type:"pong"}). Only plugins are swept — agent liveness is handled by TCP
+// close + the MCP client's own reconnect logic.
+setInterval(() => {
+  const now = Date.now();
+  pluginClients.forEach((client) => {
+    if (client.readyState !== WebSocket.OPEN) return;
+
+    // Don't reap a plugin that's actively processing a command. Long operations
+    // (e.g. exporting a large frame) block the single-threaded plugin so it can't
+    // pong — that's not a dead socket. The per-command timeout (COMMAND_TIMEOUT_MS)
+    // is the safety net for genuinely hung plugins.
+    const channel = client.data?.channel;
+    const queueState = channel ? channelQueues.get(channel) : undefined;
+    const busy = !!(queueState?.isProcessing && queueState?.currentRequestId);
+
+    if (!busy && now - (client.data?.lastPong ?? now) > HEARTBEAT_TIMEOUT_MS) {
+      logger.warn(
+        `Plugin ${client.data?.clientId} missed heartbeats (${HEARTBEAT_TIMEOUT_MS}ms) — closing stale socket`
+      );
+      try { client.close(1001, "Heartbeat timeout"); } catch {}
+      return;
+    }
+
+    try {
+      client.send(JSON.stringify({ type: "ping" }));
+    } catch (error) {
+      logger.error(`Failed to ping plugin ${client.data?.clientId}:`, error);
+    }
+  });
+}, HEARTBEAT_INTERVAL_MS);
 
 logger.info(`Claude to Figma WebSocket server running on port ${server.port}`);
 logger.info(`Status endpoint available at http://localhost:${server.port}/status`);

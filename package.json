@@ -1,7 +1,7 @@
 {
   "name": "claude-talk-to-figma-mcp",
   "description": "Claude Desktop Talk to Figma MCP",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "module": "dist/talk_to_figma_mcp/server.js",
   "main": "dist/talk_to_figma_mcp/server.js",
   "bin": {
@@ -25,6 +25,14 @@
     "setup": "./scripts/setup.sh",
     "build": "tsup && chmod +x dist/talk_to_figma_mcp/server.js dist/socket.js",
     "build:win": "tsup",
+    "typecheck": "tsc --noEmit -p src/talk_to_figma_mcp/tsconfig.json",
+    "build:compile": "bun run compile:server && bun run compile:socket",
+    "compile:server": "bun build ./src/talk_to_figma_mcp/server.ts --compile --minify --outfile dist/bin/figma-mcp-server",
+    "compile:socket": "bun build ./src/socket.ts --compile --minify --outfile dist/bin/figma-socket",
+    "compile:all-platforms": "bun run compile:linux && bun run compile:mac-arm && bun run compile:win",
+    "compile:linux": "bun build ./src/socket.ts --compile --minify --target=bun-linux-x64 --outfile dist/bin/figma-socket-linux-x64 && bun build ./src/talk_to_figma_mcp/server.ts --compile --minify --target=bun-linux-x64 --outfile dist/bin/figma-mcp-server-linux-x64",
+    "compile:mac-arm": "bun build ./src/socket.ts --compile --minify --target=bun-darwin-arm64 --outfile dist/bin/figma-socket-darwin-arm64 && bun build ./src/talk_to_figma_mcp/server.ts --compile --minify --target=bun-darwin-arm64 --outfile dist/bin/figma-mcp-server-darwin-arm64",
+    "compile:win": "bun build ./src/socket.ts --compile --minify --target=bun-windows-x64 --outfile dist/bin/figma-socket-windows-x64.exe && bun build ./src/talk_to_figma_mcp/server.ts --compile --minify --target=bun-windows-x64 --outfile dist/bin/figma-mcp-server-windows-x64.exe",
     "build:watch": "tsup --watch",
     "dev": "bun run build:watch",
     "pack": "dxt pack",
@@ -35,6 +43,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:socket": "bun test tests/unit/socket-queue.test.ts",
+    "test:all": "npm run typecheck && npm run test && npm run test:socket",
     "test:integration": "node scripts/test-integration.js"
   },
   "devDependencies": {
