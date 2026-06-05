@@ -1,7 +1,7 @@
 {
   "name": "claude-talk-to-figma-mcp",
   "description": "Claude Desktop Talk to Figma MCP",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "module": "dist/talk_to_figma_mcp/server.js",
   "main": "dist/talk_to_figma_mcp/server.js",
   "bin": {
@@ -51,6 +51,7 @@
     "@anthropic-ai/dxt": "^0.2.0",
     "@types/bun": "latest",
     "@types/jest": "^29.5.12",
+    "@types/pngjs": "^6.0.5",
     "bun-types": "^1.2.9",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.2",
@@ -59,6 +60,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "latest",
+    "pngjs": "^7.0.0",
     "uuid": "latest",
     "ws": "latest",
     "zod": "^3.25.0"

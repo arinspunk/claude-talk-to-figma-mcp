@@ -189,6 +189,10 @@ async function handleCommand(command, params) {
       return await scanAssets(params);
     case "get_asset":
       return await getAsset(params);
+    case "extract_asset":
+      return await extractAsset(params);
+    case "classify_asset":
+      return await classifyAssetSignals(params);
     case "set_corner_radius":
       return await setCornerRadius(params);
     case "set_text_content":
@@ -1658,6 +1662,137 @@ async function getAsset(params) {
   }
 
   throw new Error("get_asset requires either 'hash' (an image fill) or 'nodeId' (a node to export).");
+}
+
+// Keep only the effect fields the server needs to reproduce them in CSS.
+function pickEffect(e) {
+  const out = { type: e.type, visible: e.visible !== false };
+  if (e.color) out.color = { r: e.color.r, g: e.color.g, b: e.color.b, a: e.color.a };
+  if (e.offset) out.offset = { x: e.offset.x, y: e.offset.y };
+  if (typeof e.radius === "number") out.radius = e.radius;
+  if (typeof e.spread === "number") out.spread = e.spread;
+  if (e.blendMode) out.blendMode = e.blendMode;
+  return out;
+}
+
+function boxOf(b) {
+  return b ? { x: b.x, y: b.y, width: b.width, height: b.height } : null;
+}
+
+/**
+ * Export a node CLEAN: temporarily disable effects (so shadow/blur bleed isn't
+ * baked in and NOISE/TEXTURE effects that blank a node in SVG are removed),
+ * export, then restore the effects. Returns the bytes plus the root node's
+ * effects (for the server to translate to CSS) and the layout-vs-render bounds
+ * (so the caller knows how far an effect bled past the box). Always restores
+ * effects, even on export failure.
+ */
+async function extractAsset(params) {
+  const { nodeId, format = "PNG", scale = 2, stripScope = "all" } = params || {};
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+  if (!("exportAsync" in node)) throw new Error(`Node "${node.name}" (${node.type}) cannot be exported.`);
+
+  const rootEffects =
+    "effects" in node && Array.isArray(node.effects) ? node.effects.map(pickEffect) : [];
+
+  // Capture bounds BEFORE stripping — absoluteRenderBounds includes effect bleed.
+  const box = boxOf(node.absoluteBoundingBox);
+  const renderBounds = boxOf(node.absoluteRenderBounds);
+
+  // Disable effects per scope, remembering originals to restore in `finally`.
+  const saved = [];
+  function strip(n) {
+    if ("effects" in n && Array.isArray(n.effects) && n.effects.length) {
+      saved.push({ node: n, effects: n.effects });
+      n.effects = [];
+    }
+  }
+  function stripTree(n) {
+    strip(n);
+    if ("children" in n) for (const c of n.children) stripTree(c);
+  }
+  if (stripScope === "root") strip(node);
+  else if (stripScope === "all") stripTree(node);
+
+  const fmt = String(format).toUpperCase();
+  try {
+    if (fmt === "SVG") {
+      const bytes = await node.exportAsync({ format: "SVG" });
+      return {
+        kind: "svg", name: node.name, mimeType: "image/svg+xml",
+        dataBase64: bytesToBase64(bytes), bytesLength: bytes.length,
+        rootEffects, strippedCount: saved.length, box, renderBounds,
+      };
+    }
+    const bytes = await node.exportAsync({ format: fmt, constraint: { type: "SCALE", value: scale } });
+    return {
+      kind: "image", name: node.name,
+      mimeType: fmt === "JPG" ? "image/jpeg" : "image/png",
+      dataBase64: bytesToBase64(bytes), bytesLength: bytes.length,
+      rootEffects, strippedCount: saved.length, box, renderBounds,
+    };
+  } finally {
+    for (const s of saved) s.node.effects = s.effects;
+  }
+}
+
+const SUPPORTED_CSS_EFFECTS = new Set(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"]);
+
+/**
+ * Gather raw signals about a node's subtree (image fills, vector/text counts,
+ * masks, blend modes, effect support, root fills). The server's pure
+ * classifyAsset() turns these into a raster/svg/css recommendation.
+ */
+async function classifyAssetSignals(params) {
+  const node = await resolveTargetNode(params, "classify_asset");
+
+  let nodeCount = 0, vectorCount = 0, textCount = 0, effectCount = 0;
+  let hasMask = false, hasBlend = false, hasPhotoFill = false;
+  const unsupportedEffectTypes = [];
+  const imageHashes = new Set();
+
+  function inspectFills(n) {
+    if (!("fills" in n) || !Array.isArray(n.fills)) return;
+    for (const f of n.fills) {
+      if (f && f.type === "IMAGE" && f.imageHash) {
+        imageHashes.add(f.imageHash);
+        if (f.scaleMode === "FILL" || f.scaleMode === "CROP") hasPhotoFill = true;
+      }
+    }
+  }
+  function walk(n) {
+    nodeCount++;
+    if (VECTOR_NODE_TYPES.has(n.type)) vectorCount++;
+    if (n.type === "TEXT") textCount++;
+    if ("isMask" in n && n.isMask) hasMask = true;
+    if ("blendMode" in n && n.blendMode && n.blendMode !== "NORMAL" && n.blendMode !== "PASS_THROUGH") hasBlend = true;
+    if ("effects" in n && Array.isArray(n.effects)) {
+      for (const e of n.effects) {
+        if (e.visible === false) continue;
+        effectCount++;
+        if (!SUPPORTED_CSS_EFFECTS.has(e.type)) unsupportedEffectTypes.push(e.type);
+      }
+    }
+    inspectFills(n);
+    if ("children" in n) for (const c of n.children) walk(c);
+  }
+  walk(node);
+
+  const rootFillTypes =
+    "fills" in node && Array.isArray(node.fills)
+      ? Array.from(new Set(node.fills.filter((f) => f && f.visible !== false).map((f) => f.type)))
+      : [];
+  const isSinglePrimitive = !("children" in node) || !node.children || node.children.length === 0;
+
+  return {
+    nodeId: node.id, name: node.name, type: node.type,
+    width: node.width, height: node.height,
+    nodeCount, vectorCount, textCount,
+    imageFillCount: imageHashes.size, hasPhotoFill,
+    hasMask, hasBlend, unsupportedEffectTypes, effectCount,
+    isSinglePrimitive, rootFillTypes,
+  };
 }
 
 function customBase64Encode(bytes) {

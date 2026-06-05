@@ -30,10 +30,13 @@ Complete reference of the tools Claude can use to interact with Figma.
 | Command | Purpose | Usage example |
 |---------|---------|---------------|
 | `get_visual_snapshot` | PNG of the selection so the agent can *see* it | Verify layout/spacing/fonts before finishing |
+| `compare_to_figma` | Compare your implemented UI vs a Figma node | **SSIM** similarity %, color delta, 3×3 region map, overflow check, + a saved **diff heatmap** PNG |
 | `get_css` | Figma's exact computed CSS (Dev Mode) | Generate pixel-faithful styles |
 | `get_fonts_used` | Inventory fonts in a subtree | Set up `@font-face` / web fonts |
 | `scan_assets` | Inventory images + vector/icon nodes | Decide which assets to extract |
 | `get_asset` | Extract one asset to a file (image bytes / SVG) | Pull photos, logos, icons into your project |
+| `classify_asset` | Recommend **raster / SVG / CSS** for a node, with reasons | Decide how to bring a node into code before extracting |
+| `extract_asset` | Export a node **CLEAN** (effects stripped) + the effects as CSS | Crisp asset for nodes with shadow/blur/NOISE; reapply `box-shadow`/`filter` in code |
 
 ## Image tools
 

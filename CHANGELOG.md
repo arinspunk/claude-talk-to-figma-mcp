@@ -7,12 +7,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-06-05
+
+### Added
+- **🧼 Effects-aware extraction** — `extract_asset`: exports a node as a CLEAN asset with its effects temporarily stripped (so shadow/blur bleed isn't baked into the bitmap, and NOISE/TEXTURE effects that blank a node in SVG/browser are removed), then hands back the effects translated to ready-to-use CSS (`box-shadow` / `filter` / `backdrop-filter`). Reports the effect bleed past the layout box and flags any effect that can't be reproduced in CSS. Always restores the node's effects afterward.
+- **🧭 Asset-vs-SVG advisor** — `classify_asset`: inspects a node's subtree (image fills, vector/text counts, masks, blend modes, effect support, root fills) and recommends **raster PNG / inline SVG / pure CSS** with reasons — so you don't ship an SVG that embeds a photo, rasterize a one-line divider, or try to SVG-export a NOISE/mask/blend node that won't survive. The decision is a pure, unit-tested function fed by raw signals gathered in the plugin.
+
+### Changed
+- **📐 More accurate `compare_to_figma`**: the headline metric is now **SSIM (structural similarity)** instead of raw mean grayscale diff, so font anti-aliasing no longer drags text-heavy sections down to a false ~92% — the score reflects real layout/asset drift. Adds a **color delta**, recasts the 3×3 map as per-region structural mismatch, and writes a **diff HEATMAP png** (red = mismatch) you can open to see exactly where the render diverges. Verdict thresholds recalibrated for SSIM.
+
+### Tests
+- +33 tests (160 total): unit coverage for the effects→CSS translator, the asset classifier heuristics, and the SSIM/color/heatmap comparison; integration coverage for `extract_asset` and `classify_asset` wiring.
+
 ## [1.1.0] - 2026-06-03
 
 ### Added
 - **🔌 Zero-config connection**: The MCP server auto-routes tool calls to the single connected Figma plugin — no more copying a channel ID or saying "connect to channel XYZ". Clients self-identify on join (`role`), a friendly error tells the user to open the plugin when none is connected, and `join_channel` remains as an advanced override for multi-file disambiguation.
 - **❤️ Heartbeat & auto-reconnect**: Application-level ping/pong prunes stale/crashed plugin sockets so routing stays accurate; the Figma plugin now auto-reconnects (exponential backoff) through socket restarts and network blips. The plugin server port is restored from saved settings.
 - **👁️ Multimodal vision** — `get_visual_snapshot`: returns a PNG of the selection (auto-scaled to a max dimension for large frames) so the agent can *see* layout, spacing, and fonts and verify its work.
+- **📐 Objective fidelity check** — `compare_to_figma`: snapshots a Figma node and pixel-diffs it against a screenshot of the implemented UI, returning a similarity %, a 3×3 region diff map (to localize mismatches), an edge-overflow estimate, and an optional brand-color match. Turns "does it look right?" into measured numbers for a render → compare → fix loop. (Adds a lightweight `pngjs` dependency for PNG decoding.)
 - **🎯 High-fidelity extraction**:
   - `get_css` — Figma's exact Dev-Mode CSS per node (optionally recursive).
   - `get_fonts_used` — inventory of every font/style/size in a subtree.

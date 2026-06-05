@@ -68,6 +68,8 @@ export type FigmaCommand =
   | "get_fonts_used"
   | "scan_assets"
   | "get_asset"
+  | "extract_asset"
+  | "classify_asset"
   | "join"
   | "ping"
   | "set_corner_radius"
