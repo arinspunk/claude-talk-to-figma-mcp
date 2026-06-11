@@ -7,6 +7,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-11
+
+### Added
+- **`capture_render`** — screenshot a local URL with a headless browser at an exact pixel size and save it as a PNG. Encodes the gotchas of reliable headless captures: warms the route first (so dev-server compilation isn't in the shot), captures taller than requested then crops (a viewport whose height equals the content height collapses the render), and falls back across chromium/chromium-browser/google-chrome binaries (`CHROME_PATH` overrides). Requires a local Chromium/Chrome.
+- **`compare_to_figma` url mode** — pass `url` instead of `renderPath` and the tool captures the route headlessly at the Figma node's exact width×height before comparing, closing the render → compare → fix loop in a single call with guaranteed-matching dimensions.
+
+### Fixed
+- **Alpha 0 no longer becomes opaque**: `create_text`, `create_vector`, and `create_line` used `parseFloat(color.a) || 1`, silently turning a fully transparent color (`a: 0`) into a fully opaque one. They now use the shared `safePaint` helper (like the other creation handlers).
+- **`batch_operations` no longer bypasses relay validation**: blocked commands (`set_current_page`) and parentId-less creation commands were rejected when sent directly but allowed when wrapped in a batch. The relay now validates every operation inside a batch payload against the same rules.
+- **`create_component_from_node` honors `parentId`**: for primitive nodes the component was appended to the requested parent and then immediately re-inserted into the original parent (parentId silently ignored); the built-in FRAME/GROUP/INSTANCE path ignored it entirely. An explicit parentId now wins in all paths.
+- **Relay connection stats**: session deduplication decremented `activeConnections` twice per reconnect (manually + via the close handler), drifting the count negative over time.
+- **Real exponential backoff**: the MCP→relay reconnect delay was labeled exponential but used a random exponent, never growing with attempts. It now backs off per attempt (capped at 30s, with jitter) and resets on successful connect.
+- **Commands wait for reconnects instead of failing**: `sendCommandToFigma` rejected immediately with "Not connected" during the brief window of an auto-reconnect. Commands now wait up to 15s for the connection + channel join to come back before failing.
+- **Fractional font sizes**: `create_text` truncated `fontSize` with `parseInt` (13.5 → 13); now uses `parseFloat`. The `width` parameter also accepts numeric strings like every other numeric arg.
+- **Mixed-font text nodes**: `set_font_weight` threw on text nodes with multiple fonts (`fontName` is `figma.mixed`); it now samples the first character's family. Also fixed a broken branch in the smart-font-matching helper (`getRangeFontName(start, start[0])` — `start[0]` of a number is undefined).
+- **`get_document_info` pages array**: reported only the current page in `pages`, making single-page documents indistinguishable from multi-page ones. Now lists all pages with an `isCurrent` flag.
+- **Version drift**: `config.ts` still reported 1.1.0. The `sync-version` script now updates `config.ts` alongside `manifest.json`, so this can't recur.
+- Removed dead `processFigmaNodeResponse` helper (unused, and it logged to stdout — which would corrupt the stdio JSON-RPC stream if ever used).
+- Typo in the `design_strategy` prompt ("Mofifying" → "Modifying").
+
+### Changed
+- **Errors are machine-readable**: every tool error response now sets `isError: true`, so MCP clients can distinguish failures from successes programmatically (~100 call sites).
+- **Migrated to the SDK's `registerTool`/`registerResource`/`registerPrompt` APIs** (from the deprecated `server.tool()`/`.resource()`/`.prompt()`), adding tool annotations: read-only tools are marked `readOnlyHint`, `delete_*` tools `destructiveHint`.
+- **Structured output**: JSON-returning read tools (`get_document_info`, `get_selection`, `get_node_info`, `get_nodes_info`, `get_styles`, `get_variables`, `get_reactions`, `get_figjam_elements`, `get_pages`, `get_styled_text_segments`, and more) now also return `structuredContent` alongside the text payload.
+- **Scan highlighting is opt-in**: `scan_text_nodes` and `set_multiple_text_contents` no longer flash every node orange by default — that mutated user fills and added 100–500ms per node (a 100-node frame took ~1 minute longer). Pass `highlight: true` to re-enable; the inter-chunk pause also dropped from 1s to 250ms.
+- **`scan_assets` is faster by default**: it no longer fetches every image's full bytes just to report a byte size; pass `includeByteSizes: true` if you need sizes.
+- **`get_styles`** now returns the full `paints` array for color styles (multi-paint styles previously lost everything past `paints[0]`).
+- **`set_reactions`** returns a concise verification summary instead of echoing full debug JSON payloads.
+- **Dependencies pinned**: `@modelcontextprotocol/sdk`, `uuid`, and `ws` were `"latest"` (unreproducible builds); now pinned to caret ranges.
+- **CI**: the test workflow now also runs `typecheck` and the Bun socket relay tests, on Node 20/22.
+
 ## [1.2.0] - 2026-06-05
 
 ### Added
