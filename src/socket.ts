@@ -172,6 +172,25 @@ function validateCommand(data: any, channelName: string): string | null {
       `Call get_pages to discover available page IDs.`;
   }
 
+  // Batch payloads must pass the same rules per operation — otherwise
+  // batch_operations would be a validation bypass for blocked/creation commands.
+  if (command === "batch_operations" && Array.isArray(params?.operations)) {
+    for (let i = 0; i < params.operations.length; i++) {
+      const op = params.operations[i];
+      const opCommand = op?.command;
+
+      if (BLOCKED_COMMANDS.has(opCommand)) {
+        return `Operation #${i} ("${opCommand}") is a stateful command and is not allowed, ` +
+          `including inside batch_operations. Use parentId-based targeting instead.`;
+      }
+
+      if (CREATION_COMMANDS.has(opCommand) && !op?.params?.parentId) {
+        return `Operation #${i} ("${opCommand}") requires a parentId parameter, ` +
+          `including inside batch_operations. Pass the target page or frame node ID as parentId.`;
+      }
+    }
+  }
+
   return null; // Valid
 }
 
@@ -695,8 +714,9 @@ const server = Bun.serve({
               });
               channels.forEach((clients) => clients.delete(oldWs));
               cleanupClient(oldWs, oldChannels);
+              // close() triggers the close handler, which decrements
+              // stats.activeConnections — no manual decrement here.
               try { oldWs.close(1000, "Replaced by reconnecting session"); } catch {}
-              stats.activeConnections--;
             }
             sessionToClient.set(sessionId, ws);
             ws.data.sessionId = sessionId;

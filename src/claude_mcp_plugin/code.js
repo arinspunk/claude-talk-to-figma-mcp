@@ -374,13 +374,13 @@ async function getDocumentInfo() {
       name: page.name,
       childCount: page.children.length,
     },
-    pages: [
-      {
-        id: page.id,
-        name: page.name,
-        childCount: page.children.length,
-      },
-    ],
+    // All pages in the document (children are only loaded for the current page,
+    // so childCount is reported there; use get_pages for full page info).
+    pages: figma.root.children.map((p) => ({
+      id: p.id,
+      name: p.name,
+      isCurrent: p.id === page.id,
+    })),
   };
 }
 
@@ -650,21 +650,17 @@ async function createText(params) {
       style: getFontStyle(fontWeight),
     });
     textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
-    textNode.fontSize = parseInt(fontSize);
+    textNode.fontSize = parseFloat(fontSize);
   } catch (error) {
     console.error("Error setting font size", error);
   }
   await setCharacters(textNode, text);
 
   // Set text color
-  const paintStyle = {
+  const paintStyle = safePaint(fontColor) || {
     type: "SOLID",
-    color: {
-      r: parseFloat(fontColor.r) || 0,
-      g: parseFloat(fontColor.g) || 0,
-      b: parseFloat(fontColor.b) || 0,
-    },
-    opacity: parseFloat(fontColor.a) || 1,
+    color: { r: 0, g: 0, b: 0 },
+    opacity: 1,
   };
   textNode.fills = [paintStyle];
 
@@ -990,7 +986,8 @@ async function getStyles() {
       id: style.id,
       name: style.name,
       key: style.key,
-      paint: style.paints[0],
+      paint: style.paints[0], // kept for backward compatibility
+      paints: style.paints,
     })),
     texts: styles.texts.map((style) => ({
       id: style.id,
@@ -1540,7 +1537,7 @@ const VECTOR_NODE_TYPES = new Set([
  * to pull via get_asset.
  */
 async function scanAssets(params) {
-  const { includeImages = true, includeVectors = true } = params || {};
+  const { includeImages = true, includeVectors = true, includeByteSizes = false } = params || {};
   const node = await resolveTargetNode(params, "scan_assets");
 
   const images = new Map(); // hash -> { hash, scaleMode, width, height, bytes, nodes:[] }
@@ -1557,8 +1554,12 @@ async function scanAssets(params) {
             if (img) {
               const size = await img.getSizeAsync();
               width = size.width; height = size.height;
-              const bytes = await img.getBytesAsync();
-              byteLen = bytes.length;
+              // Fetching the full bytes just to report a length is expensive
+              // on image-heavy files, so it's opt-in.
+              if (includeByteSizes) {
+                const bytes = await img.getBytesAsync();
+                byteLen = bytes.length;
+              }
             }
           } catch (e) { /* metadata best-effort */ }
           images.set(fill.imageHash, { hash: fill.imageHash, scaleMode: fill.scaleMode, width, height, bytes: byteLen, nodes: [] });
@@ -2133,9 +2134,10 @@ const buildLinearOrder = (node) => {
           spacesRangeEnd
         );
         if (spacesRangeFont === figma.mixed) {
+          // Mixed fonts within a single word: sample the first character's font
           const spacesRangeFont = node.getRangeFontName(
             spacesRangeStart,
-            spacesRangeStart[0]
+            spacesRangeStart + 1
           );
           fontTree.push({
             start: spacesRangeStart,
@@ -2255,7 +2257,7 @@ async function cloneNode(params) {
 
 async function scanTextNodes(params) {
   console.log(`Starting to scan text nodes from node ID: ${params.nodeId}`);
-  const { nodeId, useChunking = true, chunkSize = 10, commandId = generateCommandId() } = params || {};
+  const { nodeId, useChunking = true, chunkSize = 10, highlight = false, commandId = generateCommandId() } = params || {};
 
   const node = await getNodeByIdSafe(nodeId);
 
@@ -2291,7 +2293,7 @@ async function scanTextNodes(params) {
         null
       );
 
-      await findTextNodes(node, [], 0, textNodes);
+      await findTextNodes(node, [], 0, textNodes, highlight);
 
       // Send completed progress update
       sendProgressUpdate(
@@ -2406,7 +2408,7 @@ async function scanTextNodes(params) {
     for (const nodeInfo of chunkNodes) {
       if (nodeInfo.node.type === "TEXT") {
         try {
-          const textNodeInfo = await processTextNode(nodeInfo.node, nodeInfo.parentPath, nodeInfo.depth);
+          const textNodeInfo = await processTextNode(nodeInfo.node, nodeInfo.parentPath, nodeInfo.depth, highlight);
           if (textNodeInfo) {
             chunkTextNodes.push(textNodeInfo);
           }
@@ -2500,7 +2502,7 @@ async function collectNodesToProcess(node, parentPath = [], depth = 0, nodesToPr
 }
 
 // Process a single text node
-async function processTextNode(node, parentPath, depth) {
+async function processTextNode(node, parentPath, depth, highlight = false) {
   if (node.type !== "TEXT") return null;
 
   try {
@@ -2532,28 +2534,31 @@ async function processTextNode(node, parentPath, depth) {
       depth: depth,
     };
 
-    // Highlight the node briefly (optional visual feedback)
-    try {
-      const originalFills = JSON.parse(JSON.stringify(node.fills));
-      node.fills = [
-        {
-          type: "SOLID",
-          color: { r: 1, g: 0.5, b: 0 },
-          opacity: 0.3,
-        },
-      ];
-
-      // Brief delay for the highlight to be visible
-      await delay(100);
-
+    // Optionally highlight the node briefly (visual feedback; opt-in because
+    // it temporarily mutates fills and slows large scans considerably)
+    if (highlight) {
       try {
-        node.fills = originalFills;
-      } catch (err) {
-        console.error("Error resetting fills:", err);
+        const originalFills = JSON.parse(JSON.stringify(node.fills));
+        node.fills = [
+          {
+            type: "SOLID",
+            color: { r: 1, g: 0.5, b: 0 },
+            opacity: 0.3,
+          },
+        ];
+
+        // Brief delay for the highlight to be visible
+        await delay(100);
+
+        try {
+          node.fills = originalFills;
+        } catch (err) {
+          console.error("Error resetting fills:", err);
+        }
+      } catch (highlightErr) {
+        console.error("Error highlighting text node:", highlightErr);
+        // Continue anyway, highlighting is just visual feedback
       }
-    } catch (highlightErr) {
-      console.error("Error highlighting text node:", highlightErr);
-      // Continue anyway, highlighting is just visual feedback
     }
 
     return safeTextNode;
@@ -2569,7 +2574,7 @@ function delay(ms) {
 }
 
 // Keep the original findTextNodes for backward compatibility
-async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
+async function findTextNodes(node, parentPath = [], depth = 0, textNodes = [], highlight = false) {
   // Skip invisible nodes
   if (node.visible === false) return;
 
@@ -2606,29 +2611,32 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
         depth: depth,
       };
 
-      // Only highlight the node if it's not being done via API
-      try {
-        // Safe way to create a temporary highlight without causing serialization issues
-        const originalFills = JSON.parse(JSON.stringify(node.fills));
-        node.fills = [
-          {
-            type: "SOLID",
-            color: { r: 1, g: 0.5, b: 0 },
-            opacity: 0.3,
-          },
-        ];
-
-        // Promise-based delay instead of setTimeout
-        await delay(500);
-
+      // Optionally highlight the node (opt-in: mutates fills temporarily and
+      // adds a per-node delay, which is very slow on large frames)
+      if (highlight) {
         try {
-          node.fills = originalFills;
-        } catch (err) {
-          console.error("Error resetting fills:", err);
+          // Safe way to create a temporary highlight without causing serialization issues
+          const originalFills = JSON.parse(JSON.stringify(node.fills));
+          node.fills = [
+            {
+              type: "SOLID",
+              color: { r: 1, g: 0.5, b: 0 },
+              opacity: 0.3,
+            },
+          ];
+
+          // Promise-based delay instead of setTimeout
+          await delay(100);
+
+          try {
+            node.fills = originalFills;
+          } catch (err) {
+            console.error("Error resetting fills:", err);
+          }
+        } catch (highlightErr) {
+          console.error("Error highlighting text node:", highlightErr);
+          // Continue anyway, highlighting is just visual feedback
         }
-      } catch (highlightErr) {
-        console.error("Error highlighting text node:", highlightErr);
-        // Continue anyway, highlighting is just visual feedback
       }
 
       textNodes.push(safeTextNode);
@@ -2648,7 +2656,7 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
 
 // Replace text in a specific node
 async function setMultipleTextContents(params) {
-  const { nodeId, text } = params || {};
+  const { nodeId, text, highlight = false } = params || {};
   const commandId = params.commandId || generateCommandId();
 
   if (!nodeId || !text || !Array.isArray(text)) {
@@ -2778,22 +2786,25 @@ async function setMultipleTextContents(params) {
         console.log(`Original text: "${originalText}"`);
         console.log(`Will translate to: "${replacement.text}"`);
 
-        // Highlight the node before changing text
+        // Optionally highlight the node before changing text (opt-in: it
+        // temporarily mutates fills and adds a per-chunk delay)
         let originalFills;
-        try {
-          // Save original fills for restoration later
-          originalFills = JSON.parse(JSON.stringify(textNode.fills));
-          // Apply highlight color (orange with 30% opacity)
-          textNode.fills = [
-            {
-              type: "SOLID",
-              color: { r: 1, g: 0.5, b: 0 },
-              opacity: 0.3,
-            },
-          ];
-        } catch (highlightErr) {
-          console.error(`Error highlighting text node: ${highlightErr.message}`);
-          // Continue anyway, highlighting is just visual feedback
+        if (highlight) {
+          try {
+            // Save original fills for restoration later
+            originalFills = JSON.parse(JSON.stringify(textNode.fills));
+            // Apply highlight color (orange with 30% opacity)
+            textNode.fills = [
+              {
+                type: "SOLID",
+                color: { r: 1, g: 0.5, b: 0 },
+                opacity: 0.3,
+              },
+            ];
+          } catch (highlightErr) {
+            console.error(`Error highlighting text node: ${highlightErr.message}`);
+            // Continue anyway, highlighting is just visual feedback
+          }
         }
 
         // Use the existing setTextContent function to handle font loading and text setting
@@ -2863,8 +2874,7 @@ async function setMultipleTextContents(params) {
 
     // Add a small delay between chunks to avoid overloading Figma
     if (chunkIndex < chunks.length - 1) {
-      console.log('Pausing between chunks to avoid overloading Figma...');
-      await delay(1000); // 1 second delay between chunks
+      await delay(250);
     }
   }
 
@@ -3082,7 +3092,12 @@ async function setFontWeight(params) {
   }
 
   try {
-    const family = node.fontName.family;
+    // A text node with multiple fonts reports fontName as figma.mixed —
+    // sample the first character's font family in that case.
+    const currentFont = node.fontName === figma.mixed
+      ? node.getRangeFontName(0, 1)
+      : node.fontName;
+    const family = currentFont.family;
     const style = getFontStyle(weight);
     await figma.loadFontAsync({ family, style });
     node.fontName = { family, style };
@@ -4148,30 +4163,18 @@ async function createVector(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    vector.fills = [paintStyle];
+    const paintStyle = safePaint(fillColor);
+    if (paintStyle) {
+      vector.fills = [paintStyle];
+    }
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    vector.strokes = [strokeStyle];
+    const strokeStyle = safePaint(strokeColor);
+    if (strokeStyle) {
+      vector.strokes = [strokeStyle];
+    }
   }
 
   // Set stroke weight if provided
@@ -4256,14 +4259,10 @@ async function createLine(params) {
   }];
 
   // Set stroke color
-  const strokeStyle = {
+  const strokeStyle = safePaint(strokeColor) || {
     type: "SOLID",
-    color: {
-      r: parseFloat(strokeColor.r) || 0,
-      g: parseFloat(strokeColor.g) || 0,
-      b: parseFloat(strokeColor.b) || 0,
-    },
-    opacity: parseFloat(strokeColor.a) || 1
+    color: { r: 0, g: 0, b: 0 },
+    opacity: 1,
   };
   line.strokes = [strokeStyle];
 
@@ -4374,6 +4373,19 @@ async function createComponentFromNode(params) {
   if ("createComponentFromNode" in figma && (node.type === "FRAME" || node.type === "GROUP" || node.type === "INSTANCE")) {
     // Use Figma's built-in createComponentFromNode API
     component = figma.createComponentFromNode(node);
+
+    // Honor an explicit parentId (the built-in API leaves the component in
+    // the original node's parent).
+    if (parentId && component.parent && component.parent.id !== parentId) {
+      const parentNode = await getNodeByIdSafe(parentId);
+      if (!parentNode) {
+        throw new Error(`Parent node not found with ID: ${parentId}`);
+      }
+      if (!("appendChild" in parentNode)) {
+        throw new Error(`Parent node does not support children: ${parentId}`);
+      }
+      parentNode.appendChild(component);
+    }
   } else {
     // For other node types, we need a different approach
     // Create a new component and copy properties from the original node
@@ -4394,7 +4406,8 @@ async function createComponentFromNode(params) {
       clone.x = 0;
       clone.y = 0;
 
-      // If parentId is provided, append to that node, otherwise append to current page
+      // Place the component: an explicit parentId wins; otherwise the
+      // component takes the original node's place in its parent.
       if (parentId) {
         const parentNode = await getNodeByIdSafe(parentId);
         if (!parentNode) {
@@ -4404,17 +4417,12 @@ async function createComponentFromNode(params) {
           throw new Error(`Parent node does not support children: ${parentId}`);
         }
         parentNode.appendChild(component);
-      } else {
-        figma.currentPage.appendChild(component);
-      }
-      component.appendChild(clone);
-
-      // Add component to the same parent at the same position
-      if (parent && "insertChild" in parent) {
+      } else if (parent && "insertChild" in parent) {
         parent.insertChild(index, component);
       } else {
         figma.currentPage.appendChild(component);
       }
+      component.appendChild(clone);
 
       // Remove the original node
       node.remove();
@@ -4444,8 +4452,18 @@ async function createComponentFromNode(params) {
         component.cornerRadius = node.cornerRadius;
       }
 
-      // Add component to the same parent
-      if (parent && "insertChild" in parent) {
+      // Place the component: an explicit parentId wins; otherwise the
+      // component takes the original node's place in its parent.
+      if (parentId) {
+        const parentNode = await getNodeByIdSafe(parentId);
+        if (!parentNode) {
+          throw new Error(`Parent node not found with ID: ${parentId}`);
+        }
+        if (!("appendChild" in parentNode)) {
+          throw new Error(`Parent node does not support children: ${parentId}`);
+        }
+        parentNode.appendChild(component);
+      } else if (parent && "insertChild" in parent) {
         parent.insertChild(index, component);
       } else {
         figma.currentPage.appendChild(component);
@@ -6491,44 +6509,28 @@ async function setReactions(params) {
   }
 
   // Set overlayPositionType on destination nodes for OVERLAY actions
-  const overlayDebug = [];
   for (const r of params.reactions) {
     if (r.actions && Array.isArray(r.actions)) {
       for (const a of r.actions) {
         if (a.type === "NODE" && a.navigation === "OVERLAY" && a.destinationId) {
           try {
             const destNode = await figma.getNodeByIdAsync(a.destinationId);
-            const info = { destId: a.destinationId, type: destNode ? destNode.type : "not found" };
             if (destNode) {
               // For instances, set overlay properties on the main component
               let targetNode = destNode;
               if (destNode.type === "INSTANCE") {
                 const mainComp = await destNode.getMainComponentAsync();
-                if (mainComp) {
-                  targetNode = mainComp;
-                  info.usingMainComponent = targetNode.id;
-                }
+                if (mainComp) targetNode = mainComp;
               }
-              info.targetType = targetNode.type;
-              info.hasOverlayPositionType = "overlayPositionType" in targetNode;
-              info.beforePositionType = targetNode.overlayPositionType;
-              info.beforeBgInteraction = targetNode.overlayBackgroundInteraction;
               try {
                 targetNode.overlayPositionType = a.overlayPositionType || "CENTER";
-                info.afterPositionType = targetNode.overlayPositionType;
-              } catch (e) {
-                info.positionTypeError = e.message || String(e);
-              }
+              } catch (e) { /* node type doesn't support overlay positioning */ }
               try {
                 targetNode.overlayBackgroundInteraction = a.overlayBackgroundInteraction || "CLOSE_ON_CLICK_OUTSIDE";
-                info.afterBgInteraction = targetNode.overlayBackgroundInteraction;
-              } catch (e) {
-                info.bgInteractionError = e.message || String(e);
-              }
+              } catch (e) { /* node type doesn't support overlay background interaction */ }
             }
-            overlayDebug.push(info);
           } catch (e) {
-            overlayDebug.push({ destId: a.destinationId, error: e.message || String(e) });
+            // Destination lookup failed — setReactionsAsync below will surface real errors
           }
         }
       }
@@ -6592,10 +6594,6 @@ async function setReactions(params) {
     return reaction;
   });
 
-  // Debug: log the exact reactions being set
-  const debugJson = JSON.stringify(reactions, null, 2);
-  console.log("setReactionsAsync input:", debugJson);
-
   try {
     await node.setReactionsAsync(reactions);
   } catch (e) {
@@ -6609,23 +6607,19 @@ async function setReactions(params) {
     } catch (e2) {
       const errStr = e ? (e.message || e.toString() || JSON.stringify(e)) : "unknown";
       const errStr2 = e2 ? (e2.message || e2.toString() || JSON.stringify(e2)) : "unknown";
-      throw new Error(`setReactionsAsync failed.\nNew API error: ${errStr}\nOld API error: ${errStr2}\nInput: ${debugJson}`);
+      throw new Error(`setReactionsAsync failed.\nNew API error: ${errStr}\nOld API error: ${errStr2}`);
     }
   }
 
   // Verify what was actually set by reading back
   const actualReactions = node.reactions;
   const actualCount = actualReactions ? actualReactions.length : 0;
-  const actualJson = JSON.stringify(actualReactions, null, 2);
 
   return {
     id: node.id,
     name: node.name,
     reactionsCount: reactions.length,
     actualReactionsCount: actualCount,
-    sentToFigma: debugJson,
-    readBackFromFigma: actualJson,
-    overlayDebug: overlayDebug.length > 0 ? overlayDebug : undefined,
     message: `Set ${reactions.length} reaction(s) on node "${node.name}" (verified: ${actualCount} persisted)`,
   };
 }
