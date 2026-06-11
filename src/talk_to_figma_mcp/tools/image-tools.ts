@@ -13,10 +13,11 @@ import os from "os";
  */
 export function registerImageTools(server: McpServer): void {
   // Visual Snapshot Tool — multimodal "eyes" on the canvas
-  server.tool(
+  server.registerTool(
     "get_visual_snapshot",
-    "Capture a PNG image of the current Figma selection (or a specific node) so you can SEE the rendered result — layout, spacing, alignment, fonts, and colors. Use this to verify your work after creating or editing nodes: render, look, and correct any placement drift or font mismatch before telling the user you're done. Defaults to the current selection at 2x scale; no nodeId needed.",
     {
+      description: "Capture a PNG image of the current Figma selection (or a specific node) so you can SEE the rendered result — layout, spacing, alignment, fonts, and colors. Use this to verify your work after creating or editing nodes: render, look, and correct any placement drift or font mismatch before telling the user you're done. Defaults to the current selection at 2x scale; no nodeId needed.",
+      inputSchema: {
       nodeId: z
         .string()
         .optional()
@@ -31,6 +32,8 @@ export function registerImageTools(server: McpServer): void {
         .positive()
         .optional()
         .describe("Cap on the longest output side in px (default 2000). Keeps very large frames fast and reviewable."),
+    },
+      annotations: { readOnlyHint: true },
     },
     async ({ nodeId, scale, maxDimension }) => {
       try {
@@ -94,20 +97,23 @@ export function registerImageTools(server: McpServer): void {
               text: `Error capturing visual snapshot: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Image Fill Tool
-  server.tool(
+  server.registerTool(
     "set_image_fill",
-    "Apply image to node from URL or base64 data",
     {
+      description: "Apply image to node from URL or base64 data",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to apply image to"),
       imageSource: z.string().describe("Image URL or base64 data string"),
       sourceType: z.enum(["url", "base64"]).describe("Source type: 'url' for image URL, 'base64' for base64 encoded data"),
       scaleMode: z.enum(["FILL", "FIT", "CROP", "TILE"]).optional().describe("Image scaling mode (default: FILL)"),
+    },
     },
     async ({ nodeId, imageSource, sourceType, scaleMode }) => {
       try {
@@ -128,17 +134,20 @@ export function registerImageTools(server: McpServer): void {
           ],
         };
       } catch (error) {
-        return { content: [{ type: "text", text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}` }] };
+        return { content: [{ type: "text", text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     }
   );
 
   // Get Image from Node Tool
-  server.tool(
+  server.registerTool(
     "get_image_from_node",
-    "Extract image metadata from a node",
     {
+      description: "Extract image metadata from a node",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to get image from"),
+    },
+      annotations: { readOnlyHint: true },
     },
     async ({ nodeId }) => {
       try {
@@ -180,20 +189,23 @@ export function registerImageTools(server: McpServer): void {
               text: `Error getting image from node: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Replace Image Fill Tool
-  server.tool(
+  server.registerTool(
     "replace_image_fill",
-    "Replace existing image on node with new image while preserving transform",
     {
+      description: "Replace existing image on node with new image while preserving transform",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node with image to replace"),
       newImageSource: z.string().describe("New image URL or base64 data"),
       sourceType: z.enum(["url", "base64"]).describe("Source type: 'url' or 'base64'"),
       preserveTransform: z.boolean().optional().describe("Preserve existing image transform (default: true)"),
+    },
     },
     async ({ nodeId, newImageSource, sourceType, preserveTransform }) => {
       try {
@@ -214,7 +226,7 @@ export function registerImageTools(server: McpServer): void {
           ],
         };
       } catch (error) {
-        return { content: [{ type: "text", text: `Error replacing image fill: ${error instanceof Error ? error.message : String(error)}` }] };
+        return { content: [{ type: "text", text: `Error replacing image fill: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     }
   );
@@ -223,16 +235,18 @@ export function registerImageTools(server: McpServer): void {
   //  extracts image-fill bytes by hash and writes them to disk.)
 
   // Apply Image Transform Tool
-  server.tool(
+  server.registerTool(
     "apply_image_transform",
-    "Adjust image position, scale, and rotation within node. Rotates the IMAGE inside the node, not the node itself.",
     {
+      description: "Adjust image position, scale, and rotation within node. Rotates the IMAGE inside the node, not the node itself.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to transform image on"),
       scaleMode: z.enum(["FILL", "FIT", "CROP", "TILE"]).optional().describe("Change scale mode"),
       rotation: z.coerce.number().optional().describe("Rotation in 90-degree increments (0, 90, 180, 270). Rotates the IMAGE inside the node, not the node itself."),
       translateX: z.coerce.number().optional().describe("Horizontal translation offset"),
       translateY: z.coerce.number().optional().describe("Vertical translation offset"),
       scale: z.coerce.number().positive().optional().describe("Scale factor (1 = 100%)"),
+    },
     },
     async ({ nodeId, scaleMode, rotation, translateX, translateY, scale }) => {
       try {
@@ -255,16 +269,17 @@ export function registerImageTools(server: McpServer): void {
           ],
         };
       } catch (error) {
-        return { content: [{ type: "text", text: `Error applying image transform: ${error instanceof Error ? error.message : String(error)}` }] };
+        return { content: [{ type: "text", text: `Error applying image transform: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     }
   );
 
   // Set Image Filters Tool
-  server.tool(
+  server.registerTool(
     "set_image_filters",
-    "Apply color and light adjustments to image fills",
     {
+      description: "Apply color and light adjustments to image fills",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node with image fill"),
       exposure: z.number().min(-1).max(1).optional().describe("Brightness adjustment (-1.0 to 1.0)"),
       contrast: z.number().min(-1).max(1).optional().describe("Contrast adjustment (-1.0 to 1.0)"),
@@ -273,6 +288,7 @@ export function registerImageTools(server: McpServer): void {
       tint: z.number().min(-1).max(1).optional().describe("Green/magenta shift (-1.0 to 1.0)"),
       highlights: z.number().min(-1).max(1).optional().describe("Bright area adjustment (-1.0 to 1.0)"),
       shadows: z.number().min(-1).max(1).optional().describe("Dark area adjustment (-1.0 to 1.0)"),
+    },
     },
     async ({ nodeId, exposure, contrast, saturation, temperature, tint, highlights, shadows }) => {
       try {
@@ -300,25 +316,34 @@ export function registerImageTools(server: McpServer): void {
           ],
         };
       } catch (error) {
-        return { content: [{ type: "text", text: `Error setting image filters: ${error instanceof Error ? error.message : String(error)}` }] };
+        return { content: [{ type: "text", text: `Error setting image filters: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     }
   );
 
   // Scan Assets Tool — inventory images + vector/icon nodes in a subtree
-  server.tool(
+  server.registerTool(
     "scan_assets",
-    "Inventory all extractable assets within a node's subtree: image fills (deduped by hash, with dimensions, byte size, suggested filename, and which nodes use them) and vector/icon nodes. Lightweight (no raw bytes) — use it to decide what to pull, then call get_asset for each. Defaults to the current selection.",
     {
+      description: "Inventory all extractable assets within a node's subtree: image fills (deduped by hash, with dimensions, byte size, suggested filename, and which nodes use them) and vector/icon nodes. Lightweight (no raw bytes) — use it to decide what to pull, then call get_asset for each. Defaults to the current selection.",
+      inputSchema: {
       nodeId: z.string().optional().describe("Subtree root to scan. Omit to use the current selection."),
       includeImages: coerceBoolean.optional().describe("Include image fills (default true)."),
       includeVectors: coerceBoolean.optional().describe("Include vector/icon nodes (default true)."),
+      includeByteSizes: coerceBoolean.optional().describe("Also report each image's byte size (default false — fetches full image bytes, slow on image-heavy files)."),
     },
-    async ({ nodeId, includeImages, includeVectors }) => {
+      annotations: { readOnlyHint: true },
+    },
+    async ({ nodeId, includeImages, includeVectors, includeByteSizes }) => {
       try {
         const result = await sendCommandToFigma(
           "scan_assets",
-          { nodeId, includeImages: includeImages ?? true, includeVectors: includeVectors ?? true },
+          {
+            nodeId,
+            includeImages: includeImages ?? true,
+            includeVectors: includeVectors ?? true,
+            includeByteSizes: includeByteSizes ?? false,
+          },
           60000
         );
         const typed = result as {
@@ -356,22 +381,25 @@ export function registerImageTools(server: McpServer): void {
               text: `Error scanning assets: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Get Asset Tool — fetch one asset's bytes and write it to a file
-  server.tool(
+  server.registerTool(
     "get_asset",
-    "Extract a single asset to a local file so you can use it in code. Provide either 'hash' (an image fill from scan_assets) to save the original image bytes, or 'nodeId' to export a node (default SVG for icons/vectors; or PNG/JPG via format). Writes the file to disk and returns its path — raw bytes don't enter the conversation. SVG content is also returned inline so you can embed icons directly.",
     {
+      description: "Extract a single asset to a local file so you can use it in code. Provide either 'hash' (an image fill from scan_assets) to save the original image bytes, or 'nodeId' to export a node (default SVG for icons/vectors; or PNG/JPG via format). Writes the file to disk and returns its path — raw bytes don't enter the conversation. SVG content is also returned inline so you can embed icons directly.",
+      inputSchema: {
       hash: z.string().optional().describe("Image fill hash from scan_assets (extracts original image bytes)."),
       nodeId: z.string().optional().describe("Node to export (alternative to hash)."),
       format: z.enum(["SVG", "PNG", "JPG"]).optional().describe("Export format when using nodeId (default SVG)."),
       scale: z.coerce.number().positive().optional().describe("Scale for raster (PNG/JPG) node exports (default 2)."),
       outDir: z.string().optional().describe("Directory to write the asset into (default: ./figma-assets under the server's working directory)."),
       filename: z.string().optional().describe("Override the output filename (extension is set automatically from the asset type)."),
+    },
     },
     async ({ hash, nodeId, format, scale, outDir, filename }) => {
       try {
@@ -430,6 +458,7 @@ export function registerImageTools(server: McpServer): void {
               text: `Error getting asset: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }

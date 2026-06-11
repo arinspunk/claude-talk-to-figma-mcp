@@ -23,10 +23,13 @@ export function registerFigJamTools(server: McpServer): void {
    * Get all FigJam-specific elements on the current page.
    * Returns stickies, connectors, shapes-with-text, sections and stamps.
    */
-  server.tool(
+  server.registerTool(
     "get_figjam_elements",
-    "Get all FigJam-specific elements (stickies, connectors, shapes with text, sections, stamps) on the current page. Use this to read the contents of a FigJam board.",
-    {},
+    {
+      description: "Get all FigJam-specific elements (stickies, connectors, shapes with text, sections, stamps) on the current page. Use this to read the contents of a FigJam board.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
     async () => {
       try {
         const result = await sendCommandToFigma("get_figjam_elements", {});
@@ -37,6 +40,7 @@ export function registerFigJamTools(server: McpServer): void {
               text: JSON.stringify(result, null, 2),
             },
           ],
+          structuredContent: result as Record<string, unknown>,
         };
       } catch (error) {
         return {
@@ -46,6 +50,7 @@ export function registerFigJamTools(server: McpServer): void {
               text: `Error getting FigJam elements: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
@@ -56,12 +61,13 @@ export function registerFigJamTools(server: McpServer): void {
   /**
    * Create a sticky note in FigJam.
    */
-  server.tool(
+  server.registerTool(
     "create_sticky",
-    "Create a sticky note in a FigJam board. Sticky notes are the primary way to add text content in FigJam.",
     {
-      x: z.number().describe("X position on the canvas"),
-      y: z.number().describe("Y position on the canvas"),
+      description: "Create a sticky note in a FigJam board. Sticky notes are the primary way to add text content in FigJam.",
+      inputSchema: {
+      x: z.coerce.number().describe("X position on the canvas"),
+      y: z.coerce.number().describe("Y position on the canvas"),
       text: z.string().describe("Text content of the sticky note"),
       color: z
         .enum([
@@ -90,6 +96,7 @@ export function registerFigJamTools(server: McpServer): void {
         .optional()
         .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
+    },
     async ({ x, y, text, color, isWide, name, parentId }) => {
       try {
         const result = await sendCommandToFigma("create_sticky", {
@@ -117,6 +124,7 @@ export function registerFigJamTools(server: McpServer): void {
               text: `Error creating sticky note: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
@@ -125,12 +133,14 @@ export function registerFigJamTools(server: McpServer): void {
   /**
    * Update the text on an existing sticky note.
    */
-  server.tool(
+  server.registerTool(
     "set_sticky_text",
-    "Update the text content of an existing FigJam sticky note.",
     {
+      description: "Update the text content of an existing FigJam sticky note.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the sticky note node to update"),
       text: z.string().describe("The new text content"),
+    },
     },
     async ({ nodeId, text }) => {
       try {
@@ -154,6 +164,7 @@ export function registerFigJamTools(server: McpServer): void {
               text: `Error updating sticky note text: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
@@ -162,14 +173,15 @@ export function registerFigJamTools(server: McpServer): void {
   /**
    * Create a FigJam shape with text (e.g. process box, decision diamond).
    */
-  server.tool(
+  server.registerTool(
     "create_shape_with_text",
-    "Create a FigJam shape with text inside. Useful for flowcharts, diagrams, and process maps. Supported shapes: SQUARE, ELLIPSE, ROUNDED_RECTANGLE, DIAMOND, TRIANGLE_UP, TRIANGLE_DOWN, PARALLELOGRAM_RIGHT, PARALLELOGRAM_LEFT.",
     {
-      x: z.number().describe("X position on the canvas"),
-      y: z.number().describe("Y position on the canvas"),
-      width: z.number().optional().describe("Width of the shape (default: 200)"),
-      height: z.number().optional().describe("Height of the shape (default: 200)"),
+      description: "Create a FigJam shape with text inside. Useful for flowcharts, diagrams, and process maps. Supported shapes: SQUARE, ELLIPSE, ROUNDED_RECTANGLE, DIAMOND, TRIANGLE_UP, TRIANGLE_DOWN, PARALLELOGRAM_RIGHT, PARALLELOGRAM_LEFT.",
+      inputSchema: {
+      x: z.coerce.number().describe("X position on the canvas"),
+      y: z.coerce.number().describe("Y position on the canvas"),
+      width: z.coerce.number().optional().describe("Width of the shape (default: 200)"),
+      height: z.coerce.number().optional().describe("Height of the shape (default: 200)"),
       shapeType: z
         .enum([
           "SQUARE",
@@ -186,10 +198,10 @@ export function registerFigJamTools(server: McpServer): void {
       text: z.string().optional().describe("Text to display inside the shape"),
       fillColor: z
         .object({
-          r: z.number().min(0).max(1).describe("Red (0-1)"),
-          g: z.number().min(0).max(1).describe("Green (0-1)"),
-          b: z.number().min(0).max(1).describe("Blue (0-1)"),
-          a: z.number().min(0).max(1).optional().describe("Alpha (0-1)"),
+          r: z.coerce.number().min(0).max(1).describe("Red (0-1)"),
+          g: z.coerce.number().min(0).max(1).describe("Green (0-1)"),
+          b: z.coerce.number().min(0).max(1).describe("Blue (0-1)"),
+          a: z.coerce.number().min(0).max(1).optional().describe("Alpha (0-1)"),
         })
         .optional()
         .describe("Fill color in RGBA format (0-1 range each component)"),
@@ -198,6 +210,7 @@ export function registerFigJamTools(server: McpServer): void {
         .string()
         .optional()
         .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+    },
     },
     async ({ x, y, width, height, shapeType, text, fillColor, name, parentId }) => {
       try {
@@ -228,6 +241,7 @@ export function registerFigJamTools(server: McpServer): void {
               text: `Error creating shape with text: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
@@ -236,10 +250,11 @@ export function registerFigJamTools(server: McpServer): void {
   /**
    * Create a connector (arrow/line) between two nodes or at arbitrary positions.
    */
-  server.tool(
+  server.registerTool(
     "create_connector",
-    "Create a connector (arrow or line) in FigJam. Connectors can link two existing nodes by ID, or connect arbitrary canvas positions. Use this to draw flow arrows between stickies, shapes, etc.",
     {
+      description: "Create a connector (arrow or line) in FigJam. Connectors can link two existing nodes by ID, or connect arbitrary canvas positions. Use this to draw flow arrows between stickies, shapes, etc.",
+      inputSchema: {
       startNodeId: z
         .string()
         .optional()
@@ -278,19 +293,20 @@ export function registerFigJamTools(server: McpServer): void {
         .describe("Arrowhead at the end (default: ARROW)"),
       strokeColor: z
         .object({
-          r: z.number().min(0).max(1),
-          g: z.number().min(0).max(1),
-          b: z.number().min(0).max(1),
-          a: z.number().min(0).max(1).optional(),
+          r: z.coerce.number().min(0).max(1),
+          g: z.coerce.number().min(0).max(1),
+          b: z.coerce.number().min(0).max(1),
+          a: z.coerce.number().min(0).max(1).optional(),
         })
         .optional()
         .describe("Stroke color in RGBA format"),
-      strokeWeight: z.number().positive().optional().describe("Stroke weight / line thickness"),
+      strokeWeight: z.coerce.number().positive().optional().describe("Stroke weight / line thickness"),
       name: z.string().optional().describe("Optional name for the connector node"),
       parentId: z
         .string()
         .optional()
         .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+    },
     },
     async ({
       startNodeId,
@@ -339,6 +355,7 @@ export function registerFigJamTools(server: McpServer): void {
               text: `Error creating connector: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
@@ -347,21 +364,22 @@ export function registerFigJamTools(server: McpServer): void {
   /**
    * Create a FigJam section to group and organise content.
    */
-  server.tool(
+  server.registerTool(
     "create_section",
-    "Create a FigJam section. Sections are used to group and organise content on the FigJam board. They appear as labelled coloured regions.",
     {
-      x: z.number().describe("X position on the canvas"),
-      y: z.number().describe("Y position on the canvas"),
-      width: z.number().optional().describe("Width of the section (default: 800)"),
-      height: z.number().optional().describe("Height of the section (default: 600)"),
+      description: "Create a FigJam section. Sections are used to group and organise content on the FigJam board. They appear as labelled coloured regions.",
+      inputSchema: {
+      x: z.coerce.number().describe("X position on the canvas"),
+      y: z.coerce.number().describe("Y position on the canvas"),
+      width: z.coerce.number().optional().describe("Width of the section (default: 800)"),
+      height: z.coerce.number().optional().describe("Height of the section (default: 600)"),
       name: z.string().optional().describe("Label / name for the section"),
       fillColor: z
         .object({
-          r: z.number().min(0).max(1),
-          g: z.number().min(0).max(1),
-          b: z.number().min(0).max(1),
-          a: z.number().min(0).max(1).optional(),
+          r: z.coerce.number().min(0).max(1),
+          g: z.coerce.number().min(0).max(1),
+          b: z.coerce.number().min(0).max(1),
+          a: z.coerce.number().min(0).max(1).optional(),
         })
         .optional()
         .describe("Background fill color in RGBA format"),
@@ -369,6 +387,7 @@ export function registerFigJamTools(server: McpServer): void {
         .string()
         .optional()
         .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+    },
     },
     async ({ x, y, width, height, name, fillColor, parentId }) => {
       try {
@@ -397,6 +416,7 @@ export function registerFigJamTools(server: McpServer): void {
               text: `Error creating section: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }

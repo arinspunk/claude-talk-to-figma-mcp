@@ -2,6 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
 import { compareImages, writeDiffHeatmap } from "../utils/image-compare";
+import { captureUrl } from "../utils/capture";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -17,34 +18,56 @@ import os from "os";
  * render → compare → fix loop instead of eyeballing downscaled images.
  */
 export function registerVerifyTools(server: McpServer): void {
-  server.tool(
+  server.registerTool(
     "compare_to_figma",
-    "Objectively compare a screenshot of your implemented UI against a Figma node. Snapshots the node and compares it to your render using SSIM (structural similarity — robust to font anti-aliasing, so it reflects real layout/asset drift, not pixel noise), plus a color delta, a 3×3 region map (to localize what's off), an edge-overflow estimate, and an optional brand-color match. Also writes a DIFF HEATMAP png you can open to see exactly where they diverge. Use this to verify a section after building it instead of guessing from a downscaled image. Capture your render with a headless browser at the section's aspect ratio first.",
     {
-      renderPath: z.string().describe("Absolute path to a PNG screenshot of your implemented UI (e.g. a headless-browser capture of one section)."),
+      description: "Objectively compare your implemented UI against a Figma node. Pass either renderPath (a PNG you captured yourself) or url (a local route — it is screenshotted headlessly at the Figma node's EXACT size, so dimensions always match). Snapshots the node and compares using SSIM (structural similarity — robust to font anti-aliasing, so it reflects real layout/asset drift, not pixel noise), plus a color delta, a 3×3 region map (to localize what's off), an edge-overflow estimate, and an optional brand-color match. Also writes a DIFF HEATMAP png you can open to see exactly where they diverge. Use this to verify a section after building it instead of guessing from a downscaled image.",
+      inputSchema: {
+      renderPath: z.string().optional().describe("Absolute path to a PNG screenshot of your implemented UI. Provide either this or url."),
+      url: z.string().optional().describe("Local URL of the implemented UI (e.g. http://localhost:3000/preview/hero). It is captured with a headless browser at the Figma node's exact size — requires Chromium/Chrome installed locally."),
       nodeId: z.string().optional().describe("Figma node to compare against. Omit to use the current selection."),
       targetColor: z.string().optional().describe("Optional brand/accent hex (e.g. #ff6701) to check is present in similar proportion in both images."),
       maxDimension: z.coerce.number().positive().optional().describe("Cap on the Figma snapshot's longest side (default 2000)."),
       diffPath: z.string().optional().describe("Where to write the diff heatmap PNG (default: a temp file). Open it to see where the render diverges from the design."),
     },
-    async ({ renderPath, nodeId, targetColor, maxDimension, diffPath }) => {
+    },
+    async ({ renderPath, url, nodeId, targetColor, maxDimension, diffPath }) => {
       try {
-        if (!fs.existsSync(renderPath)) {
-          return { content: [{ type: "text", text: `Render image not found: ${renderPath}` }] };
+        if (!renderPath && !url) {
+          return { content: [{ type: "text", text: "Provide either renderPath (a PNG of your render) or url (a local route to capture)." }], isError: true };
         }
-        const renderBuf = fs.readFileSync(renderPath);
+        if (renderPath && url) {
+          return { content: [{ type: "text", text: "Provide only one of renderPath or url, not both." }], isError: true };
+        }
 
-        // Snapshot the Figma node (reuses the plugin's visual-snapshot command).
+        // Snapshot the Figma node first (reuses the plugin's visual-snapshot
+        // command) — in url mode its width/height drive the capture size.
         const snap = await sendCommandToFigma(
           "get_visual_snapshot",
           { nodeId, scale: 2, maxDimension: maxDimension ?? 2000 },
           120000
         );
-        const typed = snap as { name: string; type: string; nodeId: string; imageData: string; mimeType: string };
+        const typed = snap as { name: string; type: string; nodeId: string; imageData: string; mimeType: string; width?: number; height?: number };
         if (!typed.imageData) {
           return { content: [{ type: "text", text: "Figma snapshot returned no image data." }] };
         }
         const refBuf = Buffer.from(typed.imageData, "base64");
+
+        let renderBuf: Buffer;
+        let captureNote = "";
+        if (url) {
+          if (!typed.width || !typed.height) {
+            return { content: [{ type: "text", text: "Figma snapshot did not report node dimensions — update the Figma plugin, or capture the render yourself and pass renderPath." }], isError: true };
+          }
+          const cap = await captureUrl({ url, width: typed.width, height: typed.height });
+          renderBuf = fs.readFileSync(cap.path);
+          captureNote = `Captured ${url} at ${cap.width}×${cap.height} (node size) → ${cap.path}`;
+        } else {
+          if (!fs.existsSync(renderPath!)) {
+            return { content: [{ type: "text", text: `Render image not found: ${renderPath}` }], isError: true };
+          }
+          renderBuf = fs.readFileSync(renderPath!);
+        }
 
         const r = compareImages(renderBuf, refBuf, { targetColor });
 
@@ -66,6 +89,7 @@ export function registerVerifyTools(server: McpServer): void {
           .join("\n");
         const lines = [
           `Compared render vs Figma "${typed.name}" (${typed.type}, ${typed.nodeId})`,
+          ...(captureNote ? [captureNote] : []),
           `Structural similarity (SSIM): ${r.similarity}%   |   raw-pixel similarity: ${r.pixelSimilarity}%`,
           `Color delta: ${r.colorDelta}/255 mean per-channel   |   grayscale diff: ${r.meanDiff}/255`,
           `Worst region: ${r.worstRegion.label} (structural mismatch ${r.worstRegion.diff}/100)`,
@@ -93,7 +117,37 @@ export function registerVerifyTools(server: McpServer): void {
 
         return { content: [{ type: "text", text: lines.join("\n") }] };
       } catch (error) {
-        return { content: [{ type: "text", text: `Error comparing to Figma: ${error instanceof Error ? error.message : String(error)}` }] };
+        return { content: [{ type: "text", text: `Error comparing to Figma: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    "capture_render",
+    {
+      description: "Screenshot a local URL with a headless browser at an exact pixel size and save it as a PNG (e.g. to feed into compare_to_figma, or to look at with vision). Handles the gotchas of headless captures: warms the route first so dev-server compilation isn't in the shot, and captures taller than requested then crops — a viewport whose height exactly equals the content height collapses the render. Requires Chromium/Chrome installed locally (set CHROME_PATH to override the binary).",
+      inputSchema: {
+        url: z.string().describe("URL to capture (e.g. http://localhost:3000/preview/hero)."),
+        width: z.coerce.number().positive().describe("Viewport/crop width in CSS pixels (use the Figma frame's width)."),
+        height: z.coerce.number().positive().describe("Crop height in CSS pixels (use the Figma frame's height)."),
+        outPath: z.string().optional().describe("Where to write the PNG (default: a temp file)."),
+        warmupRequests: z.coerce.number().int().min(0).optional().describe("Plain GETs sent before the screenshot to warm dev-server compilation (default 2)."),
+      },
+    },
+    async ({ url, width, height, outPath, warmupRequests }) => {
+      try {
+        const result = await captureUrl({ url, width, height, outPath, warmupRequests });
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Captured ${url} at ${result.width}×${result.height} (via ${result.binary})\nSaved to: ${result.path}`,
+            },
+          ],
+          structuredContent: { path: result.path, width: result.width, height: result.height },
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: `Error capturing render: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     }
   );

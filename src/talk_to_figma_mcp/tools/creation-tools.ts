@@ -10,10 +10,11 @@ import { coerceJson } from "../utils/schema-helpers";
  */
 export function registerCreationTools(server: McpServer): void {
   // Create Rectangle Tool
-  server.tool(
+  server.registerTool(
     "create_rectangle",
-    "Create a new rectangle in Figma",
     {
+      description: "Create a new rectangle in Figma",
+      inputSchema: {
       x: z.coerce.number().describe("X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("Y position (local coordinates, relative to parent)"),
       width: z.coerce.number().describe("Width of the rectangle"),
@@ -40,6 +41,7 @@ export function registerCreationTools(server: McpServer): void {
         .optional()
         .describe("Stroke color in RGBA format"),
       strokeWeight: z.coerce.number().positive().optional().describe("Stroke weight"),
+    },
     },
     async ({ x, y, width, height, name, parentId, fillColor, strokeColor, strokeWeight }) => {
       try {
@@ -70,16 +72,18 @@ export function registerCreationTools(server: McpServer): void {
               text: `Error creating rectangle: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Create Frame Tool
-  server.tool(
+  server.registerTool(
     "create_frame",
-    "Create a new frame in Figma",
     {
+      description: "Create a new frame in Figma",
+      inputSchema: {
       x: z.coerce.number().describe("X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("Y position (local coordinates, relative to parent)"),
       width: z.coerce.number().describe("Width of the frame"),
@@ -106,6 +110,7 @@ export function registerCreationTools(server: McpServer): void {
         .optional()
         .describe("Stroke color in RGBA format"),
       strokeWeight: z.coerce.number().positive().optional().describe("Stroke weight"),
+    },
     },
     async ({
       x,
@@ -147,16 +152,18 @@ export function registerCreationTools(server: McpServer): void {
               text: `Error creating frame: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Create Text Tool
-  server.tool(
+  server.registerTool(
     "create_text",
-    "Create a new text element in Figma",
     {
+      description: "Create a new text element in Figma",
+      inputSchema: {
       x: z.coerce.number().describe("X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("Y position (local coordinates, relative to parent)"),
       text: z.string().describe("Text content"),
@@ -190,10 +197,11 @@ export function registerCreationTools(server: McpServer): void {
         .optional()
         .describe("Text resize behavior. Use HEIGHT for fixed-width text that wraps."),
       width: z
-        .number()
+        .coerce.number()
         .positive()
         .optional()
         .describe("Fixed width for the text node. Use with textAutoResize HEIGHT for wrapping text within a specific width."),
+    },
     },
     async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId, textAlignHorizontal, textAutoResize, width }) => {
       try {
@@ -227,16 +235,18 @@ export function registerCreationTools(server: McpServer): void {
               text: `Error creating text: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Create Ellipse Tool
-  server.tool(
+  server.registerTool(
     "create_ellipse",
-    "Create a new ellipse in Figma",
     {
+      description: "Create a new ellipse in Figma",
+      inputSchema: {
       x: z.coerce.number().describe("X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("Y position (local coordinates, relative to parent)"),
       width: z.coerce.number().describe("Width of the ellipse"),
@@ -260,6 +270,7 @@ export function registerCreationTools(server: McpServer): void {
         .optional()
         .describe("Stroke color in RGBA format"),
       strokeWeight: z.coerce.number().positive().optional().describe("Stroke weight"),
+    },
     },
     async ({ x, y, width, height, name, parentId, fillColor, strokeColor, strokeWeight }) => {
       try {
@@ -291,17 +302,19 @@ export function registerCreationTools(server: McpServer): void {
               type: "text",
               text: `Error creating ellipse: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Create Polygon Tool
-  server.tool(
+  server.registerTool(
     "create_polygon",
-    "Create a new polygon in Figma",
     {
+      description: "Create a new polygon in Figma",
+      inputSchema: {
       x: z.coerce.number().describe("X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("Y position (local coordinates, relative to parent)"),
       width: z.coerce.number().describe("Width of the polygon"),
@@ -326,6 +339,7 @@ export function registerCreationTools(server: McpServer): void {
         .optional()
         .describe("Stroke color in RGBA format"),
       strokeWeight: z.coerce.number().positive().optional().describe("Stroke weight"),
+    },
     },
     async ({ x, y, width, height, sides, name, parentId, fillColor, strokeColor, strokeWeight }) => {
       try {
@@ -358,17 +372,19 @@ export function registerCreationTools(server: McpServer): void {
               type: "text",
               text: `Error creating polygon: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Create Star Tool
-  server.tool(
+  server.registerTool(
     "create_star",
-    "Create a new star in Figma",
     {
+      description: "Create a new star in Figma",
+      inputSchema: {
       x: z.coerce.number().describe("X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("Y position (local coordinates, relative to parent)"),
       width: z.coerce.number().describe("Width of the star"),
@@ -394,6 +410,7 @@ export function registerCreationTools(server: McpServer): void {
         .optional()
         .describe("Stroke color in RGBA format"),
       strokeWeight: z.coerce.number().positive().optional().describe("Stroke weight"),
+    },
     },
     async ({ x, y, width, height, points, innerRadius, name, parentId, fillColor, strokeColor, strokeWeight }) => {
       try {
@@ -427,19 +444,22 @@ export function registerCreationTools(server: McpServer): void {
               type: "text",
               text: `Error creating star: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Group Nodes Tool
-  server.tool(
+  server.registerTool(
     "group_nodes",
-    "Group nodes in Figma",
     {
+      description: "Group nodes in Figma",
+      inputSchema: {
       nodeIds: coerceJson(z.array(z.string())).describe("Array of IDs of the nodes to group"),
       name: z.string().optional().describe("Optional name for the group")
+    },
     },
     async ({ nodeIds, name }) => {
       try {
@@ -470,18 +490,21 @@ export function registerCreationTools(server: McpServer): void {
               type: "text",
               text: `Error grouping nodes: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Ungroup Nodes Tool
-  server.tool(
+  server.registerTool(
     "ungroup_nodes",
-    "Ungroup nodes in Figma",
     {
+      description: "Ungroup nodes in Figma",
+      inputSchema: {
       nodeId: z.string().describe("ID of the node (group or frame) to ungroup"),
+    },
     },
     async ({ nodeId }) => {
       try {
@@ -508,21 +531,24 @@ export function registerCreationTools(server: McpServer): void {
               type: "text",
               text: `Error ungrouping node: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Clone Node Tool
-  server.tool(
+  server.registerTool(
     "clone_node",
-    "Clone an existing node in Figma",
     {
+      description: "Clone an existing node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to clone"),
       x: z.coerce.number().optional().describe("New X position for the clone (local coordinates, relative to parent)"),
       y: z.coerce.number().optional().describe("New Y position for the clone (local coordinates, relative to parent)"),
       parentId: z.string().optional().describe("The ID of the parent node to place the clone into. REQUIRED — server enforces this. Use page node ID for top-level elements.")
+    },
     },
     async ({ nodeId, x, y, parentId }) => {
       try {
@@ -543,20 +569,23 @@ export function registerCreationTools(server: McpServer): void {
               type: "text",
               text: `Error cloning node: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Insert Child Tool
-  server.tool(
+  server.registerTool(
     "insert_child",
-    "Insert a child node inside a parent node in Figma",
     {
+      description: "Insert a child node inside a parent node in Figma",
+      inputSchema: {
       parentId: z.string().describe("ID of the parent node where the child will be inserted"),
       childId: z.string().describe("ID of the child node to insert"),
       index: z.coerce.number().optional().describe("Optional index where to insert the child (if not specified, it will be added at the end)")
+    },
     },
     async ({ parentId, childId, index }) => {
       try {
@@ -588,18 +617,21 @@ export function registerCreationTools(server: McpServer): void {
               type: "text",
               text: `Error inserting child node: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Flatten Node Tool
-  server.tool(
+  server.registerTool(
     "flatten_node",
-    "Flatten a node in Figma (e.g., for boolean operations or converting to path)",
     {
+      description: "Flatten a node in Figma (e.g., for boolean operations or converting to path)",
+      inputSchema: {
       nodeId: z.string().describe("ID of the node to flatten"),
+    },
     },
     async ({ nodeId }) => {
       try {
@@ -626,20 +658,23 @@ export function registerCreationTools(server: McpServer): void {
               type: "text",
               text: `Error flattening node: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Boolean Operation Tool
-  server.tool(
+  server.registerTool(
     "boolean_operation",
-    "Perform a boolean operation (union, subtract, intersect, exclude) on two or more nodes. All nodes must share the same parent.",
     {
+      description: "Perform a boolean operation (union, subtract, intersect, exclude) on two or more nodes. All nodes must share the same parent.",
+      inputSchema: {
       nodeIds: coerceJson(z.array(z.string()).min(2)).describe("Array of node IDs to combine (minimum 2). Order matters for SUBTRACT."),
       operation: z.enum(["UNION", "SUBTRACT", "INTERSECT", "EXCLUDE"]).describe("Boolean operation type"),
       name: z.string().optional().describe("Optional name for the resulting node"),
+    },
     },
     async ({ nodeIds, operation, name }) => {
       try {
@@ -665,6 +700,7 @@ export function registerCreationTools(server: McpServer): void {
               text: `Error performing boolean operation: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }

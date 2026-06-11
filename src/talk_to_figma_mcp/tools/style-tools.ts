@@ -9,10 +9,11 @@ import { coerceJson } from "../utils/schema-helpers";
  * @param server - The MCP server instance
  */
 export function registerStyleTools(server: McpServer): void {
-  server.tool(
+  server.registerTool(
     "create_text_style",
-    "Create a reusable text style (typography) in Figma's local styles. This is useful for design system consistency.",
     {
+      description: "Create a reusable text style (typography) in Figma's local styles. This is useful for design system consistency.",
+      inputSchema: {
       name: z.string().describe("Name for the style (e.g., 'Heading/H1' or 'Body/Large')"),
       fontFamily: z.string().describe("Font family name (e.g., 'Inter', 'Roboto')"),
       fontStyle: z.string().optional().describe("Font style (e.g., 'Regular', 'Bold', 'Italic'). Defaults to 'Regular'."),
@@ -23,6 +24,7 @@ export function registerStyleTools(server: McpServer): void {
       lineHeightUnit: z.enum(["PIXELS", "PERCENT", "AUTO"]).optional().describe("Line height unit (PIXELS, PERCENT, or AUTO, defaults to AUTO if no value provided)"),
       textCase: z.enum(["ORIGINAL", "UPPER", "LOWER", "TITLE"]).optional().describe("Text case transformation"),
       textDecoration: z.enum(["NONE", "UNDERLINE", "STRIKETHROUGH"]).optional().describe("Text decoration type"),
+    },
     },
     async ({
       name,
@@ -73,15 +75,17 @@ export function registerStyleTools(server: McpServer): void {
     }
   );
 
-  server.tool(
+  server.registerTool(
     "create_paint_style",
-    "Create a reusable color/paint style (SOLID) in Figma's local styles.",
     {
+      description: "Create a reusable color/paint style (SOLID) in Figma's local styles.",
+      inputSchema: {
       name: z.string().describe("Name for the style (e.g., 'Brand/Primary' or 'UI/Background')"),
       r: z.number().min(0).max(1).describe("Red component (0-1)"),
       g: z.number().min(0).max(1).describe("Green component (0-1)"),
       b: z.number().min(0).max(1).describe("Blue component (0-1)"),
       a: z.number().min(0).max(1).optional().describe("Alpha/opacity (0-1, default 1)"),
+    },
     },
     async ({ name, r, g, b, a = 1 }) => {
       try {
@@ -116,10 +120,11 @@ export function registerStyleTools(server: McpServer): void {
     }
   );
 
-  server.tool(
+  server.registerTool(
     "create_effect_style",
-    "Create a reusable effect style (shadows, blurs) in Figma's local styles.",
     {
+      description: "Create a reusable effect style (shadows, blurs) in Figma's local styles.",
+      inputSchema: {
       name: z.string().describe("Name for the style (e.g., 'Shadow/Medium' or 'Glass/Blur')"),
       effects: coerceJson(
         z.array(
@@ -148,6 +153,7 @@ export function registerStyleTools(server: McpServer): void {
           })
         )
       ).describe("Array of effects to apply and store in the style"),
+    },
     },
     async ({ name, effects }) => {
       try {

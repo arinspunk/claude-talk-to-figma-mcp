@@ -48,7 +48,7 @@ async function readFigmaResource(
 export function registerResources(server: McpServer): void {
   // Live current selection — the agent can read this to know what the user has
   // selected without a manual get_selection() tool call.
-  server.resource(
+  server.registerResource(
     "figma-selection",
     "figma://local/selection",
     {
@@ -60,7 +60,7 @@ export function registerResources(server: McpServer): void {
   );
 
   // Live document overview — current page, pages, and top-level structure.
-  server.resource(
+  server.registerResource(
     "figma-document",
     "figma://local/document",
     {

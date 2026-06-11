@@ -10,14 +10,16 @@ import { coerceJson } from "../utils/schema-helpers";
  */
 export function registerComponentTools(server: McpServer): void {
   // Create Component Instance Tool
-  server.tool(
+  server.registerTool(
     "create_component_instance",
-    "Create an instance of a component in Figma",
     {
+      description: "Create an instance of a component in Figma",
+      inputSchema: {
       componentKey: z.string().describe("Key of the component to instantiate"),
       x: z.coerce.number().describe("X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("Y position (local coordinates, relative to parent)"),
       parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+    },
     },
     async ({ componentKey, x, y, parentId }) => {
       try {
@@ -44,19 +46,22 @@ export function registerComponentTools(server: McpServer): void {
               text: `Error creating component instance: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Create Component from Node Tool
-  server.tool(
+  server.registerTool(
     "create_component_from_node",
-    "Convert an existing node (frame, group, etc.) into a reusable component in Figma",
     {
+      description: "Convert an existing node (frame, group, etc.) into a reusable component in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to convert into a component"),
       name: z.string().optional().describe("Optional new name for the component"),
       parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+    },
     },
     async ({ nodeId, name, parentId }) => {
       try {
@@ -82,19 +87,22 @@ export function registerComponentTools(server: McpServer): void {
               text: `Error creating component from node: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Create Component Set from Components Tool
-  server.tool(
+  server.registerTool(
     "create_component_set",
-    "Create a component set (variants) from multiple component nodes in Figma",
     {
+      description: "Create a component set (variants) from multiple component nodes in Figma",
+      inputSchema: {
       componentIds: coerceJson(z.array(z.string())).describe("Array of component node IDs to combine into a component set"),
       name: z.string().optional().describe("Optional name for the component set"),
       parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+    },
     },
     async ({ componentIds, name, parentId }) => {
       try {
@@ -120,18 +128,21 @@ export function registerComponentTools(server: McpServer): void {
               text: `Error creating component set: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Instance Variant Tool
-  server.tool(
+  server.registerTool(
     "set_instance_variant",
-    "Change the variant properties of a component instance without recreating it. This preserves instance overrides and is more efficient than delete + create workflow.",
     {
+      description: "Change the variant properties of a component instance without recreating it. This preserves instance overrides and is more efficient than delete + create workflow.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the instance node to modify"),
       properties: coerceJson(z.record(z.string())).describe("Variant properties to set as key-value pairs (e.g., { \"State\": \"Hover\", \"Size\": \"Large\" })"),
+    },
     },
     async ({ nodeId, properties }) => {
       try {
@@ -156,16 +167,18 @@ export function registerComponentTools(server: McpServer): void {
               text: `Error setting instance variant: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Reactions Tool (Prototype Interactions)
-  server.tool(
+  server.registerTool(
     "set_reactions",
-    "Set prototype interactions (reactions) on a node in Figma. Use this to add hover effects, click interactions, etc. For component variants, set on the default variant to add 'While hovering -> Change to hover variant' interactions.",
     {
+      description: "Set prototype interactions (reactions) on a node in Figma. Use this to add hover effects, click interactions, etc. For component variants, set on the default variant to add 'While hovering -> Change to hover variant' interactions.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to set reactions on"),
       reactions: coerceJson(
         z.array(
@@ -237,6 +250,7 @@ export function registerComponentTools(server: McpServer): void {
         )
       ).describe("Array of reactions to set on the node"),
     },
+    },
     async ({ nodeId, reactions }) => {
       try {
         const result = await sendCommandToFigma("set_reactions", {
@@ -251,6 +265,7 @@ export function registerComponentTools(server: McpServer): void {
               text: JSON.stringify(typedResult, null, 2),
             },
           ],
+          structuredContent: typedResult,
         };
       } catch (error) {
         return {
@@ -262,17 +277,21 @@ export function registerComponentTools(server: McpServer): void {
               }`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Get Reactions (Prototype Interactions) Tool
-  server.tool(
+  server.registerTool(
     "get_reactions",
-    "Read all prototype interactions (reactions) from a node in Figma. Useful for debugging and inspecting existing interactions.",
     {
+      description: "Read all prototype interactions (reactions) from a node in Figma. Useful for debugging and inspecting existing interactions.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to read reactions from"),
+    },
+      annotations: { readOnlyHint: true },
     },
     async ({ nodeId }) => {
       try {
@@ -287,6 +306,7 @@ export function registerComponentTools(server: McpServer): void {
               text: JSON.stringify(typedResult, null, 2),
             },
           ],
+          structuredContent: typedResult,
         };
       } catch (error) {
         return {
@@ -298,17 +318,20 @@ export function registerComponentTools(server: McpServer): void {
               }`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Detach Instance Tool
-  server.tool(
+  server.registerTool(
     "detach_instance",
-    "Detach a component instance, converting it into a regular frame. This breaks the link with the main component.",
     {
+      description: "Detach a component instance, converting it into a regular frame. This breaks the link with the main component.",
+      inputSchema: {
       instanceId: z.string().describe("The ID of the instance to detach"),
+    },
     },
     async ({ instanceId }) => {
       try {

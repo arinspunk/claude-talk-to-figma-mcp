@@ -38,10 +38,11 @@ beforeEach(() => {
   mockSend.mockReset();
 
   const server = new McpServer({ name: 'test', version: '1.1.0' }, { capabilities: { tools: {} } });
-  const orig = server.tool.bind(server);
-  jest.spyOn(server, 'tool').mockImplementation((...args: any[]) => {
-    if (args.length === 4) {
-      const [name, , schema, handler] = args;
+  const orig = server.registerTool.bind(server);
+  jest.spyOn(server, 'registerTool').mockImplementation((...args: any[]) => {
+    if (args.length === 3) {
+      const [name, config, handler] = args;
+      const schema = config.inputSchema ?? {};
       handlers.set(name, { handler, schema: z.object(schema) });
     }
     return (orig as any)(...args);

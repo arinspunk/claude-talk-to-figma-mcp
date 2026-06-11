@@ -5,10 +5,10 @@
     "": {
       "name": "cursor-talk-to-figma-mcp",
       "dependencies": {
-        "@modelcontextprotocol/sdk": "latest",
+        "@modelcontextprotocol/sdk": "^1.29.0",
         "pngjs": "^7.0.0",
-        "uuid": "latest",
-        "ws": "latest",
+        "uuid": "^11.1.0",
+        "ws": "^8.18.1",
         "zod": "^3.25.0",
       },
       "devDependencies": {

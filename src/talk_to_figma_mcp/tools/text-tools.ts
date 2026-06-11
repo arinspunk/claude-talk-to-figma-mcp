@@ -10,12 +10,14 @@ import { coerceJson } from "../utils/schema-helpers";
  */
 export function registerTextTools(server: McpServer): void {
   // Set Text Content Tool
-  server.tool(
+  server.registerTool(
     "set_text_content",
-    "Set the text content of an existing text node in Figma",
     {
+      description: "Set the text content of an existing text node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       text: z.string().describe("New text content"),
+    },
     },
     async ({ nodeId, text }) => {
       try {
@@ -40,16 +42,18 @@ export function registerTextTools(server: McpServer): void {
               text: `Error setting text content: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Multiple Text Contents Tool
-  server.tool(
+  server.registerTool(
     "set_multiple_text_contents",
-    "Set multiple text contents parallelly in a node",
     {
+      description: "Set multiple text contents parallelly in a node",
+      inputSchema: {
       nodeId: z
         .string()
         .describe("The ID of the node containing the text nodes to replace"),
@@ -61,8 +65,10 @@ export function registerTextTools(server: McpServer): void {
           })
         ))
         .describe("Array of text node IDs and their replacement texts"),
+      highlight: z.coerce.boolean().optional().describe("Briefly highlight each node while its text is replaced (default false — slows down large replacements)."),
     },
-    async ({ nodeId, text }, extra) => {
+    },
+    async ({ nodeId, text, highlight }) => {
       try {
         if (!text || text.length === 0) {
           return {
@@ -75,20 +81,13 @@ export function registerTextTools(server: McpServer): void {
           };
         }
 
-        // Initial response to indicate we're starting the process
-        const initialStatus = {
-          type: "text" as const,
-          text: `Starting text replacement for ${text.length} nodes. This will be processed in batches of 5...`,
-        };
-
-        // Track overall progress
-        let totalProcessed = 0;
         const totalToProcess = text.length;
 
         // Use the plugin's set_multiple_text_contents function with chunking
         const result = await sendCommandToFigma("set_multiple_text_contents", {
           nodeId,
           text,
+          highlight: highlight ?? false,
         });
 
         // Cast the result to a specific type to work with it safely
@@ -111,7 +110,6 @@ export function registerTextTools(server: McpServer): void {
         const typedResult = result as TextReplaceResult;
 
         // Format the results for display
-        const success = typedResult.replacementsApplied && typedResult.replacementsApplied > 0;
         const progressText = `
         Text replacement completed:
         - ${typedResult.replacementsApplied || 0} of ${totalToProcess} successfully updated
@@ -133,7 +131,6 @@ export function registerTextTools(server: McpServer): void {
 
         return {
           content: [
-            initialStatus,
             {
               type: "text" as const,
               text: progressText + detailedResponse,
@@ -148,19 +145,22 @@ export function registerTextTools(server: McpServer): void {
               text: `Error setting multiple text contents: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Font Name Tool
-  server.tool(
+  server.registerTool(
     "set_font_name",
-    "Set the font name and style of a text node in Figma",
     {
+      description: "Set the font name and style of a text node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       family: z.string().describe("Font family name"),
       style: z.string().optional().describe("Font style (e.g., 'Regular', 'Bold', 'Italic')"),
+    },
     },
     async ({ nodeId, family, style }) => {
       try {
@@ -185,19 +185,22 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: `Error setting font name: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Font Size Tool
-  server.tool(
+  server.registerTool(
     "set_font_size",
-    "Set the font size of a text node in Figma",
     {
+      description: "Set the font size of a text node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       fontSize: z.coerce.number().positive().describe("Font size in pixels"),
+    },
     },
     async ({ nodeId, fontSize }) => {
       try {
@@ -221,19 +224,22 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: `Error setting font size: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Font Weight Tool
-  server.tool(
+  server.registerTool(
     "set_font_weight",
-    "Set the font weight of a text node in Figma",
     {
+      description: "Set the font weight of a text node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       weight: z.coerce.number().describe("Font weight (100, 200, 300, 400, 500, 600, 700, 800, 900)"),
+    },
     },
     async ({ nodeId, weight }) => {
       try {
@@ -257,20 +263,23 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: `Error setting font weight: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Letter Spacing Tool
-  server.tool(
+  server.registerTool(
     "set_letter_spacing",
-    "Set the letter spacing of a text node in Figma",
     {
+      description: "Set the letter spacing of a text node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       letterSpacing: z.coerce.number().describe("Letter spacing value"),
       unit: z.enum(["PIXELS", "PERCENT"]).optional().describe("Unit type (PIXELS or PERCENT)"),
+    },
     },
     async ({ nodeId, letterSpacing, unit }) => {
       try {
@@ -295,20 +304,23 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: `Error setting letter spacing: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Line Height Tool
-  server.tool(
+  server.registerTool(
     "set_line_height",
-    "Set the line height of a text node in Figma",
     {
+      description: "Set the line height of a text node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       lineHeight: z.coerce.number().describe("Line height value"),
       unit: z.enum(["PIXELS", "PERCENT", "AUTO"]).optional().describe("Unit type (PIXELS, PERCENT, or AUTO)"),
+    },
     },
     async ({ nodeId, lineHeight, unit }) => {
       try {
@@ -333,19 +345,22 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: `Error setting line height: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Paragraph Spacing Tool
-  server.tool(
+  server.registerTool(
     "set_paragraph_spacing",
-    "Set the paragraph spacing of a text node in Figma",
     {
+      description: "Set the paragraph spacing of a text node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       paragraphSpacing: z.coerce.number().describe("Paragraph spacing value in pixels"),
+    },
     },
     async ({ nodeId, paragraphSpacing }) => {
       try {
@@ -369,19 +384,22 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: `Error setting paragraph spacing: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Text Case Tool
-  server.tool(
+  server.registerTool(
     "set_text_case",
-    "Set the text case of a text node in Figma",
     {
+      description: "Set the text case of a text node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       textCase: z.enum(["ORIGINAL", "UPPER", "LOWER", "TITLE"]).describe("Text case type"),
+    },
     },
     async ({ nodeId, textCase }) => {
       try {
@@ -405,19 +423,22 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: `Error setting text case: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Text Decoration Tool
-  server.tool(
+  server.registerTool(
     "set_text_decoration",
-    "Set the text decoration of a text node in Figma",
     {
+      description: "Set the text decoration of a text node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       textDecoration: z.enum(["NONE", "UNDERLINE", "STRIKETHROUGH"]).describe("Text decoration type"),
+    },
     },
     async ({ nodeId, textDecoration }) => {
       try {
@@ -441,17 +462,19 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: `Error setting text decoration: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Get Styled Text Segments Tool
-  server.tool(
+  server.registerTool(
     "get_styled_text_segments",
-    "Get text segments with specific styling in a text node",
     {
+      description: "Get text segments with specific styling in a text node",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the text node to analyze"),
       property: z.enum([
         "fillStyleId", 
@@ -466,6 +489,8 @@ export function registerTextTools(server: McpServer): void {
         "fontWeight"
       ]).describe("The style property to analyze segments by"),
     },
+      annotations: { readOnlyHint: true },
+    },
     async ({ nodeId, property }) => {
       try {
         const result = await sendCommandToFigma("get_styled_text_segments", {
@@ -479,7 +504,8 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: JSON.stringify(result, null, 2)
             }
-          ]
+          ],
+          structuredContent: { segments: result } as Record<string, unknown>,
         };
       } catch (error) {
         return {
@@ -488,19 +514,22 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: `Error getting styled text segments: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Text Style ID Tool
-  server.tool(
+  server.registerTool(
     "set_text_style_id",
-    "Apply a text style to a text node in Figma",
     {
+      description: "Apply a text style to a text node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       textStyleId: z.string().describe("The ID of the text style to apply"),
+    },
     },
     async ({ nodeId, textStyleId }) => {
       try {
@@ -524,19 +553,22 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: `Error setting text style: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Load Font Async Tool
-  server.tool(
+  server.registerTool(
     "load_font_async",
-    "Load a font asynchronously in Figma",
     {
+      description: "Load a font asynchronously in Figma",
+      inputSchema: {
       family: z.string().describe("Font family name"),
       style: z.string().optional().describe("Font style (e.g., 'Regular', 'Bold', 'Italic')"),
+    },
     },
     async ({ family, style }) => {
       try {
@@ -560,20 +592,23 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: `Error loading font: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Text Align Tool
-  server.tool(
+  server.registerTool(
     "set_text_align",
-    "Set the text alignment of a text node in Figma. Use textAlignHorizontal RIGHT for RTL/Arabic text.",
     {
+      description: "Set the text alignment of a text node in Figma. Use textAlignHorizontal RIGHT for RTL/Arabic text.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       textAlignHorizontal: z.enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"]).optional().describe("Horizontal text alignment (LEFT, CENTER, RIGHT, JUSTIFIED). Use RIGHT for Arabic/RTL text."),
       textAlignVertical: z.enum(["TOP", "CENTER", "BOTTOM"]).optional().describe("Vertical text alignment (TOP, CENTER, BOTTOM)"),
+    },
     },
     async ({ nodeId, textAlignHorizontal, textAlignVertical }) => {
       try {
@@ -598,18 +633,22 @@ export function registerTextTools(server: McpServer): void {
               type: "text",
               text: `Error setting text alignment: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Get Fonts Used Tool — inventory fonts in a selection for web-font setup
-  server.tool(
+  server.registerTool(
     "get_fonts_used",
-    "List every font (family, style, sizes, occurrence count) used within a node's subtree. Use this before generating code to set up @font-face or pick correct web-font equivalents and avoid font mismatches. Defaults to the current selection.",
     {
+      description: "List every font (family, style, sizes, occurrence count) used within a node's subtree. Use this before generating code to set up @font-face or pick correct web-font equivalents and avoid font mismatches. Defaults to the current selection.",
+      inputSchema: {
       nodeId: z.string().optional().describe("Node to inspect. Omit to use the current selection."),
+    },
+      annotations: { readOnlyHint: true },
     },
     async ({ nodeId }) => {
       try {
@@ -646,6 +685,7 @@ export function registerTextTools(server: McpServer): void {
               text: `Error getting fonts used: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }

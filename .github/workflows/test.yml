@@ -2,35 +2,42 @@ name: Tests
 
 on:
   push:
+  pull_request:
 
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
     name: Build & Test
-    
+
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
-    
+        node-version: [20.x, 22.x]
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Setup Bun
       uses: oven-sh/setup-bun@v1
       with:
         bun-version: latest
-        
+
     - name: Setup Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
-        
+
     - name: Install dependencies
       run: bun install
-      
+
+    - name: Typecheck
+      run: bun run typecheck
+
     - name: Build project
       run: bun run build
-      
-    - name: Run all tests
+
+    - name: Run unit & integration tests
       run: bun run test
+
+    - name: Run socket relay tests
+      run: bun run test:socket

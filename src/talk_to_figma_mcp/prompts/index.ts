@@ -11,9 +11,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
  */
 export function registerPrompts(server: McpServer): void {
   // Design Strategy Prompt
-  server.prompt(
+  server.registerPrompt(
     "design_strategy",
-    "Best practices for working with Figma designs",
+    {
+      description:
+        "Best practices for working with Figma designs",
+    },
     (extra) => {
       return {
         messages: [
@@ -55,7 +58,7 @@ export function registerPrompts(server: McpServer): void {
      * Use strokeColor for borders
      * Set proper fontWeight for different text elements
 
-6. Mofifying existing elements:
+6. Modifying existing elements:
   - use set_text_content() to modify text content.
 
 7. Visual Hierarchy:
@@ -99,9 +102,12 @@ Example Login Screen Structure:
   );
 
   // Read Design Strategy Prompt
-  server.prompt(
+  server.registerPrompt(
     "read_design_strategy",
-    "Best practices for reading Figma designs",
+    {
+      description:
+        "Best practices for reading Figma designs",
+    },
     (extra) => {
       return {
         messages: [
@@ -128,9 +134,12 @@ Example Login Screen Structure:
   );
 
   // Text Replacement Strategy Prompt
-  server.prompt(
+  server.registerPrompt(
     "text_replacement_strategy",
-    "Systematic approach for replacing text in Figma designs",
+    {
+      description:
+        "Systematic approach for replacing text in Figma designs",
+    },
     (extra) => {
       return {
         messages: [
@@ -262,9 +271,12 @@ Remember that text is never just text—it's a core design element that must wor
   );
 
   // Accessibility Audit Prompt (/audit-accessibility)
-  server.prompt(
+  server.registerPrompt(
     "audit-accessibility",
-    "Audit the current Figma selection for accessibility issues (contrast, text size, touch targets, hierarchy)",
+    {
+      description:
+        "Audit the current Figma selection for accessibility issues (contrast, text size, touch targets, hierarchy)",
+    },
     (extra) => {
       return {
         messages: [
@@ -300,9 +312,12 @@ Produce a prioritized list grouped by severity (Critical / Serious / Minor), eac
   );
 
   // Export to Tailwind Prompt (/export-to-tailwind)
-  server.prompt(
+  server.registerPrompt(
     "export-to-tailwind",
-    "Convert the current Figma selection into clean HTML + Tailwind CSS markup",
+    {
+      description:
+        "Convert the current Figma selection into clean HTML + Tailwind CSS markup",
+    },
     (extra) => {
       return {
         messages: [

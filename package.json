@@ -1,7 +1,7 @@
 {
   "name": "claude-talk-to-figma-mcp",
   "description": "Claude Desktop Talk to Figma MCP",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "module": "dist/talk_to_figma_mcp/server.js",
   "main": "dist/talk_to_figma_mcp/server.js",
   "bin": {
@@ -36,7 +36,7 @@
     "build:watch": "tsup --watch",
     "dev": "bun run build:watch",
     "pack": "dxt pack",
-    "sync-version": "VERSION=$(jq -r '.version' package.json) && jq --arg version \"$VERSION\" '.version = $version' manifest.json > manifest.tmp && mv manifest.tmp manifest.json",
+    "sync-version": "VERSION=$(jq -r '.version' package.json) && jq --arg version \"$VERSION\" '.version = $version' manifest.json > manifest.tmp && mv manifest.tmp manifest.json && sed -i.bak -E \"s/version: \\\"[0-9]+\\.[0-9]+\\.[0-9]+\\\"/version: \\\"$VERSION\\\"/\" src/talk_to_figma_mcp/config/config.ts && rm -f src/talk_to_figma_mcp/config/config.ts.bak",
     "build:dxt": "npm run sync-version && npm run build && npm run pack",
     "pub:release": "bun run build && npm publish",
     "configure-claude": "node scripts/configure-claude.js",
@@ -59,10 +59,10 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "latest",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "pngjs": "^7.0.0",
-    "uuid": "latest",
-    "ws": "latest",
+    "uuid": "^11.1.0",
+    "ws": "^8.18.1",
     "zod": "^3.25.0"
   },
   "keywords": [

@@ -20,10 +20,11 @@ import path from "path";
  *    100KB SVG of an embedded photo, or a blurry PNG of a one-line divider).
  */
 export function registerAssetTools(server: McpServer): void {
-  server.tool(
+  server.registerTool(
     "extract_asset",
-    "Export a Figma node as a CLEAN asset (effects temporarily stripped) at the same resolution, and get its effects back as ready-to-use CSS. Use this when a node has a drop shadow/blur (so the export isn't bloated by bleed and misaligned) or an effect that doesn't survive export (NOISE/TEXTURE blank the node in a browser): you get a crisp PNG/SVG plus the box-shadow/filter to reapply in code. Writes the asset to disk and returns its path; raw bytes never enter the conversation.",
     {
+      description: "Export a Figma node as a CLEAN asset (effects temporarily stripped) at the same resolution, and get its effects back as ready-to-use CSS. Use this when a node has a drop shadow/blur (so the export isn't bloated by bleed and misaligned) or an effect that doesn't survive export (NOISE/TEXTURE blank the node in a browser): you get a crisp PNG/SVG plus the box-shadow/filter to reapply in code. Writes the asset to disk and returns its path; raw bytes never enter the conversation.",
+      inputSchema: {
       nodeId: z.string().describe("The node to export."),
       format: z.enum(["PNG", "SVG", "JPG"]).optional().describe("Export format (default PNG). Use SVG only for clean vector art — see classify_asset."),
       scale: z.coerce.number().positive().optional().describe("Raster scale for PNG/JPG (default 2)."),
@@ -31,6 +32,7 @@ export function registerAssetTools(server: McpServer): void {
       effectScale: z.coerce.number().positive().optional().describe("Multiplier applied to the CSS effect lengths (default 1 = design px). Set if your CSS units differ from Figma px."),
       outDir: z.string().optional().describe("Directory to write the asset into (default: ./figma-assets)."),
       filename: z.string().optional().describe("Override the output filename (extension set automatically)."),
+    },
     },
     async ({ nodeId, format, scale, stripScope, effectScale, outDir, filename }) => {
       try {
@@ -102,17 +104,19 @@ export function registerAssetTools(server: McpServer): void {
 
         return { content: [{ type: "text", text: lines.join("\n") }] };
       } catch (error) {
-        return { content: [{ type: "text", text: `Error extracting asset: ${error instanceof Error ? error.message : String(error)}` }] };
+        return { content: [{ type: "text", text: `Error extracting asset: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     }
   );
 
-  server.tool(
+  server.registerTool(
     "classify_asset",
-    "Inspect a Figma node's subtree and recommend how to bring it into code: a raster PNG, an inline SVG, or pure CSS — with reasons. Catches the common mistakes: shipping an SVG that embeds a photo, rasterizing a one-line divider, or trying to SVG-export a node with NOISE/blend/mask that won't survive. Run it before extracting an asset when you're unsure.",
     {
+      description: "Inspect a Figma node's subtree and recommend how to bring it into code: a raster PNG, an inline SVG, or pure CSS — with reasons. Catches the common mistakes: shipping an SVG that embeds a photo, rasterizing a one-line divider, or trying to SVG-export a node with NOISE/blend/mask that won't survive. Run it before extracting an asset when you're unsure.",
+      inputSchema: {
       nodeId: z.string().optional().describe("Node to classify. Omit to use the current selection."),
       includeSignals: coerceBoolean.optional().describe("Include the raw detected signals in the output (default false)."),
+    },
     },
     async ({ nodeId, includeSignals }) => {
       try {
@@ -136,7 +140,7 @@ export function registerAssetTools(server: McpServer): void {
         }
         return { content: [{ type: "text", text: lines.join("\n") }] };
       } catch (error) {
-        return { content: [{ type: "text", text: `Error classifying asset: ${error instanceof Error ? error.message : String(error)}` }] };
+        return { content: [{ type: "text", text: `Error classifying asset: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     }
   );
