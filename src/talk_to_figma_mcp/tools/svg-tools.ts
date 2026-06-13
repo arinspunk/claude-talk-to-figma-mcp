@@ -17,7 +17,7 @@ export function registerSvgTools(server: McpServer): void {
       x: z.coerce.number().optional().describe("X position for the imported SVG (default: 0)"),
       y: z.coerce.number().optional().describe("Y position for the imported SVG (default: 0)"),
       name: z.string().optional().describe("Optional name for the imported node"),
-      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+      parentId: z.string().describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
     },
     async ({ svgString, x, y, name, parentId }) => {

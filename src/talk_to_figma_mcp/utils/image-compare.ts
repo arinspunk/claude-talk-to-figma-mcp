@@ -55,7 +55,9 @@ function toGrid(img: RgbaImage, gw: number, gh: number): { gray: Float64Array; r
 }
 
 function hexToRgb(hex: string): [number, number, number] | null {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  let t = hex.trim().replace(/^#/, "");
+  if (/^[0-9a-f]{3}$/i.test(t)) t = t.replace(/./g, (c) => c + c); // #fff → #ffffff
+  const m = /^([0-9a-f]{6})$/i.exec(t);
   if (!m) return null;
   const n = parseInt(m[1], 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -135,15 +137,35 @@ function buildGrids(renderPng: Buffer, referencePng: Buffer) {
   return { a: toGrid(render, GW, GH), b: toGrid(reference, GW, GH), GW, GH };
 }
 
+/** Precomputed decode + grid + SSIM data, shareable between compareImages and writeDiffHeatmap. */
+export interface ComparisonData {
+  a: { gray: Float64Array; rgb: Float64Array };
+  b: { gray: Float64Array; rgb: Float64Array };
+  GW: number;
+  GH: number;
+  mssim: number;
+  cell: Float64Array;
+}
+
+/**
+ * Decode both PNGs, build the comparison grids, and run SSIM — the expensive
+ * part of a comparison. Pass the result to compareImages/writeDiffHeatmap to
+ * avoid doing this work twice on the same pair of buffers.
+ */
+export function prepareComparison(renderPng: Buffer, referencePng: Buffer): ComparisonData {
+  const { a, b, GW, GH } = buildGrids(renderPng, referencePng);
+  const { mssim, cell } = ssimMap(a.gray, b.gray, GW, GH);
+  return { a, b, GW, GH, mssim, cell };
+}
+
 export function compareImages(
   renderPng: Buffer,
   referencePng: Buffer,
-  opts: { targetColor?: string } = {}
+  opts: { targetColor?: string } = {},
+  pre?: ComparisonData
 ): CompareResult {
-  const { a, b, GW, GH } = buildGrids(renderPng, referencePng);
-
   // Structural similarity (headline) + per-cell map for localization.
-  const { mssim, cell } = ssimMap(a.gray, b.gray, GW, GH);
+  const { a, b, GW, GH, mssim, cell } = pre ?? prepareComparison(renderPng, referencePng);
 
   // Raw grayscale + color diffs (continuity + a chroma signal SSIM ignores).
   let total = 0, colorTotal = 0;
@@ -233,10 +255,10 @@ export function writeDiffHeatmap(
   renderPng: Buffer,
   referencePng: Buffer,
   outPath: string,
-  cellPx = 6
+  cellPx = 6,
+  pre?: ComparisonData
 ): { width: number; height: number } {
-  const { a, b, GW, GH } = buildGrids(renderPng, referencePng);
-  const { cell } = ssimMap(a.gray, b.gray, GW, GH);
+  const { b, GW, GH, cell } = pre ?? prepareComparison(renderPng, referencePng);
 
   const W = GW * cellPx, H = GH * cellPx;
   const out = new PNG({ width: W, height: H });

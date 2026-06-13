@@ -17,7 +17,7 @@ export function registerPrompts(server: McpServer): void {
       description:
         "Best practices for working with Figma designs",
     },
-    (extra) => {
+    (_extra) => {
       return {
         messages: [
           {
@@ -108,7 +108,7 @@ Example Login Screen Structure:
       description:
         "Best practices for reading Figma designs",
     },
-    (extra) => {
+    (_extra) => {
       return {
         messages: [
           {
@@ -140,7 +140,7 @@ Example Login Screen Structure:
       description:
         "Systematic approach for replacing text in Figma designs",
     },
-    (extra) => {
+    (_extra) => {
       return {
         messages: [
           {
@@ -277,7 +277,7 @@ Remember that text is never just text—it's a core design element that must wor
       description:
         "Audit the current Figma selection for accessibility issues (contrast, text size, touch targets, hierarchy)",
     },
-    (extra) => {
+    (_extra) => {
       return {
         messages: [
           {
@@ -318,7 +318,7 @@ Produce a prioritized list grouped by severity (Critical / Serious / Minor), eac
       description:
         "Convert the current Figma selection into clean HTML + Tailwind CSS markup",
     },
-    (extra) => {
+    (_extra) => {
       return {
         messages: [
           {

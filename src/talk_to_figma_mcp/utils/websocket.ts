@@ -1,8 +1,8 @@
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
-import { logger } from "./logger";
+import { logger, truncateForLog } from "./logger";
 import { serverUrl, defaultPort, WS_URL, reconnectInterval } from "../config/config";
-import { FigmaCommand, FigmaResponse, CommandProgressUpdate, PendingRequest, ProgressMessage } from "../types";
+import { FigmaCommand, PendingRequest, RelayMessage } from "../types";
 
 // WebSocket connection and request tracking
 let ws: WebSocket | null = null;
@@ -82,15 +82,17 @@ export function connectToFigma(port: number = defaultPort) {
 
     ws.on("message", (data: any) => {
       try {
-        const json = JSON.parse(data) as ProgressMessage;
+        const json = JSON.parse(data) as RelayMessage;
 
         // Handle queue position updates from server-side command queue
-        if ((json as any).type === 'queue_position') {
-          const queueRequestId = (json as any).id;
+        if (json.type === 'queue_position') {
+          const queueRequestId = json.id;
           if (queueRequestId && pendingRequests.has(queueRequestId)) {
             const request = pendingRequests.get(queueRequestId)!;
             request.lastActivity = Date.now();
-            // Reset timeout — command is queued and will be processed eventually
+            // Re-arm the caller's own inactivity budget — replacing it with a
+            // fixed long timeout would stretch short-timeout calls (e.g. 15s
+            // resource reads) to minutes whenever the queue is non-empty.
             clearTimeout(request.timeout);
             request.timeout = setTimeout(() => {
               if (pendingRequests.has(queueRequestId)) {
@@ -98,14 +100,14 @@ export function connectToFigma(port: number = defaultPort) {
                 pendingRequests.delete(queueRequestId);
                 request.reject(new Error('Request to Figma timed out while queued'));
               }
-            }, 300000); // 5 min timeout while queued
+            }, request.timeoutMs);
           }
           return;
         }
 
         // Handle progress updates
         if (json.type === 'progress_update') {
-          const progressData = json.message.data as CommandProgressUpdate;
+          const progressData = json.message.data;
           const requestId = json.id || '';
 
           if (requestId && pendingRequests.has(requestId)) {
@@ -114,17 +116,17 @@ export function connectToFigma(port: number = defaultPort) {
             // Update last activity timestamp
             request.lastActivity = Date.now();
 
-            // Reset the timeout to prevent timeouts during long-running operations
+            // Reset the timeout to prevent timeouts during long-running operations:
+            // each progress update grants the caller's own inactivity budget again
+            // (never more than the caller asked for in the first place).
             clearTimeout(request.timeout);
-
-            // Create a new timeout with extended time for long operations
             request.timeout = setTimeout(() => {
               if (pendingRequests.has(requestId)) {
                 logger.error(`Request ${requestId} timed out after extended period of inactivity`);
                 pendingRequests.delete(requestId);
                 request.reject(new Error('Request to Figma timed out'));
               }
-            }, 120000); // 120 second timeout for inactivity during progress updates
+            }, request.timeoutMs);
 
             // Log progress
             logger.info(`Progress update for ${progressData.commandType}: ${progressData.progress}% - ${progressData.message}`);
@@ -142,9 +144,21 @@ export function connectToFigma(port: number = defaultPort) {
           return;
         }
 
-        // Handle regular responses
+        // The relay never sends protocol pings to agents, but stay defensive.
+        if (json.type === 'ping' || json.type === 'pong') {
+          return;
+        }
+
+        // Handle regular responses (system / error / broadcast frames)
         const myResponse = json.message;
-        logger.debug(`Received message: ${JSON.stringify(myResponse)}`);
+
+        // Plain informational strings ("Please join a channel…") need no routing.
+        if (typeof myResponse === 'string') {
+          logger.debug(() => `Relay says: ${myResponse}`);
+          return;
+        }
+
+        logger.debug(() => `Received message: ${truncateForLog(myResponse)}`);
 
         // Skip command echoes (own messages broadcast back to sender)
         if (myResponse.command) {
@@ -171,8 +185,9 @@ export function connectToFigma(port: number = defaultPort) {
 
           pendingRequests.delete(myResponse.id);
         } else {
-          // Handle broadcast messages or events
-          logger.info(`Received broadcast message: ${JSON.stringify(myResponse)}`);
+          // Handle broadcast messages or events (truncated: orphaned responses
+          // can carry full image payloads)
+          logger.info(() => `Received broadcast message: ${truncateForLog(myResponse)}`);
         }
       } catch (error) {
         logger.error(`Error parsing message: ${error instanceof Error ? error.message : String(error)}`);
@@ -359,6 +374,7 @@ export async function sendCommandToFigma(
       resolve,
       reject,
       timeout,
+      timeoutMs,
       lastActivity: Date.now()
     });
 
@@ -370,7 +386,7 @@ export async function sendCommandToFigma(
       return;
     }
     logger.info(`Sending command to Figma: ${command}`);
-    logger.debug(`Request details: ${JSON.stringify(request)}`);
+    logger.debug(() => `Request details: ${truncateForLog(request)}`);
     ws.send(JSON.stringify(request));
   });
 }

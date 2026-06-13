@@ -1,12 +1,20 @@
 import { Server, ServerWebSocket } from "bun";
+import fs from "node:fs";
+import { pathToFileURL } from "node:url";
+import {
+  CREATION_COMMANDS as CREATION_COMMAND_LIST,
+  BLOCKED_COMMANDS as BLOCKED_COMMAND_LIST,
+} from "./shared/commands";
 
-// Enhanced logging system
+// Enhanced logging system. Debug output is opt-in (LOG_LEVEL=debug): inbound
+// frames can carry multi-MB base64 image payloads that must not hit logs by default.
+const DEBUG_ENABLED = (process.env.LOG_LEVEL || "").toLowerCase() === "debug";
 const logger = {
   info: (message: string, ...args: any[]) => {
     console.log(`[INFO] ${message}`, ...args);
   },
   debug: (message: string, ...args: any[]) => {
-    console.log(`[DEBUG] ${message}`, ...args);
+    if (DEBUG_ENABLED) console.log(`[DEBUG] ${message}`, ...args);
   },
   warn: (message: string, ...args: any[]) => {
     console.warn(`[WARN] ${message}`, ...args);
@@ -26,6 +34,7 @@ const stats = {
   messagesSent: 0,
   messagesReceived: 0,
   errors: 0,
+  rejectedOrigins: 0,
   // Queue & routing stats
   queueDepthMax: 0,
   queuedCommands: 0,
@@ -50,18 +59,11 @@ const agentClients = new Set<ServerWebSocket<any>>();
 // connection is closed to prevent stale connections polluting routing.
 const sessionToClient = new Map<string, ServerWebSocket<any>>();
 
-// Creation commands that ALWAYS require parentId (prevents implicit page-context dependency)
-const CREATION_COMMANDS = new Set([
-  "create_rectangle", "create_frame", "create_text", "create_ellipse",
-  "create_polygon", "create_star", "create_vector", "create_line",
-  "create_component_instance", "create_component_set", "set_svg",
-  "clone_node", "create_component_from_node",
-  // FigJam creation commands
-  "create_section", "create_sticky", "create_shape_with_text", "create_connector",
-]);
-
-// Stateful commands blocked unconditionally (use parentId-based targeting instead)
-const BLOCKED_COMMANDS = new Set(["set_current_page"]);
+// Creation commands that ALWAYS require parentId (prevents implicit page-context
+// dependency) and stateful commands blocked unconditionally — both sourced from
+// the shared registry so the MCP, the relay, and the tests can't drift apart.
+const CREATION_COMMANDS = new Set<string>(CREATION_COMMAND_LIST);
+const BLOCKED_COMMANDS = new Set<string>(BLOCKED_COMMAND_LIST);
 
 // Per-channel command queue
 interface QueuedCommand {
@@ -153,7 +155,7 @@ function getPluginClient(channelName: string): ServerWebSocket<any> | null {
   return null;
 }
 
-function validateCommand(data: any, channelName: string): string | null {
+function validateCommand(data: any): string | null {
   // Stateful commands are ALWAYS blocked regardless of agent count.
   // This prevents page-context conflicts between concurrent callers (sub-agents
   // sharing one MCP, team agents with separate MCPs, or any future multi-client scenario).
@@ -284,12 +286,12 @@ function processQueue(channelName: string): void {
   // classification requires seeing a response, which requires receiving a command first).
   // Non-plugin clients (e.g., MCP) will simply ignore the message (no matching pending request).
   const pluginClient = getPluginClient(channelName);
-  const payload = JSON.stringify({
-    type: "broadcast",
-    message: item.data.message,
-    sender: "User",
-    channel: channelName,
-  });
+  // Serialize the inner message ONCE and splice it into both envelopes (forward
+  // + sender echo): commands can carry multi-MB base64 payloads (set_image_fill,
+  // set_image), and stringifying the whole envelope twice doubled that cost.
+  const innerJson = JSON.stringify(item.data.message);
+  const channelJson = JSON.stringify(channelName);
+  const payload = `{"type":"broadcast","message":${innerJson},"sender":"User","channel":${channelJson}}`;
 
   let forwarded = false;
   if (pluginClient && pluginClient.readyState === WebSocket.OPEN) {
@@ -376,12 +378,7 @@ function processQueue(channelName: string): void {
   // Echo back to sender (for command echo filtering in websocket.ts)
   if (item.senderWs.readyState === WebSocket.OPEN) {
     try {
-      item.senderWs.send(JSON.stringify({
-        type: "broadcast",
-        message: item.data.message,
-        sender: "You",
-        channel: channelName,
-      }));
+      item.senderWs.send(`{"type":"broadcast","message":${innerJson},"sender":"You","channel":${channelJson}}`);
       stats.messagesSent++;
     } catch (error) {
       logger.error(`Failed to send command echo to sender:`, error);
@@ -502,11 +499,40 @@ function cleanupClient(ws: ServerWebSocket<any>, clientChannels: string[] = []):
         }
         requestToClient.delete(requestId);
 
-        // Unblock queue and drain remaining items (they'll fail with "No plugin connected")
-        // Use setTimeout to avoid stack overflow when draining large queues
+        // Unblock queue
         queueState.isProcessing = false;
         queueState.currentRequestId = undefined;
+      }
+
+      // If another live plugin still serves this channel, let it pick up the
+      // queue. (The disconnecting socket was already removed from the channel
+      // by the caller, so getPluginClient cannot return it.)
+      if (getPluginClient(channelName)) {
         setTimeout(() => processQueue(channelName), 0);
+        continue;
+      }
+
+      // No plugin left in this channel — reject everything still queued so
+      // agents fail fast instead of waiting out their own request timeouts.
+      if (queueState.queue.length > 0) {
+        logger.warn(`Rejecting ${queueState.queue.length} queued command(s) in channel ${channelName}: plugin disconnected`);
+        for (const item of queueState.queue) {
+          if (item.senderWs.readyState === WebSocket.OPEN) {
+            try {
+              item.senderWs.send(JSON.stringify({
+                type: "broadcast",
+                message: { id: item.requestId, error: "Figma plugin disconnected before the command could run" },
+                sender: "User",
+                channel: channelName,
+              }));
+              stats.messagesSent++;
+            } catch (e) {
+              logger.error(`Failed to send plugin disconnect error:`, e);
+            }
+          }
+          requestToClient.delete(item.requestId);
+        }
+        queueState.queue = [];
       }
     }
   }
@@ -542,8 +568,20 @@ function cleanupClient(ws: ServerWebSocket<any>, clientChannels: string[] = []):
   pluginClients.delete(ws);
 }
 
-// Periodic stale request cleanup (every 5 minutes)
-setInterval(() => {
+/** Drop channels (and their queues) that no longer have any members. */
+function removeEmptyChannels(channelNames: string[]): void {
+  for (const channelName of channelNames) {
+    const clients = channels.get(channelName);
+    if (clients && clients.size === 0) {
+      channels.delete(channelName);
+      channelQueues.delete(channelName);
+      logger.debug(`Cleaned up empty channel: ${channelName}`);
+    }
+  }
+}
+
+// Periodic stale request cleanup (scheduled by startRelay)
+function sweepStaleRequests(): void {
   const maxAge = 10 * 60 * 1000; // 10 minutes
   const now = Date.now();
   let cleaned = 0;
@@ -557,7 +595,7 @@ setInterval(() => {
     stats.cleanedStaleRequests += cleaned;
     logger.warn(`Cleaned up ${cleaned} stale request entries (age > 10 min)`);
   }
-}, 5 * 60 * 1000);
+}
 
 // ─── Connection Handling ───────────────────────────────────────────────────
 
@@ -581,34 +619,78 @@ function handleConnection(ws: ServerWebSocket<any>) {
   }
 }
 
+// ─── Origin allowlist (CSWSH protection) ────────────────────────────────────
+// Browsers do NOT apply CORS to WebSocket connects, so without this check any
+// web page open in the user's browser could connect to localhost:3055 and read
+// or mutate the open Figma document through the relay. Allowed by default:
+//  - requests with NO Origin header (non-browser clients: the MCP server, curl)
+//  - Origin "null" (the Figma plugin UI runs in a sandboxed iframe)
+//  - *.figma.com
+// Anything else must be allowed explicitly via FIGMA_SOCKET_ALLOWED_ORIGINS
+// (comma-separated full origins, e.g. "http://localhost:5173").
+const EXTRA_ALLOWED_ORIGINS = new Set(
+  (process.env.FIGMA_SOCKET_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+);
+
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return true;
+  if (origin === "null") return true;
+  if (EXTRA_ALLOWED_ORIGINS.has(origin)) return true;
+  try {
+    const host = new URL(origin).hostname;
+    return host === "figma.com" || host.endsWith(".figma.com");
+  } catch {
+    return false;
+  }
+}
+
 // ─── Server ────────────────────────────────────────────────────────────────
 
-// Port resolution (useful for the standalone compiled binary): --port=NNNN arg,
-// then FIGMA_SOCKET_PORT env, else the default 3055.
-const portArg = process.argv.find((a) => a.startsWith("--port="));
-const SOCKET_PORT = portArg
-  ? parseInt(portArg.split("=")[1], 10)
-  : process.env.FIGMA_SOCKET_PORT
-    ? parseInt(process.env.FIGMA_SOCKET_PORT, 10)
-    : 3055;
+export interface RelayHandle {
+  server: Server;
+  port: number;
+  /** Stop the server and all periodic timers (used by tests). */
+  stop(): void;
+}
 
-// Optional: bind to 0.0.0.0 (e.g. Windows WSL) via FIGMA_SOCKET_HOST=0.0.0.0.
-// WARNING: the relay has no auth — only do this on a trusted network.
-const SOCKET_HOST = process.env.FIGMA_SOCKET_HOST || undefined;
-
-const server = Bun.serve({
-  port: SOCKET_PORT,
-  ...(SOCKET_HOST ? { hostname: SOCKET_HOST } : {}),
+/**
+ * Start the relay. Extracted into a factory so tests can exercise the REAL
+ * relay (not a mirror) on an ephemeral port. Module state (channels, queues,
+ * stats) is process-global: run one relay per process.
+ */
+export function startRelay(opts: { port?: number; hostname?: string } = {}): RelayHandle {
+  const server = Bun.serve({
+    port: opts.port ?? 3055,
+    ...(opts.hostname ? { hostname: opts.hostname } : {}),
   fetch(req: Request, server: Server) {
     const url = new URL(req.url);
 
     logger.debug(`Received ${req.method} request to ${url.pathname}`);
 
+    // Reject browser requests from origins outside the allowlist — applies to
+    // the WebSocket upgrade, /status, and CORS preflight alike.
+    const origin = req.headers.get("origin");
+    if (!isAllowedOrigin(origin)) {
+      stats.rejectedOrigins++;
+      logger.warn(
+        `Rejected request from disallowed origin "${origin}". ` +
+        `Set FIGMA_SOCKET_ALLOWED_ORIGINS to permit it.`
+      );
+      return new Response("Forbidden: origin not allowed", { status: 403 });
+    }
+    // Echo the (vetted) origin instead of "*" so unvetted sites get nothing.
+    const corsHeaders: Record<string, string> = origin
+      ? { "Access-Control-Allow-Origin": origin }
+      : {};
+
     // Handle CORS preflight
     if (req.method === "OPTIONS") {
       return new Response(null, {
         headers: {
-          "Access-Control-Allow-Origin": "*",
+          ...corsHeaders,
           "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
           "Access-Control-Allow-Headers": "Content-Type, Authorization",
         },
@@ -634,18 +716,17 @@ const server = Bun.serve({
       }), {
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*"
+          ...corsHeaders,
         }
       });
     }
 
-    // Handle WebSocket upgrade
+    // Handle WebSocket upgrade (Bun rejects an upgrade options object whose
+    // headers are empty, so only pass options when there's something to send)
     try {
-      const success = server.upgrade(req, {
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
+      const success = origin
+        ? server.upgrade(req, { headers: corsHeaders })
+        : server.upgrade(req);
 
       if (success) {
         return; // Upgraded to WebSocket
@@ -659,7 +740,7 @@ const server = Bun.serve({
     return new Response("Claude to Figma WebSocket server running. Try connecting with a WebSocket client.", {
       headers: {
         "Content-Type": "text/plain",
-        "Access-Control-Allow-Origin": "*",
+        ...corsHeaders,
       },
     });
   },
@@ -673,7 +754,14 @@ const server = Bun.serve({
         stats.messagesReceived++;
         const clientId = ws.data?.clientId || "unknown";
 
-        logger.debug(`Received message from client ${clientId}:`, typeof message === 'string' ? message : '<binary>');
+        if (DEBUG_ENABLED) {
+          const preview = typeof message !== "string"
+            ? "<binary>"
+            : message.length > 2048
+              ? `${message.slice(0, 2048)}… [truncated ${message.length - 2048} chars]`
+              : message;
+          logger.debug(`Received message from client ${clientId}:`, preview);
+        }
         const data = JSON.parse(message as string);
 
         // Any inbound traffic counts as liveness for the heartbeat (a plugin
@@ -714,6 +802,7 @@ const server = Bun.serve({
               });
               channels.forEach((clients) => clients.delete(oldWs));
               cleanupClient(oldWs, oldChannels);
+              removeEmptyChannels(oldChannels);
               // close() triggers the close handler, which decrements
               // stats.activeConnections — no manual decrement here.
               try { oldWs.close(1000, "Replaced by reconnecting session"); } catch {}
@@ -859,7 +948,7 @@ const server = Bun.serve({
             const targetChannel = resolution.channel;
 
             // Command validation (parentId required, stateful commands blocked)
-            const validationError = validateCommand(data, targetChannel);
+            const validationError = validateCommand(data);
             if (validationError) {
               ws.send(JSON.stringify({
                 type: "broadcast",
@@ -1004,7 +1093,11 @@ const server = Bun.serve({
         if (clients.has(ws)) clientChannels.push(channelName);
       });
 
-      // Remove client from their channel
+      // Remove client from their channel. Empty-channel deletion is deferred
+      // until after cleanupClient(): in zero-config mode the plugin is the ONLY
+      // member of its channel (the agent sits in AUTO_CHANNEL), so deleting the
+      // channel queue here would silently drop the error flush for in-flight
+      // and queued commands.
       channels.forEach((clients, channelName) => {
         if (clients.delete(ws)) {
           logger.debug(`Removed client ${clientId} from channel ${channelName} due to connection close`);
@@ -1025,18 +1118,15 @@ const server = Bun.serve({
             logger.error(`Error notifying channel ${channelName} about client disconnect:`, error);
             stats.errors++;
           }
-
-          // Clean up empty channels
-          if (clients.size === 0) {
-            channels.delete(channelName);
-            channelQueues.delete(channelName);
-            logger.debug(`Cleaned up empty channel: ${channelName}`);
-          }
         }
       });
 
-      // Clean up queue & routing state for this client
+      // Clean up queue & routing state for this client (flushes in-flight and
+      // queued commands with an immediate error when a plugin disconnects)
       cleanupClient(ws, clientChannels);
+
+      // Now drop channels left empty by this disconnect
+      removeEmptyChannels(clientChannels);
 
       // Clean up session deduplication entry (only if this ws is the current holder)
       if (ws.data?.sessionId) {
@@ -1059,59 +1149,110 @@ const server = Bun.serve({
       if (ws.data) ws.data.lastPong = Date.now();
     }
   }
-});
-
-// ─── Heartbeat sweep ─────────────────────────────────────────────────────────
-// Force-close any plugin that has gone silent past the timeout, otherwise probe
-// it with an application-level ping. Keeping the plugin set free of dead sockets
-// is what makes the single-plugin auto-routing decision trustworthy.
-//
-// NOTE: Figma's plugin UI runs in a sandboxed iframe that does NOT auto-answer
-// protocol-level WebSocket pings, so we cannot rely on ws.ping()/pong. Instead we
-// ping over the message channel ({type:"ping"}) and the plugin replies
-// ({type:"pong"}). Only plugins are swept — agent liveness is handled by TCP
-// close + the MCP client's own reconnect logic.
-setInterval(() => {
-  const now = Date.now();
-  pluginClients.forEach((client) => {
-    if (client.readyState !== WebSocket.OPEN) return;
-
-    // Don't reap a plugin that's actively processing a command. Long operations
-    // (e.g. exporting a large frame) block the single-threaded plugin so it can't
-    // pong — that's not a dead socket. The per-command timeout (COMMAND_TIMEOUT_MS)
-    // is the safety net for genuinely hung plugins.
-    const channel = client.data?.channel;
-    const queueState = channel ? channelQueues.get(channel) : undefined;
-    const busy = !!(queueState?.isProcessing && queueState?.currentRequestId);
-
-    if (!busy && now - (client.data?.lastPong ?? now) > HEARTBEAT_TIMEOUT_MS) {
-      logger.warn(
-        `Plugin ${client.data?.clientId} missed heartbeats (${HEARTBEAT_TIMEOUT_MS}ms) — closing stale socket`
-      );
-      try { client.close(1001, "Heartbeat timeout"); } catch {}
-      return;
-    }
-
-    try {
-      client.send(JSON.stringify({ type: "ping" }));
-    } catch (error) {
-      logger.error(`Failed to ping plugin ${client.data?.clientId}:`, error);
-    }
   });
-}, HEARTBEAT_INTERVAL_MS);
 
-logger.info(`Claude to Figma WebSocket server running on port ${server.port}`);
-logger.info(`Status endpoint available at http://localhost:${server.port}/status`);
+  // ─── Heartbeat sweep ──────────────────────────────────────────────────────
+  // Force-close any plugin that has gone silent past the timeout, otherwise probe
+  // it with an application-level ping. Keeping the plugin set free of dead sockets
+  // is what makes the single-plugin auto-routing decision trustworthy.
+  //
+  // NOTE: Figma's plugin UI runs in a sandboxed iframe that does NOT auto-answer
+  // protocol-level WebSocket pings, so we cannot rely on ws.ping()/pong. Instead we
+  // ping over the message channel ({type:"ping"}) and the plugin replies
+  // ({type:"pong"}). Only plugins are swept — agent liveness is handled by TCP
+  // close + the MCP client's own reconnect logic.
+  const heartbeatTimer = setInterval(() => {
+    const now = Date.now();
+    pluginClients.forEach((client) => {
+      if (client.readyState !== WebSocket.OPEN) return;
 
-// Print server stats every 5 minutes
-setInterval(() => {
-  logger.info("Server stats:", {
-    channels: channels.size,
-    ...stats,
-    queueState: Array.from(channelQueues.entries()).map(([name, state]) => ({
-      channel: name,
-      depth: state.queue.length,
-      processing: state.isProcessing,
-    })),
-  });
-}, 5 * 60 * 1000);
+      // Don't reap a plugin that's actively processing a command. Long operations
+      // (e.g. exporting a large frame) block the single-threaded plugin so it can't
+      // pong — that's not a dead socket. The per-command timeout (COMMAND_TIMEOUT_MS)
+      // is the safety net for genuinely hung plugins.
+      const channel = client.data?.channel;
+      const queueState = channel ? channelQueues.get(channel) : undefined;
+      const busy = !!(queueState?.isProcessing && queueState?.currentRequestId);
+
+      if (!busy && now - (client.data?.lastPong ?? now) > HEARTBEAT_TIMEOUT_MS) {
+        logger.warn(
+          `Plugin ${client.data?.clientId} missed heartbeats (${HEARTBEAT_TIMEOUT_MS}ms) — closing stale socket`
+        );
+        try { client.close(1001, "Heartbeat timeout"); } catch {}
+        return;
+      }
+
+      try {
+        client.send(JSON.stringify({ type: "ping" }));
+      } catch (error) {
+        logger.error(`Failed to ping plugin ${client.data?.clientId}:`, error);
+      }
+    });
+  }, HEARTBEAT_INTERVAL_MS);
+
+  // Periodic stale request cleanup + stats report
+  const staleSweepTimer = setInterval(sweepStaleRequests, 5 * 60 * 1000);
+  const statsTimer = setInterval(() => {
+    logger.info("Server stats:", {
+      channels: channels.size,
+      ...stats,
+      queueState: Array.from(channelQueues.entries()).map(([name, state]) => ({
+        channel: name,
+        depth: state.queue.length,
+        processing: state.isProcessing,
+      })),
+    });
+  }, 5 * 60 * 1000);
+
+  logger.info(`Claude to Figma WebSocket server running on port ${server.port}`);
+  logger.info(`Status endpoint available at http://localhost:${server.port}/status`);
+
+  return {
+    server,
+    port: server.port as number,
+    stop() {
+      clearInterval(heartbeatTimer);
+      clearInterval(staleSweepTimer);
+      clearInterval(statsTimer);
+      server.stop(true);
+    },
+  };
+}
+
+// ─── CLI entry point ─────────────────────────────────────────────────────────
+
+/** True when this file is executed directly (bun/node CLI, compiled binary). */
+function isMainModule(): boolean {
+  const metaMain = (import.meta as { main?: boolean }).main;
+  if (typeof metaMain === "boolean") return metaMain; // Bun provides this natively
+  if (!import.meta.url) return true; // bundled CJS build: assume CLI usage
+  try {
+    return import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1] ?? "")).href;
+  } catch {
+    return true;
+  }
+}
+
+function parsePort(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 65535) {
+    logger.warn(`Invalid port "${raw}" — using default 3055`);
+    return undefined;
+  }
+  return n;
+}
+
+if (isMainModule()) {
+  // Port resolution (useful for the standalone compiled binary): --port=NNNN arg,
+  // then FIGMA_SOCKET_PORT env, else the default 3055.
+  const portArg = process.argv.find((a) => a.startsWith("--port="));
+  const port = parsePort(portArg?.split("=")[1]) ?? parsePort(process.env.FIGMA_SOCKET_PORT) ?? 3055;
+
+  // Optional: bind to 0.0.0.0 (e.g. Windows WSL) via FIGMA_SOCKET_HOST=0.0.0.0.
+  // WARNING: this exposes the relay beyond localhost — only do this on a trusted
+  // network (the origin allowlist does not protect against non-browser clients).
+  const hostname = process.env.FIGMA_SOCKET_HOST || undefined;
+
+  startRelay({ port, hostname });
+}

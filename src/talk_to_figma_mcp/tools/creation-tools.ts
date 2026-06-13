@@ -252,7 +252,7 @@ export function registerCreationTools(server: McpServer): void {
       width: z.coerce.number().describe("Width of the ellipse"),
       height: z.coerce.number().describe("Height of the ellipse"),
       name: z.string().optional().describe("Optional name for the ellipse"),
-      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+      parentId: z.string().describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
       fillColor: coerceJson(z.object({
           r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
           g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
@@ -321,7 +321,7 @@ export function registerCreationTools(server: McpServer): void {
       height: z.coerce.number().describe("Height of the polygon"),
       sides: z.coerce.number().min(3).optional().describe("Number of sides (default: 6)"),
       name: z.string().optional().describe("Optional name for the polygon"),
-      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+      parentId: z.string().describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
       fillColor: coerceJson(z.object({
           r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
           g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
@@ -392,7 +392,7 @@ export function registerCreationTools(server: McpServer): void {
       points: z.coerce.number().min(3).optional().describe("Number of points (default: 5)"),
       innerRadius: z.coerce.number().min(0.01).max(0.99).optional().describe("Inner radius ratio (0.01-0.99, default: 0.5)"),
       name: z.string().optional().describe("Optional name for the star"),
-      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+      parentId: z.string().describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
       fillColor: coerceJson(z.object({
           r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
           g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
@@ -547,7 +547,7 @@ export function registerCreationTools(server: McpServer): void {
       nodeId: z.string().describe("The ID of the node to clone"),
       x: z.coerce.number().optional().describe("New X position for the clone (local coordinates, relative to parent)"),
       y: z.coerce.number().optional().describe("New Y position for the clone (local coordinates, relative to parent)"),
-      parentId: z.string().optional().describe("The ID of the parent node to place the clone into. REQUIRED — server enforces this. Use page node ID for top-level elements.")
+      parentId: z.string().describe("The ID of the parent node to place the clone into (required). Use page node ID for top-level elements.")
     },
     },
     async ({ nodeId, x, y, parentId }) => {

@@ -93,8 +93,7 @@ export function registerFigJamTools(server: McpServer): void {
       name: z.string().optional().describe("Optional name/label for the node"),
       parentId: z
         .string()
-        .optional()
-        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+        .describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
     },
     async ({ x, y, text, color, isWide, name, parentId }) => {
@@ -208,8 +207,7 @@ export function registerFigJamTools(server: McpServer): void {
       name: z.string().optional().describe("Optional name for the node"),
       parentId: z
         .string()
-        .optional()
-        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+        .describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
     },
     async ({ x, y, width, height, shapeType, text, fillColor, name, parentId }) => {
@@ -304,8 +302,7 @@ export function registerFigJamTools(server: McpServer): void {
       name: z.string().optional().describe("Optional name for the connector node"),
       parentId: z
         .string()
-        .optional()
-        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+        .describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
     },
     async ({
@@ -385,8 +382,7 @@ export function registerFigJamTools(server: McpServer): void {
         .describe("Background fill color in RGBA format"),
       parentId: z
         .string()
-        .optional()
-        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+        .describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
     },
     async ({ x, y, width, height, name, fillColor, parentId }) => {

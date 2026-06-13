@@ -3,6 +3,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma, joinChannel } from "../utils/websocket";
 import { filterFigmaNode } from "../utils/figma-helpers";
 import { coerceJson, coerceBoolean } from "../utils/schema-helpers";
+import { parseCommandResult } from "../utils/command-results";
+import fs from "fs";
+import path from "path";
 
 /**
  * Register document-related tools to the MCP server
@@ -90,7 +93,10 @@ export function registerDocumentTools(server: McpServer): void {
     },
     async ({ nodeId, depth }) => {
       try {
-        const result = await sendCommandToFigma("get_node_info", { nodeId });
+        // depth is pushed down so the plugin prunes the subtree BEFORE transport
+        // (a large section can be MBs of JSON otherwise). The MCP-side filter
+        // below stays as belt-and-braces for older plugins that ignore depth.
+        const result = await sendCommandToFigma("get_node_info", { nodeId, depth: depth ?? 1 });
         const filtered = filterFigmaNode(result, depth ?? 1);
         const coordinateNote = filtered.absoluteBoundingBox && filtered.localPosition
           ? "absoluteBoundingBox contains global coordinates (relative to canvas). localPosition contains local coordinates (relative to parent, use these for move_node)."
@@ -134,7 +140,8 @@ export function registerDocumentTools(server: McpServer): void {
     },
     async ({ nodeIds, depth }) => {
       try {
-        const results = await sendCommandToFigma('get_nodes_info', { nodeIds }) as any[];
+        // depth pushed down to the plugin (see get_node_info above).
+        const results = await sendCommandToFigma('get_nodes_info', { nodeIds, depth: depth ?? 1 }) as any[];
         const nodes = results.map((result) => filterFigmaNode(result.document || result.info, depth ?? 1));
         return {
           content: [
@@ -340,27 +347,11 @@ export function registerDocumentTools(server: McpServer): void {
     {
       description: "ADVANCED / rarely needed. Connection is zero-config: Figma tools auto-route to the connected plugin, so you normally do NOT call this. Only use it to disambiguate when MULTIPLE Figma files are connected, passing the specific channel ID the user provides.",
       inputSchema: {
-      channel: z.string().describe("The name of the channel to join"),
+      channel: z.string().min(1).describe("The name of the channel to join"),
     },
     },
     async ({ channel }) => {
       try {
-        if (!channel) {
-          // If no channel provided, ask the user for input
-          return {
-            content: [
-              {
-                type: "text",
-                text: "Please provide a channel name to join:",
-              },
-            ],
-            followUp: {
-              tool: "join_channel",
-              description: "Join the specified channel",
-            },
-          };
-        }
-
         // Use joinChannel instead of sendCommandToFigma to ensure currentChannel is updated
         await joinChannel(channel);
 
@@ -408,7 +399,19 @@ export function registerDocumentTools(server: McpServer): void {
           format: format || "PNG",
           scale: scale || 1,
         }, 120000); // 120 second timeout for image export
-        const typedResult = result as { imageData: string; mimeType: string };
+        const typedResult = parseCommandResult("export_node_as_image", result);
+
+        // PDF is not a valid MCP image content type — write it to disk and
+        // return the path instead (same pattern as get_asset).
+        if (typedResult.mimeType === "application/pdf") {
+          const dir = path.join(process.cwd(), "figma-assets");
+          fs.mkdirSync(dir, { recursive: true });
+          const filepath = path.join(dir, `export-${nodeId.replace(/[^a-z0-9]+/gi, "-")}-${Date.now()}.pdf`);
+          fs.writeFileSync(filepath, Buffer.from(typedResult.imageData, "base64"));
+          return {
+            content: [{ type: "text", text: `Exported PDF saved to: ${filepath}` }],
+          };
+        }
 
         return {
           content: [
@@ -659,19 +662,21 @@ export function registerDocumentTools(server: McpServer): void {
     async ({ nodeId, recursive }) => {
       try {
         const result = await sendCommandToFigma("get_css", { nodeId, recursive: recursive ?? false }, 60000);
+        const typed = parseCommandResult("get_css", result);
 
         const fmtBlock = (n: { id: string; name: string; type: string; css: Record<string, string> }) => {
           const decls = Object.entries(n.css).map(([k, v]) => `  ${k}: ${v};`).join("\n");
           return `/* "${n.name}" (${n.type}, ${n.id}) */\n${decls || "  /* no CSS */"}`;
         };
 
+        // Discriminate on the response shape (not the input flag) so an older
+        // plugin that ignores `recursive` still renders correctly.
         let text: string;
-        if (recursive) {
-          const typed = result as { root: string; count: number; truncated: boolean; nodes: any[] };
+        if ("nodes" in typed) {
           text = typed.nodes.map(fmtBlock).join("\n\n");
           if (typed.truncated) text += `\n\n/* … output truncated at ${typed.count} nodes; query a sub-node for the rest */`;
         } else {
-          text = fmtBlock(result as any);
+          text = fmtBlock(typed);
         }
 
         return { content: [{ type: "text", text }] };

@@ -2,9 +2,28 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
 import { coerceBoolean } from "../utils/schema-helpers";
+import { parseCommandResult, CommandResult } from "../utils/command-results";
 import fs from "fs";
 import path from "path";
-import os from "os";
+
+// Content-addressed cache for image-fill bytes: Figma image hashes are content
+// hashes, so a hit can never be stale. Saves a plugin round-trip (and a multi-MB
+// base64 transfer) every time the same image is re-extracted in a
+// render→compare→fix loop. Insertion order doubles as LRU order.
+const assetCacheByHash = new Map<string, CommandResult<"get_asset">>();
+const ASSET_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+let assetCacheBytes = 0;
+
+function cacheAsset(hash: string, asset: CommandResult<"get_asset">): void {
+  if (asset.dataBase64.length > ASSET_CACHE_MAX_BYTES) return;
+  assetCacheByHash.set(hash, asset);
+  assetCacheBytes += asset.dataBase64.length;
+  for (const [key, value] of assetCacheByHash) {
+    if (assetCacheBytes <= ASSET_CACHE_MAX_BYTES) break;
+    assetCacheByHash.delete(key);
+    assetCacheBytes -= value.dataBase64.length;
+  }
+}
 
 /**
  * Register image manipulation tools to the MCP server
@@ -42,20 +61,7 @@ export function registerImageTools(server: McpServer): void {
           { nodeId, scale: scale ?? 2, maxDimension: maxDimension ?? 2000 },
           120000 // 120s: large frames can take a while to rasterize
         );
-        const typed = result as {
-          nodeId: string;
-          name: string;
-          type: string;
-          mimeType: string;
-          imageData: string;
-          scale: number;
-          requestedScale: number;
-          capped: boolean;
-          width: number;
-          height: number;
-          absoluteBoundingBox: { x: number; y: number; width: number; height: number } | null;
-          selectionCount: number;
-        };
+        const typed = parseCommandResult("get_visual_snapshot", result);
 
         const box = typed.absoluteBoundingBox;
         const lines = [
@@ -346,13 +352,7 @@ export function registerImageTools(server: McpServer): void {
           },
           60000
         );
-        const typed = result as {
-          root: string;
-          imageCount: number;
-          vectorCount: number;
-          images: { hash: string; width?: number; height?: number; bytes?: number; suggestedName: string; scaleMode?: string; usedBy: { id: string; name: string }[] }[];
-          vectors: { nodeId: string; name: string; type: string; width: number; height: number; suggestedName: string }[];
-        };
+        const typed = parseCommandResult("scan_assets", result);
 
         const lines: string[] = [
           `Assets in ${typed.root}: ${typed.imageCount} image(s), ${typed.vectorCount} vector/icon(s).`,
@@ -407,18 +407,24 @@ export function registerImageTools(server: McpServer): void {
           throw new Error("Provide either 'hash' (image fill) or 'nodeId' (node to export).");
         }
 
-        const result = await sendCommandToFigma(
-          "get_asset",
-          { hash, nodeId, format: format || "SVG", scale: scale ?? 2 },
-          120000
-        );
-        const typed = result as {
-          kind: "image" | "svg";
-          name?: string;
-          mimeType: string;
-          dataBase64: string;
-          bytesLength: number;
-        };
+        // Image-fill bytes are content-addressed by hash → serve repeats from
+        // cache without a plugin round-trip. Node exports are never cached
+        // (node content changes between calls).
+        let typed: CommandResult<"get_asset">;
+        const cached = hash ? assetCacheByHash.get(hash) : undefined;
+        if (hash && cached) {
+          assetCacheByHash.delete(hash); // LRU touch: re-insert as most recent
+          assetCacheByHash.set(hash, cached);
+          typed = cached;
+        } else {
+          const result = await sendCommandToFigma(
+            "get_asset",
+            { hash, nodeId, format: format || "SVG", scale: scale ?? 2 },
+            120000
+          );
+          typed = parseCommandResult("get_asset", result);
+          if (hash) cacheAsset(hash, typed);
+        }
 
         const buffer = Buffer.from(typed.dataBase64, "base64");
         const extByMime: Record<string, string> = {
@@ -430,8 +436,9 @@ export function registerImageTools(server: McpServer): void {
         };
         const ext = extByMime[typed.mimeType] || "bin";
 
+        // basename() keeps a model-supplied filename from escaping outDir via "../"
         const baseName =
-          (filename && filename.replace(/\.[^.]+$/, "")) ||
+          (filename && path.basename(filename).replace(/\.[^.]+$/, "")) ||
           (typed.name && typed.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40)) ||
           (hash ? `image-${hash.slice(0, 8)}` : `asset-${Date.now()}`);
 
@@ -441,7 +448,7 @@ export function registerImageTools(server: McpServer): void {
         fs.writeFileSync(filepath, buffer);
 
         const lines = [
-          `Saved ${typed.kind} asset → ${filepath}`,
+          `Saved ${typed.kind} asset → ${filepath}${cached ? " (from cache — no plugin round-trip)" : ""}`,
           `Type: ${typed.mimeType} | Size: ${typed.bytesLength} bytes`,
         ];
         if (typed.kind === "svg") {

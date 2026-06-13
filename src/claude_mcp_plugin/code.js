@@ -69,6 +69,12 @@ figma.ui.onmessage = async (msg) => {
     case "update-settings":
       updateSettings(msg);
       break;
+    case "save-channel":
+      // Persist the per-file channel name in the document (see figma.on("run")).
+      try {
+        figma.root.setPluginData("mcp_channel_name", msg.channel || "");
+      } catch (e) { /* non-fatal: a new channel is generated next session */ }
+      break;
     case "notify":
       figma.notify(msg.message);
       break;
@@ -98,14 +104,31 @@ figma.ui.onmessage = async (msg) => {
 
 // Listen for plugin commands from menu
 figma.on("run", ({ command }) => {
+  // Per-file channel name persisted in the DOCUMENT (not clientStorage, which
+  // is shared across files): keeps the channel stable across plugin reconnects
+  // and restarts, so manually-joined agents aren't stranded by a plugin blip.
+  let savedChannel = "";
+  try {
+    savedChannel = figma.root.getPluginData("mcp_channel_name") || "";
+  } catch (e) { /* plugin data unavailable — a fresh channel will be generated */ }
+
   // Restore any saved server port before auto-connecting.
   figma.clientStorage.getAsync("settings").then((settings) => {
     if (settings && settings.serverPort) {
       state.serverPort = settings.serverPort;
-      figma.ui.postMessage({ type: "init-settings", serverPort: settings.serverPort });
     }
+    figma.ui.postMessage({
+      type: "init-settings",
+      serverPort: state.serverPort,
+      channelName: savedChannel || undefined,
+    });
     figma.ui.postMessage({ type: "auto-connect" });
   }).catch(() => {
+    figma.ui.postMessage({
+      type: "init-settings",
+      serverPort: state.serverPort,
+      channelName: savedChannel || undefined,
+    });
     figma.ui.postMessage({ type: "auto-connect" });
   });
 });
@@ -143,12 +166,12 @@ async function handleCommand(command, params) {
       if (!params || !params.nodeId) {
         throw new Error("Missing nodeId parameter");
       }
-      return await getNodeInfo(params.nodeId);
+      return await getNodeInfo(params.nodeId, params.depth);
     case "get_nodes_info":
       if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
         throw new Error("Missing or invalid nodeIds parameter");
       }
-      return await getNodesInfo(params.nodeIds);
+      return await getNodesInfo(params.nodeIds, params.depth);
     case "create_rectangle":
       return await createRectangle(params);
     case "create_frame":
@@ -396,7 +419,24 @@ async function getSelection() {
   };
 }
 
-async function getNodeInfo(nodeId) {
+// Prune a JSON_REST_V1 document to `depth` levels of full detail; deeper
+// children become {id,name,type} stubs. This mirrors the server-side filter,
+// but running it HERE keeps megabytes of subtree JSON out of the transport
+// (UI postMessage + WebSocket + relay) for large sections. exportAsync itself
+// still serializes the full subtree — the Plugin API has no depth option —
+// but the pruned payload is what crosses the wire.
+function pruneNodeDocToDepth(doc, depth, currentDepth = 0) {
+  if (!doc || !Array.isArray(doc.children) || doc.children.length === 0) return doc;
+  if (currentDepth >= depth) {
+    doc.children = doc.children.map((child) => ({ id: child.id, name: child.name, type: child.type }));
+    doc._childrenTruncated = true;
+    return doc;
+  }
+  doc.children = doc.children.map((child) => pruneNodeDocToDepth(child, depth, currentDepth + 1));
+  return doc;
+}
+
+async function getNodeInfo(nodeId, depth) {
   const node = await getNodeByIdSafe(nodeId);
 
   if (!node) {
@@ -415,10 +455,15 @@ async function getNodeInfo(nodeId) {
     };
   }
 
+  // Depth pushdown: older servers omit depth (undefined) and get the full tree.
+  if (typeof depth === "number" && depth >= 0) {
+    pruneNodeDocToDepth(response.document, depth);
+  }
+
   return response.document;
 }
 
-async function getNodesInfo(nodeIds) {
+async function getNodesInfo(nodeIds, depth) {
   try {
     // Load all nodes in parallel
     const nodes = await Promise.all(
@@ -428,26 +473,36 @@ async function getNodesInfo(nodeIds) {
     // Filter out any null values (nodes that weren't found)
     const validNodes = nodes.filter((node) => node !== null);
 
-    // Export all valid nodes in parallel
-    const responses = await Promise.all(
-      validNodes.map(async (node) => {
-        const response = await node.exportAsync({
-          format: "JSON_REST_V1",
-        });
-        const doc = response.document;
-        // Add local coordinates if node supports positioning
-        if ("x" in node && "y" in node) {
-          doc.localPosition = {
-            x: node.x,
-            y: node.y
+    // Export in small batches: an unbounded Promise.all of JSON_REST_V1
+    // exports spikes sandbox memory on long ID lists.
+    const BATCH_SIZE = 5;
+    const responses = [];
+    for (let i = 0; i < validNodes.length; i += BATCH_SIZE) {
+      const batch = validNodes.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map(async (node) => {
+          const response = await node.exportAsync({
+            format: "JSON_REST_V1",
+          });
+          const doc = response.document;
+          // Add local coordinates if node supports positioning
+          if ("x" in node && "y" in node) {
+            doc.localPosition = {
+              x: node.x,
+              y: node.y
+            };
+          }
+          if (typeof depth === "number" && depth >= 0) {
+            pruneNodeDocToDepth(doc, depth);
+          }
+          return {
+            nodeId: node.id,
+            document: doc,
           };
-        }
-        return {
-          nodeId: node.id,
-          document: doc,
-        };
-      })
-    );
+        })
+      );
+      responses.push(...batchResults);
+    }
 
     return responses;
   } catch (error) {
@@ -1697,11 +1752,15 @@ async function extractAsset(params) {
   const rootEffects =
     "effects" in node && Array.isArray(node.effects) ? node.effects.map(pickEffect) : [];
 
-  // Capture bounds BEFORE stripping — absoluteRenderBounds includes effect bleed.
+  // Capture bounds from the ORIGINAL — absoluteRenderBounds includes effect bleed.
   const box = boxOf(node.absoluteBoundingBox);
   const renderBounds = boxOf(node.absoluteRenderBounds);
 
-  // Disable effects per scope, remembering originals to restore in `finally`.
+  // Strip effects on a temporary CLONE whenever the node supports cloning:
+  // mutating the user's real node risks permanently losing effects if the
+  // plugin dies mid-export (tab closed, Figma crash) before the restore runs.
+  // The clone appears briefly as a sibling and is always removed in `finally`.
+  // Nodes without clone() fall back to the old strip-then-restore approach.
   const saved = [];
   function strip(n) {
     if ("effects" in n && Array.isArray(n.effects) && n.effects.length) {
@@ -1713,20 +1772,30 @@ async function extractAsset(params) {
     strip(n);
     if ("children" in n) for (const c of n.children) stripTree(c);
   }
-  if (stripScope === "root") strip(node);
-  else if (stripScope === "all") stripTree(node);
+
+  let exportTarget = node;
+  let tempClone = null;
+  if (stripScope === "root" || stripScope === "all") {
+    if (typeof node.clone === "function") {
+      tempClone = node.clone();
+      tempClone.name = node.name + " (mcp temp export)";
+      exportTarget = tempClone;
+    }
+    if (stripScope === "root") strip(exportTarget);
+    else stripTree(exportTarget);
+  }
 
   const fmt = String(format).toUpperCase();
   try {
     if (fmt === "SVG") {
-      const bytes = await node.exportAsync({ format: "SVG" });
+      const bytes = await exportTarget.exportAsync({ format: "SVG" });
       return {
         kind: "svg", name: node.name, mimeType: "image/svg+xml",
         dataBase64: bytesToBase64(bytes), bytesLength: bytes.length,
         rootEffects, strippedCount: saved.length, box, renderBounds,
       };
     }
-    const bytes = await node.exportAsync({ format: fmt, constraint: { type: "SCALE", value: scale } });
+    const bytes = await exportTarget.exportAsync({ format: fmt, constraint: { type: "SCALE", value: scale } });
     return {
       kind: "image", name: node.name,
       mimeType: fmt === "JPG" ? "image/jpeg" : "image/png",
@@ -1734,7 +1803,12 @@ async function extractAsset(params) {
       rootEffects, strippedCount: saved.length, box, renderBounds,
     };
   } finally {
-    for (const s of saved) s.node.effects = s.effects;
+    if (tempClone) {
+      try { tempClone.remove(); } catch (e) { /* already removed */ }
+    } else {
+      // No clone was possible — restore the original's effects.
+      for (const s of saved) s.node.effects = s.effects;
+    }
   }
 }
 

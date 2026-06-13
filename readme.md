@@ -190,6 +190,11 @@ If you prefer Docker or need to run the WebSocket server in a team environment, 
 - **Resources**: `figma://local/selection` and `figma://local/document` (live, auto-indexed)
 - **Prompts**: `/audit-accessibility` (WCAG audit) and `/export-to-tailwind` (Figma → HTML+Tailwind)
 
+**Remote files via REST API** *(optional — set a [Figma personal access token](INSTALLATION.md))*
+- **`rest_get_file`** / **`rest_render_image`** — read and render **any** file by URL, with **no plugin open**
+- **`rest_get_comments`** / **`rest_post_comment`** — triage and reply to design feedback
+- Token is sent only as a header (never logged or placed in URLs); 429s are retried with backoff
+
 See [complete command list](COMMANDS.md).
 
 ## 📚 Documentation

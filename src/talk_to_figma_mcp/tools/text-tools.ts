@@ -2,6 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
 import { coerceJson } from "../utils/schema-helpers";
+import { parseCommandResult } from "../utils/command-results";
 
 /**
  * Register text-related tools to the MCP server
@@ -653,10 +654,7 @@ export function registerTextTools(server: McpServer): void {
     async ({ nodeId }) => {
       try {
         const result = await sendCommandToFigma("get_fonts_used", { nodeId }, 60000);
-        const typed = result as {
-          root: string;
-          fonts: { family: string; style: string; sizes: number[]; occurrences: number }[];
-        };
+        const typed = parseCommandResult("get_fonts_used", result);
 
         if (!typed.fonts.length) {
           return { content: [{ type: "text", text: "No text nodes / fonts found in the selection." }] };

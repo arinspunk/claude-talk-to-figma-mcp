@@ -113,8 +113,13 @@ describe('compare_to_figma (url mode)', () => {
       type: 'FRAME',
       mimeType: 'image/png',
       imageData: figmaPng.toString('base64'),
+      scale: 2,
+      requestedScale: 2,
+      capped: false,
       width: 64,
       height: 48,
+      absoluteBoundingBox: { x: 0, y: 0, width: 64, height: 48 },
+      selectionCount: 0,
     });
 
     const renderFile = path.join(os.tmpdir(), `verify-test-render-${Date.now()}.png`);
@@ -155,8 +160,13 @@ describe('compare_to_figma (url mode)', () => {
       type: 'FRAME',
       mimeType: 'image/png',
       imageData: figmaPng.toString('base64'),
+      scale: 2,
+      requestedScale: 2,
+      capped: false,
       width: 32,
       height: 32,
+      absoluteBoundingBox: { x: 0, y: 0, width: 32, height: 32 },
+      selectionCount: 0,
     });
 
     const renderFile = path.join(os.tmpdir(), `verify-test-render-${Date.now()}.png`);

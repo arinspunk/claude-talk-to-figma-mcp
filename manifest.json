@@ -3,7 +3,7 @@
   "name": "claude-talk-to-figma-mcp",
   "display_name": "Claude Talk to Figma",
   "description": "A Model Context Protocol (MCP) plugin that allows Claude Desktop and other AI tools to interact directly with Figma, enabling powerful AI-assisted design capabilities.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "author": {
     "name": "Xúlio Zé",
     "url": "https://github.com/arinspunk"
@@ -31,8 +31,18 @@
         "${__dirname}/dist/talk_to_figma_mcp/server.cjs"
       ],
       "env": {
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "FIGMA_PERSONAL_TOKEN": "${user_config.figma_personal_token}"
       }
+    }
+  },
+  "user_config": {
+    "figma_personal_token": {
+      "type": "string",
+      "title": "Figma personal access token (optional)",
+      "description": "Optional. Enables REST API tools (rest_get_file, rest_render_image, rest_get_comments, rest_post_comment) that read and render ANY Figma file by URL without the plugin open. Create one in Figma → Settings → Security → Personal access tokens. Leave blank to use plugin-based tools only.",
+      "sensitive": true,
+      "required": false
     }
   },
   "tools_generated": true

@@ -270,6 +270,8 @@
             serverPort: 3055,
             pendingRequests: new Map(),
             channel: null,
+            // Per-file channel persisted in the document (received via init-settings)
+            savedChannel: null,
             // Auto-reconnect state
             manualDisconnect: false,
             reconnectAttempts: 0,
@@ -312,6 +314,24 @@
 
           // Figma messages
           window.onmessage = (event) => this.handleFigmaMessage(event.data.pluginMessage);
+        }
+
+        /**
+         * Truncate big payloads (base64 snapshots) for console logging — the
+         * browser console retains references, so logging full image payloads
+         * grows iframe memory unboundedly over a long session.
+         */
+        preview(value, max = 600) {
+          let s;
+          try {
+            s = typeof value === "string" ? value : JSON.stringify(value);
+          } catch (e) {
+            s = String(value);
+          }
+          if (s && s.length > max) {
+            return s.slice(0, max) + "… [truncated " + (s.length - max) + " chars]";
+          }
+          return s;
         }
 
         /**
@@ -359,7 +379,17 @@
             this.state.socket.onopen = () => {
               // Successful connection resets the backoff.
               this.state.reconnectAttempts = 0;
-              const channelName = this.generateChannelName();
+              // Reuse the per-file channel persisted in the document so the
+              // channel survives reconnects/restarts; generate one only the
+              // first time and persist it via the plugin sandbox.
+              const channelName = this.state.savedChannel || this.generateChannelName();
+              if (channelName !== this.state.savedChannel) {
+                this.state.savedChannel = channelName;
+                parent.postMessage(
+                  { pluginMessage: { type: "save-channel", channel: channelName } },
+                  "*"
+                );
+              }
               console.log("Joining channel:", channelName);
               this.state.channel = channelName;
 
@@ -388,7 +418,7 @@
                   return;
                 }
 
-                console.log("Received message:", data);
+                console.log("Received message:", this.preview(data));
 
                 if (data.type === "system") {
                   if (data.message && data.message.result) {
@@ -500,7 +530,7 @@
         async handleSocketMessage(payload) {
           const data = payload.message;
           if (!data) return;
-          console.log("handleSocketMessage", data);
+          console.log("handleSocketMessage", this.preview(data));
 
           // If it's a response to a previous request
           if (data.id && this.state.pendingRequests.has(data.id)) {
@@ -537,12 +567,13 @@
          */
         handleFigmaMessage(message) {
           if (!message) return;
-          console.log("Received message from plugin:", message);
+          console.log("Received message from plugin:", this.preview(message));
 
           switch (message.type) {
             case "init-settings":
-              // Restore a saved server port (from clientStorage) before connecting.
+              // Restore the saved server port and per-file channel before connecting.
               if (message.serverPort) this.state.serverPort = message.serverPort;
+              if (message.channelName) this.state.savedChannel = message.channelName;
               break;
             case "connection-status":
               this.updateStatus(message.connected, message.message);

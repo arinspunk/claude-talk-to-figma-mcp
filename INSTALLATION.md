@@ -307,3 +307,50 @@ Confirm it works by typing `#` in the Copilot chat to see the available MCP tool
 
 **Note:** Roo Code also supports per-project configuration by creating a `.roo/mcp.json` file in the project root with the same structure.
 
+---
+
+## Optional: Figma Personal Access Token
+
+The plugin-based tools cover everything you can do in an **open** Figma file. A Figma **personal access token** additionally unlocks the REST API tools (`rest_get_file`, `rest_render_image`, `rest_get_comments`, `rest_post_comment`), which read and render **any file the token's user can access by URL — with no plugin open**. This is entirely optional; leave it unset to use plugin tools only.
+
+> The REST API cannot modify document content. Writes (creating/editing nodes) always go through the plugin.
+
+### 1. Create the token
+
+In Figma: **Settings → Security → Personal access tokens → Generate new token**. For the tools above, grant at least:
+- **File content** — read (`rest_get_file`, `rest_render_image`)
+- **Comments** — write (`rest_post_comment`; reads work either way)
+
+Copy the token now — Figma shows it only once.
+
+### 2. Provide it to the MCP server
+
+**DXT (Claude Desktop, Option A):** open the extension's settings and paste the token into **Figma personal access token** — it's stored in your OS keychain, not in plain config.
+
+**JSON config (any client):** add an `env` block to the server entry:
+
+```json
+{
+  "mcpServers": {
+    "ClaudeTalkToFigma": {
+      "command": "npx",
+      "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"],
+      "env": {
+        "FIGMA_PERSONAL_TOKEN": "figd_your_token_here"
+      }
+    }
+  }
+}
+```
+
+**Claude Code:**
+
+```bash
+claude mcp add ClaudeTalkToFigma --env FIGMA_PERSONAL_TOKEN=figd_your_token_here \
+  -- npx -p claude-talk-to-figma-mcp@latest claude-talk-to-figma-mcp-server
+```
+
+Restart the client. The REST tools appear automatically when a token is detected; run **`rest_whoami`** to confirm it works. The token is sent only in the `X-Figma-Token` header — never placed in URLs or logged.
+
+> **Security:** treat the token like a password — it grants access to every Figma file your account can open. Prefer the DXT keychain storage or an environment variable over committing it to a shared `mcp.json`. Revoke it anytime in Figma settings.
+

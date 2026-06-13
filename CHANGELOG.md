@@ -7,6 +7,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-06-12
+
+Implements the full backlog from the architectural review (`ARCH_REVIEW.md`), and adds optional Figma REST API access via a personal access token.
+
+### Added — Figma REST API (optional, personal access token)
+- **New tools, gated on `FIGMA_PERSONAL_TOKEN`** (they don't appear without a token, keeping plugin-only setups clean): `rest_whoami`, `rest_get_file`, `rest_render_image`, `rest_get_comments`, `rest_post_comment`. These work **without the plugin or an open Figma session**, against **any file the token's user can access**, addressed by figma.com URL or file key (URLs' `node-id` is parsed automatically; branch URLs supported).
+- **Reads + renders remotely**: `rest_get_file` returns the depth-filtered node tree (reusing the same `filterFigmaNode` as the plugin path); `rest_render_image` renders nodes server-side, writes them to `figma-assets/`, and returns the first raster inline for vision. The REST API is **read-only for document content** — writes still go through the plugin; the only REST write is `rest_post_comment`.
+- **Token hygiene**: the token is resolved once from `FIGMA_PERSONAL_TOKEN` (or `FIGMA_API_TOKEN`/`FIGMA_TOKEN`/`--figma-token`), kept in module scope, sent only in the `X-Figma-Token` header (never in a URL), and scrubbed from error text. Configurable via the DXT manifest's `user_config` (stored in the OS keychain) or an `env` block.
+- **Rate-limit handling (HTTP 429)**: REST calls honor `Retry-After`, fall back to exponential backoff + jitter (capped), retry transient 5xx/network errors, and surface actionable messages for 401/403/404.
+
+### Security
+- **Relay origin allowlist (CSWSH protection)**: browsers don't apply CORS to WebSocket connects, so any web page could previously connect to `localhost:3055` and read or mutate the open Figma document. The relay now rejects browser requests whose `Origin` isn't the Figma plugin sandbox (`null`) or `*.figma.com`; non-browser clients (the MCP server) are unaffected. Extra origins via `FIGMA_SOCKET_ALLOWED_ORIGINS`. `/status` and the upgrade path echo only vetted origins instead of `*`.
+- **No more design content in logs**: debug logging is gated behind `LOG_LEVEL=debug` on both the MCP server and the relay, and logged payloads are truncated — multi-MB base64 snapshots no longer land in the MCP host's log files (or the plugin's iframe console, which retains references).
+- **Path-safe asset filenames**: `get_asset` / `extract_asset` run model-supplied filenames through `path.basename()`, so `../`-style names can't escape the output directory.
+
+### Fixed
+- **Plugin disconnect mid-command no longer hangs zero-config agents**: the relay's close handler deleted the (now-empty) channel queue *before* the cleanup that flushes it, so in zero-config mode the "plugin disconnected" error was never sent and agents waited out 2–5 minute timeouts. Cleanup now runs first, and all queued commands are rejected immediately when no plugin remains (regression-tested against the real relay).
+- **Malformed CLI args no longer spin**: `--port=abc` / `--reconnect-interval=abc` produced `NaN`, driving an endless (potentially ~0ms-tight) reconnect loop. Both the MCP server and the relay now validate numeric args and fall back to defaults with a warning.
+- **Caller timeouts survive queue/progress updates**: queue-position and progress frames replaced the caller's timeout with hardcoded 300s/120s values — a 15s resource read could silently stretch to 5 minutes. The caller's own inactivity budget is re-armed instead.
+- **`export_node_as_image` PDF**: `application/pdf` was returned inside an MCP `image` content block (invalid per spec); PDFs are now written to `figma-assets/` and returned as a path.
+- **`compare_to_figma` 3-digit hex**: `targetColor: "#fff"` silently disabled the brand-color check; shorthand hex is now expanded.
+- **`rgbaToHex` without alpha** produced `#rrggbbNaN`; missing alpha now defaults to opaque (alpha `0` stays transparent).
+- **Relay session-dedup eviction** leaked empty channel sets/queues; they're now cleaned up like regular disconnects.
+
+### Added
+- **Depth pushdown for `get_node_info` / `get_nodes_info`**: the plugin prunes the exported subtree to the requested depth *before* transport, keeping megabytes of JSON out of the postMessage → WebSocket → relay pipeline on large sections (the server-side filter remains as a fallback for older plugins). `get_nodes_info` also exports in batches of 5 instead of an unbounded `Promise.all`.
+- **Stable per-file channel names**: the plugin persists its channel in the document (`setPluginData`), so a plugin reconnect no longer strands manually-joined agents on a dead channel (multi-file disambiguation workflows survive blips).
+- **Content-addressed asset cache**: repeated `get_asset { hash }` calls are served from an in-server LRU (64MB budget) — image hashes are content hashes, so hits can never be stale. The render → compare → fix loop stops re-transferring identical images.
+- **Validated plugin responses**: results for the multimodal/asset/fidelity commands (`get_visual_snapshot`, `export_node_as_image`, `get_asset`, `extract_asset`, `classify_asset`, `scan_assets`, `get_fonts_used`, `get_css`) are validated with zod at the transport boundary; version skew now produces "plugin may be outdated — re-import it" instead of `Cannot read properties of undefined`.
+- **Real-relay test harness**: `startRelay()` factory (with CLI auto-start preserved across bun/node/compiled builds) lets tests exercise the actual relay on an ephemeral port; new regression suite covers the disconnect flush and the origin allowlist.
+
+### Changed
+- **`extract_asset` no longer mutates the user's document**: effects are stripped on a temporary clone (removed in `finally`) instead of the real node — a mid-export crash can no longer permanently lose effects. Nodes that can't be cloned fall back to the old strip-and-restore.
+- **`parentId` is now required in the schemas** of all creation tools (the relay already enforced it); the requirement fails at schema validation instead of costing a round-trip.
+- **Shared command registry** (`src/shared/commands.ts`): command names, creation-command and blocked-command lists are defined once and consumed by the MCP server, the relay, and the tests — the three hand-synced copies (which had already drifted: `get_team_components`) are gone.
+- **Typed relay envelope**: the MCP client parses relay frames as a discriminated union (`queue_position` / `progress_update` / `system` / `error` / `broadcast` / `ping` / `pong`) instead of `any`-casting.
+- **`compare_to_figma` computes SSIM once**: metrics and the diff heatmap share one decode + grid + SSIM pass (previously the full pipeline ran twice per comparison). The relay also serializes each command payload once instead of twice (forward + echo).
+- **Dependencies pinned** to exact versions; removed a stale embedded `package.json` (`@modelcontextprotocol/sdk: "latest"`) under `src/talk_to_figma_mcp/`.
+- **Stricter typechecking**: `noUnusedLocals`/`noUnusedParameters`, unified ES2022 target, and `src/socket.ts` + the shared registry are now covered by `npm run typecheck`.
+
 ## [1.3.0] - 2026-06-11
 
 ### Added

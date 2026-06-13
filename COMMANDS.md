@@ -164,6 +164,20 @@ Frame at (100, 50)
      - localPosition: {x: 50, y: 30}         ← Use for move_node
 ```
 
+## REST API tools (Personal Access Token)
+
+These tools talk to the **Figma REST API** instead of the plugin. They only appear when a personal access token is configured (`FIGMA_PERSONAL_TOKEN`) — see [Installation](INSTALLATION.md). Unlike the plugin tools, they work **without the plugin open** and against **any file the token's user can access**, addressed by URL or file key. The REST API is read-only for document content (plus comments); use the plugin tools to modify the open file.
+
+| Command | Purpose | Usage example |
+|---------|---------|---------------|
+| `rest_whoami` | Verify the configured token | Debug REST setup ("who am I?") |
+| `rest_get_file` | Read a file's node tree by URL/key (no plugin) | Inspect a design you don't have open |
+| `rest_render_image` | Render nodes to PNG/JPG/SVG server-side | *See* a frame from a shared link |
+| `rest_get_comments` | List a file's comments | Triage design feedback |
+| `rest_post_comment` | Post (or reply to) a comment, optionally anchored to a node | Leave review notes from the agent |
+
+> **Token hygiene:** the token is read once from the environment, sent only in the `X-Figma-Token` header (never in a URL), and scrubbed from error messages. Rate limits (HTTP 429) are retried with `Retry-After`/backoff automatically.
+
 ## Effective prompt examples
 
 ```

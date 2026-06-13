@@ -18,7 +18,7 @@ export function registerComponentTools(server: McpServer): void {
       componentKey: z.string().describe("Key of the component to instantiate"),
       x: z.coerce.number().describe("X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("Y position (local coordinates, relative to parent)"),
-      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+      parentId: z.string().describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
     },
     async ({ componentKey, x, y, parentId }) => {
@@ -60,7 +60,7 @@ export function registerComponentTools(server: McpServer): void {
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to convert into a component"),
       name: z.string().optional().describe("Optional new name for the component"),
-      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+      parentId: z.string().describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
     },
     async ({ nodeId, name, parentId }) => {
@@ -101,7 +101,7 @@ export function registerComponentTools(server: McpServer): void {
       inputSchema: {
       componentIds: coerceJson(z.array(z.string())).describe("Array of component node IDs to combine into a component set"),
       name: z.string().optional().describe("Optional name for the component set"),
-      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+      parentId: z.string().describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
     },
     },
     async ({ componentIds, name, parentId }) => {

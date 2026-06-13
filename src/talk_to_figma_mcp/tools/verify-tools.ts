@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
-import { compareImages, writeDiffHeatmap } from "../utils/image-compare";
+import { compareImages, writeDiffHeatmap, prepareComparison } from "../utils/image-compare";
+import { parseCommandResult } from "../utils/command-results";
 import { captureUrl } from "../utils/capture";
 import fs from "fs";
 import path from "path";
@@ -47,10 +48,7 @@ export function registerVerifyTools(server: McpServer): void {
           { nodeId, scale: 2, maxDimension: maxDimension ?? 2000 },
           120000
         );
-        const typed = snap as { name: string; type: string; nodeId: string; imageData: string; mimeType: string; width?: number; height?: number };
-        if (!typed.imageData) {
-          return { content: [{ type: "text", text: "Figma snapshot returned no image data." }] };
-        }
+        const typed = parseCommandResult("get_visual_snapshot", snap);
         const refBuf = Buffer.from(typed.imageData, "base64");
 
         let renderBuf: Buffer;
@@ -69,7 +67,10 @@ export function registerVerifyTools(server: McpServer): void {
           renderBuf = fs.readFileSync(renderPath!);
         }
 
-        const r = compareImages(renderBuf, refBuf, { targetColor });
+        // Decode + grid + SSIM once; the metrics and the heatmap share it
+        // (each used to redo the full pipeline on the same multi-MB buffers).
+        const pre = prepareComparison(renderBuf, refBuf);
+        const r = compareImages(renderBuf, refBuf, { targetColor }, pre);
 
         // Write a diff heatmap the agent can open and inspect visually.
         const outPath =
@@ -77,7 +78,7 @@ export function registerVerifyTools(server: McpServer): void {
           path.join(os.tmpdir(), `figma-diff-${(typed.nodeId || "node").replace(/[^a-z0-9]+/gi, "-")}-${Date.now()}.png`);
         let heatNote = "";
         try {
-          const dim = writeDiffHeatmap(renderBuf, refBuf, outPath);
+          const dim = writeDiffHeatmap(renderBuf, refBuf, outPath, 6, pre);
           r.diffImagePath = outPath;
           heatNote = `Diff heatmap (red = mismatch): ${outPath}  (${dim.width}×${dim.height})`;
         } catch (e) {

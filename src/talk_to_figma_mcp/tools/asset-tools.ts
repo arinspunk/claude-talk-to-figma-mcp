@@ -2,8 +2,9 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
 import { coerceBoolean } from "../utils/schema-helpers";
-import { effectsToCss, FigmaEffect } from "../utils/effects-css";
-import { classifyAsset, NodeSignals } from "../utils/asset-classify";
+import { effectsToCss } from "../utils/effects-css";
+import { classifyAsset } from "../utils/asset-classify";
+import { parseCommandResult } from "../utils/command-results";
 import fs from "fs";
 import path from "path";
 
@@ -41,17 +42,7 @@ export function registerAssetTools(server: McpServer): void {
           { nodeId, format: (format || "PNG").toUpperCase(), scale: scale ?? 2, stripScope: stripScope || "all" },
           120000
         );
-        const typed = result as {
-          kind: "image" | "svg";
-          name?: string;
-          mimeType: string;
-          dataBase64: string;
-          bytesLength: number;
-          rootEffects: FigmaEffect[];
-          strippedCount: number;
-          box: { x: number; y: number; width: number; height: number } | null;
-          renderBounds: { x: number; y: number; width: number; height: number } | null;
-        };
+        const typed = parseCommandResult("extract_asset", result);
 
         // Write the clean asset to disk.
         const buffer = Buffer.from(typed.dataBase64, "base64");
@@ -59,8 +50,9 @@ export function registerAssetTools(server: McpServer): void {
           "image/png": "png", "image/jpeg": "jpg", "image/svg+xml": "svg",
         };
         const ext = extByMime[typed.mimeType] || "bin";
+        // basename() keeps a model-supplied filename from escaping outDir via "../"
         const baseName =
-          (filename && filename.replace(/\.[^.]+$/, "")) ||
+          (filename && path.basename(filename).replace(/\.[^.]+$/, "")) ||
           (typed.name && typed.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40)) ||
           `asset-${Date.now()}`;
         const dir = outDir || path.join(process.cwd(), "figma-assets");
@@ -120,7 +112,7 @@ export function registerAssetTools(server: McpServer): void {
     },
     async ({ nodeId, includeSignals }) => {
       try {
-        const signals = (await sendCommandToFigma("classify_asset", { nodeId }, 60000)) as NodeSignals;
+        const signals = parseCommandResult("classify_asset", await sendCommandToFigma("classify_asset", { nodeId }, 60000));
         const r = classifyAsset(signals);
 
         const lines: string[] = [
