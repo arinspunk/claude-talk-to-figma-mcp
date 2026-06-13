@@ -270,6 +270,13 @@
             serverPort: 3055,
             pendingRequests: new Map(),
             channel: null,
+            // Per-file channel persisted in the document (received via init-settings)
+            savedChannel: null,
+            // Auto-reconnect state
+            manualDisconnect: false,
+            reconnectAttempts: 0,
+            reconnectTimer: null,
+            maxReconnectDelay: 30000,
           };
 
           // Cache DOM elements
@@ -310,6 +317,24 @@
         }
 
         /**
+         * Truncate big payloads (base64 snapshots) for console logging — the
+         * browser console retains references, so logging full image payloads
+         * grows iframe memory unboundedly over a long session.
+         */
+        preview(value, max = 600) {
+          let s;
+          try {
+            s = typeof value === "string" ? value : JSON.stringify(value);
+          } catch (e) {
+            s = String(value);
+          }
+          if (s && s.length > max) {
+            return s.slice(0, max) + "… [truncated " + (s.length - max) + " chars]";
+          }
+          return s;
+        }
+
+        /**
          * Update the connection status UI
          */
         updateStatus(isConnected, message) {
@@ -331,21 +356,40 @@
         /**
          * Connect to WebSocket server
          */
-        async connect(port = 3055) {
+        async connect(port = this.state.serverPort || 3055) {
           try {
             if (this.state.connected && this.state.socket) {
               this.updateStatus(true, "Already connected to server");
               return;
             }
 
+            // A fresh manual connect cancels any pending auto-reconnect.
+            this.state.manualDisconnect = false;
+            if (this.state.reconnectTimer) {
+              clearTimeout(this.state.reconnectTimer);
+              this.state.reconnectTimer = null;
+            }
+
             this.updateStatus(false, "Connecting...");
             this.ui.connectionStatus.className = "mcp-plugin__connection-status info";
-            
+
             this.state.serverPort = port;
             this.state.socket = new WebSocket(`ws://localhost:${port}`);
 
             this.state.socket.onopen = () => {
-              const channelName = this.generateChannelName();
+              // Successful connection resets the backoff.
+              this.state.reconnectAttempts = 0;
+              // Reuse the per-file channel persisted in the document so the
+              // channel survives reconnects/restarts; generate one only the
+              // first time and persist it via the plugin sandbox.
+              const channelName = this.state.savedChannel || this.generateChannelName();
+              if (channelName !== this.state.savedChannel) {
+                this.state.savedChannel = channelName;
+                parent.postMessage(
+                  { pluginMessage: { type: "save-channel", channel: channelName } },
+                  "*"
+                );
+              }
               console.log("Joining channel:", channelName);
               this.state.channel = channelName;
 
@@ -353,6 +397,9 @@
                 JSON.stringify({
                   type: "join",
                   channel: channelName.trim(),
+                  // Identify as the Figma plugin so the relay can count connected
+                  // plugins immediately and enable zero-config auto-routing.
+                  role: "plugin",
                 })
               );
             };
@@ -360,7 +407,18 @@
             this.state.socket.onmessage = (event) => {
               try {
                 const data = JSON.parse(event.data);
-                console.log("Received message:", data);
+
+                // Heartbeat: reply to the server's application-level ping so it
+                // knows this plugin is alive (Figma's iframe does not auto-answer
+                // protocol-level WS pings). Keep this quiet — no console spam.
+                if (data.type === "ping") {
+                  if (this.state.socket && this.state.socket.readyState === WebSocket.OPEN) {
+                    this.state.socket.send(JSON.stringify({ type: "pong" }));
+                  }
+                  return;
+                }
+
+                console.log("Received message:", this.preview(data));
 
                 if (data.type === "system") {
                   if (data.message && data.message.result) {
@@ -396,34 +454,73 @@
             this.state.socket.onclose = () => {
               this.state.connected = false;
               this.state.socket = null;
-              this.updateStatus(false, "Disconnected from server…<br>Try to reconnect clicking the button");
+              // Auto-reconnect unless the user explicitly disconnected.
+              if (this.state.manualDisconnect) {
+                this.updateStatus(false, "Disconnected from server…<br>Try to reconnect clicking the button");
+              } else {
+                this.scheduleReconnect();
+              }
             };
 
             this.state.socket.onerror = (error) => {
               console.error("WebSocket error:", error);
-              this.updateStatus(false, "Connection error");
               this.state.connected = false;
+              // Let onclose drive reconnect; just null the socket reference.
               this.state.socket = null;
             };
           } catch (error) {
             console.error("Connection error:", error);
-            this.updateStatus(
-              false,
-              `Connection error: ${error.message || "Unknown error"}`
-            );
+            this.state.socket = null;
+            if (!this.state.manualDisconnect) {
+              this.scheduleReconnect();
+            } else {
+              this.updateStatus(false, `Connection error: ${error.message || "Unknown error"}`);
+            }
           }
+        }
+
+        /**
+         * Schedule an automatic reconnect with exponential backoff + jitter.
+         * Keeps the plugin connected through relay restarts and network blips
+         * without the user having to click Connect each time.
+         */
+        scheduleReconnect() {
+          if (this.state.reconnectTimer) return; // already scheduled
+          const attempt = this.state.reconnectAttempts++;
+          const base = Math.min(this.state.maxReconnectDelay, 1000 * Math.pow(2, attempt));
+          const delay = Math.round(base * (0.7 + Math.random() * 0.3)); // jitter
+          const secs = Math.ceil(delay / 1000);
+
+          this.updateStatus(false, `Disconnected. Reconnecting in ${secs}s… (attempt ${attempt + 1})`);
+          this.ui.connectionStatus.className = "mcp-plugin__connection-status info";
+
+          this.state.reconnectTimer = setTimeout(() => {
+            this.state.reconnectTimer = null;
+            if (!this.state.manualDisconnect) {
+              this.connect(this.state.serverPort);
+            }
+          }, delay);
         }
 
         /**
          * Disconnect from WebSocket server
          */
         disconnect() {
+          // Mark as intentional so onclose does NOT auto-reconnect.
+          this.state.manualDisconnect = true;
+          if (this.state.reconnectTimer) {
+            clearTimeout(this.state.reconnectTimer);
+            this.state.reconnectTimer = null;
+          }
+          this.state.reconnectAttempts = 0;
           if (this.state.socket) {
             this.updateStatus(false, "Disconnecting...");
             this.ui.connectionStatus.className = "mcp-plugin__connection-status info";
             this.state.socket.close();
             this.state.socket = null;
             this.state.connected = false;
+          } else {
+            this.updateStatus(false, "Disconnected from server…<br>Try to reconnect clicking the button");
           }
         }
 
@@ -433,7 +530,7 @@
         async handleSocketMessage(payload) {
           const data = payload.message;
           if (!data) return;
-          console.log("handleSocketMessage", data);
+          console.log("handleSocketMessage", this.preview(data));
 
           // If it's a response to a previous request
           if (data.id && this.state.pendingRequests.has(data.id)) {
@@ -470,9 +567,14 @@
          */
         handleFigmaMessage(message) {
           if (!message) return;
-          console.log("Received message from plugin:", message);
+          console.log("Received message from plugin:", this.preview(message));
 
           switch (message.type) {
+            case "init-settings":
+              // Restore the saved server port and per-file channel before connecting.
+              if (message.serverPort) this.state.serverPort = message.serverPort;
+              if (message.channelName) this.state.savedChannel = message.channelName;
+              break;
             case "connection-status":
               this.updateStatus(message.connected, message.message);
               break;

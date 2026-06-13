@@ -7,20 +7,17 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import { Server, ServerWebSocket } from "bun";
+import {
+  CREATION_COMMANDS as CREATION_COMMAND_LIST,
+  BLOCKED_COMMANDS as BLOCKED_COMMAND_LIST,
+} from "../../src/shared/commands";
 
 // ─── Test Helpers ──────────────────────────────────────────────────────────
 
-/** Mirrors the CREATION_COMMANDS set from socket.ts */
-const CREATION_COMMANDS = new Set([
-  "create_rectangle", "create_frame", "create_text", "create_ellipse",
-  "create_polygon", "create_star", "create_vector", "create_line",
-  "create_component_instance", "create_component_set", "set_svg",
-  "clone_node", "create_component_from_node",
-  // FigJam creation commands
-  "create_section", "create_sticky", "create_shape_with_text", "create_connector",
-]);
-
-const BLOCKED_COMMANDS = new Set(["set_current_page"]);
+// The REAL command lists (shared registry consumed by socket.ts) — the mirror
+// server below exercises the same validation rules the relay applies.
+const CREATION_COMMANDS = new Set<string>(CREATION_COMMAND_LIST);
+const BLOCKED_COMMANDS = new Set<string>(BLOCKED_COMMAND_LIST);
 
 /** Helper to create a WebSocket client and wait for connection */
 function createClient(port: number): Promise<WebSocket> {

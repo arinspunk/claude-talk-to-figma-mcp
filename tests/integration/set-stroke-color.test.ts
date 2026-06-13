@@ -21,10 +21,11 @@ describe("set_stroke_color tool integration", () => {
     mockSendCommand = require('../../src/talk_to_figma_mcp/utils/websocket').sendCommandToFigma;
     mockSendCommand.mockClear();
     
-    const originalTool = server.tool.bind(server);
-    jest.spyOn(server, 'tool').mockImplementation((...args: any[]) => {
-      if (args.length === 4) {
-        const [name, description, schema, handler] = args;
+    const originalTool = server.registerTool.bind(server);
+    jest.spyOn(server, 'registerTool').mockImplementation((...args: any[]) => {
+      if (args.length === 3) {
+        const [name, config, handler] = args;
+        const schema = config.inputSchema ?? {};
         if (name === 'set_stroke_color') {
           toolHandler = handler;
           toolSchema = z.object(schema);

@@ -27,105 +27,72 @@ export interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
   timeout: ReturnType<typeof setTimeout>;
+  /** Caller-requested timeout budget; reused when re-arming on queue/progress activity. */
+  timeoutMs: number;
   lastActivity: number;
 }
 
-// Define WebSocket message structures
-export interface ProgressMessage {
-  message: FigmaResponse | any;
-  type?: string;
+// ── Relay envelope (discriminated on `type`) ────────────────────────────────
+
+/** Inner payload of system/broadcast frames: a response, a command echo, or nothing routable. */
+export interface RelayPayload {
   id?: string;
-  [key: string]: any; // Allow any other properties
+  command?: string;
+  result?: any;
+  error?: string;
 }
 
-// Define possible command types for Figma
-export type FigmaCommand =
-  | "get_document_info"
-  | "get_selection"
-  | "get_node_info"
-  | "create_rectangle"
-  | "create_frame"
-  | "create_text"
-  | "create_ellipse"
-  | "create_polygon"
-  | "create_star"
-  | "create_vector"
-  | "create_line"
-  | "set_fill_color"
-  | "set_stroke_color"
-  | "move_node"
-  | "resize_node"
-  | "delete_node"
-  | "get_styles"
-  | "get_local_components"
-  | "get_team_components"
-  | "create_component_instance"
-  | "export_node_as_image"
-  | "join"
-  | "ping"
-  | "set_corner_radius"
-  | "clone_node"
-  | "set_text_content"
-  | "scan_text_nodes"
-  | "set_multiple_text_contents"
-  | "set_auto_layout"
-  | "set_font_name"
-  | "set_font_size"
-  | "set_font_weight"
-  | "set_letter_spacing"
-  | "set_line_height"
-  | "set_paragraph_spacing"
-  | "set_text_case"
-  | "set_text_decoration"
-  | "get_styled_text_segments"
-  | "load_font_async"
-  | "get_remote_components"
-  | "set_effects"
-  | "set_effect_style_id"
-  | "set_text_style_id"
-  | "group_nodes"
-  | "ungroup_nodes"
-  | "flatten_node"
-  | "insert_child"
-  | "create_component_from_node"
-  | "create_component_set"
-  | "set_instance_variant"
-  | "create_page"
-  | "delete_page"
-  | "rename_page"
-  | "get_pages"
-  | "set_current_page"
-  | "rename_node"
-  | "set_selection_colors"
-  | "set_image_fill"
-  | "get_image_from_node"
-  | "replace_image_fill"
-  // | "get_image_bytes" // COMMENTED OUT: Issues pending investigation
-  | "apply_image_transform"
-  | "set_image_filters"
-  | "rotate_node"
-  | "set_node_properties"
-  | "reorder_node"
-  | "duplicate_page"
-  | "convert_to_frame"
-  | "set_gradient"
-  | "boolean_operation"
-  | "set_svg"
-  | "get_svg"
-  | "set_image"
-  | "set_grid"
-  | "get_grid"
-  | "set_guide"
-  | "get_guide"
-  | "set_annotation"
-  | "get_annotation"
-  | "get_variables"
-  | "set_variable"
-  | "apply_variable_to_node"
-  | "switch_variable_mode"
-  | "get_figjam_elements"
-  | "create_sticky"
-  | "set_sticky_text"
-  | "create_shape_with_text"
-  | "create_connector"
-  | "create_section";
+export interface QueuePositionMessage {
+  type: "queue_position";
+  id?: string;
+  position?: number;
+  queueSize?: number;
+  message?: { data?: { status?: string; progress?: number; message?: string } };
+}
+
+export interface ProgressUpdateMessage {
+  type: "progress_update";
+  id?: string;
+  channel?: string;
+  message: { id?: string; type?: string; data: CommandProgressUpdate };
+}
+
+export interface SystemMessage {
+  type: "system";
+  message: string | RelayPayload;
+  channel?: string;
+}
+
+export interface ErrorMessage {
+  type: "error";
+  message: string;
+}
+
+export interface BroadcastMessage {
+  type: "broadcast";
+  message: RelayPayload;
+  sender?: string;
+  channel?: string;
+}
+
+export interface PingMessage {
+  type: "ping";
+}
+
+export interface PongMessage {
+  type: "pong";
+}
+
+/** Every frame the relay can deliver to an MCP agent. */
+export type RelayMessage =
+  | QueuePositionMessage
+  | ProgressUpdateMessage
+  | SystemMessage
+  | ErrorMessage
+  | BroadcastMessage
+  | PingMessage
+  | PongMessage;
+
+// Command names live in the shared registry (single source of truth for the
+// MCP server, the relay, and the relay tests).
+export type { FigmaCommand } from "../../shared/commands";

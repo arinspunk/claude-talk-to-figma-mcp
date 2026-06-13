@@ -7,6 +7,113 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-06-12
+
+Implements the full backlog from the architectural review (`ARCH_REVIEW.md`), and adds optional Figma REST API access via a personal access token.
+
+### Added — Figma REST API (optional, personal access token)
+- **New tools, gated on `FIGMA_PERSONAL_TOKEN`** (they don't appear without a token, keeping plugin-only setups clean): `rest_whoami`, `rest_get_file`, `rest_render_image`, `rest_get_comments`, `rest_post_comment`. These work **without the plugin or an open Figma session**, against **any file the token's user can access**, addressed by figma.com URL or file key (URLs' `node-id` is parsed automatically; branch URLs supported).
+- **Reads + renders remotely**: `rest_get_file` returns the depth-filtered node tree (reusing the same `filterFigmaNode` as the plugin path); `rest_render_image` renders nodes server-side, writes them to `figma-assets/`, and returns the first raster inline for vision. The REST API is **read-only for document content** — writes still go through the plugin; the only REST write is `rest_post_comment`.
+- **Token hygiene**: the token is resolved once from `FIGMA_PERSONAL_TOKEN` (or `FIGMA_API_TOKEN`/`FIGMA_TOKEN`/`--figma-token`), kept in module scope, sent only in the `X-Figma-Token` header (never in a URL), and scrubbed from error text. Configurable via the DXT manifest's `user_config` (stored in the OS keychain) or an `env` block.
+- **Rate-limit handling (HTTP 429)**: REST calls honor `Retry-After`, fall back to exponential backoff + jitter (capped), retry transient 5xx/network errors, and surface actionable messages for 401/403/404.
+
+### Security
+- **Relay origin allowlist (CSWSH protection)**: browsers don't apply CORS to WebSocket connects, so any web page could previously connect to `localhost:3055` and read or mutate the open Figma document. The relay now rejects browser requests whose `Origin` isn't the Figma plugin sandbox (`null`) or `*.figma.com`; non-browser clients (the MCP server) are unaffected. Extra origins via `FIGMA_SOCKET_ALLOWED_ORIGINS`. `/status` and the upgrade path echo only vetted origins instead of `*`.
+- **No more design content in logs**: debug logging is gated behind `LOG_LEVEL=debug` on both the MCP server and the relay, and logged payloads are truncated — multi-MB base64 snapshots no longer land in the MCP host's log files (or the plugin's iframe console, which retains references).
+- **Path-safe asset filenames**: `get_asset` / `extract_asset` run model-supplied filenames through `path.basename()`, so `../`-style names can't escape the output directory.
+
+### Fixed
+- **Plugin disconnect mid-command no longer hangs zero-config agents**: the relay's close handler deleted the (now-empty) channel queue *before* the cleanup that flushes it, so in zero-config mode the "plugin disconnected" error was never sent and agents waited out 2–5 minute timeouts. Cleanup now runs first, and all queued commands are rejected immediately when no plugin remains (regression-tested against the real relay).
+- **Malformed CLI args no longer spin**: `--port=abc` / `--reconnect-interval=abc` produced `NaN`, driving an endless (potentially ~0ms-tight) reconnect loop. Both the MCP server and the relay now validate numeric args and fall back to defaults with a warning.
+- **Caller timeouts survive queue/progress updates**: queue-position and progress frames replaced the caller's timeout with hardcoded 300s/120s values — a 15s resource read could silently stretch to 5 minutes. The caller's own inactivity budget is re-armed instead.
+- **`export_node_as_image` PDF**: `application/pdf` was returned inside an MCP `image` content block (invalid per spec); PDFs are now written to `figma-assets/` and returned as a path.
+- **`compare_to_figma` 3-digit hex**: `targetColor: "#fff"` silently disabled the brand-color check; shorthand hex is now expanded.
+- **`rgbaToHex` without alpha** produced `#rrggbbNaN`; missing alpha now defaults to opaque (alpha `0` stays transparent).
+- **Relay session-dedup eviction** leaked empty channel sets/queues; they're now cleaned up like regular disconnects.
+
+### Added
+- **Depth pushdown for `get_node_info` / `get_nodes_info`**: the plugin prunes the exported subtree to the requested depth *before* transport, keeping megabytes of JSON out of the postMessage → WebSocket → relay pipeline on large sections (the server-side filter remains as a fallback for older plugins). `get_nodes_info` also exports in batches of 5 instead of an unbounded `Promise.all`.
+- **Stable per-file channel names**: the plugin persists its channel in the document (`setPluginData`), so a plugin reconnect no longer strands manually-joined agents on a dead channel (multi-file disambiguation workflows survive blips).
+- **Content-addressed asset cache**: repeated `get_asset { hash }` calls are served from an in-server LRU (64MB budget) — image hashes are content hashes, so hits can never be stale. The render → compare → fix loop stops re-transferring identical images.
+- **Validated plugin responses**: results for the multimodal/asset/fidelity commands (`get_visual_snapshot`, `export_node_as_image`, `get_asset`, `extract_asset`, `classify_asset`, `scan_assets`, `get_fonts_used`, `get_css`) are validated with zod at the transport boundary; version skew now produces "plugin may be outdated — re-import it" instead of `Cannot read properties of undefined`.
+- **Real-relay test harness**: `startRelay()` factory (with CLI auto-start preserved across bun/node/compiled builds) lets tests exercise the actual relay on an ephemeral port; new regression suite covers the disconnect flush and the origin allowlist.
+
+### Changed
+- **`extract_asset` no longer mutates the user's document**: effects are stripped on a temporary clone (removed in `finally`) instead of the real node — a mid-export crash can no longer permanently lose effects. Nodes that can't be cloned fall back to the old strip-and-restore.
+- **`parentId` is now required in the schemas** of all creation tools (the relay already enforced it); the requirement fails at schema validation instead of costing a round-trip.
+- **Shared command registry** (`src/shared/commands.ts`): command names, creation-command and blocked-command lists are defined once and consumed by the MCP server, the relay, and the tests — the three hand-synced copies (which had already drifted: `get_team_components`) are gone.
+- **Typed relay envelope**: the MCP client parses relay frames as a discriminated union (`queue_position` / `progress_update` / `system` / `error` / `broadcast` / `ping` / `pong`) instead of `any`-casting.
+- **`compare_to_figma` computes SSIM once**: metrics and the diff heatmap share one decode + grid + SSIM pass (previously the full pipeline ran twice per comparison). The relay also serializes each command payload once instead of twice (forward + echo).
+- **Dependencies pinned** to exact versions; removed a stale embedded `package.json` (`@modelcontextprotocol/sdk: "latest"`) under `src/talk_to_figma_mcp/`.
+- **Stricter typechecking**: `noUnusedLocals`/`noUnusedParameters`, unified ES2022 target, and `src/socket.ts` + the shared registry are now covered by `npm run typecheck`.
+
+## [1.3.0] - 2026-06-11
+
+### Added
+- **`capture_render`** — screenshot a local URL with a headless browser at an exact pixel size and save it as a PNG. Encodes the gotchas of reliable headless captures: warms the route first (so dev-server compilation isn't in the shot), captures taller than requested then crops (a viewport whose height equals the content height collapses the render), and falls back across chromium/chromium-browser/google-chrome binaries (`CHROME_PATH` overrides). Requires a local Chromium/Chrome.
+- **`compare_to_figma` url mode** — pass `url` instead of `renderPath` and the tool captures the route headlessly at the Figma node's exact width×height before comparing, closing the render → compare → fix loop in a single call with guaranteed-matching dimensions.
+
+### Fixed
+- **Alpha 0 no longer becomes opaque**: `create_text`, `create_vector`, and `create_line` used `parseFloat(color.a) || 1`, silently turning a fully transparent color (`a: 0`) into a fully opaque one. They now use the shared `safePaint` helper (like the other creation handlers).
+- **`batch_operations` no longer bypasses relay validation**: blocked commands (`set_current_page`) and parentId-less creation commands were rejected when sent directly but allowed when wrapped in a batch. The relay now validates every operation inside a batch payload against the same rules.
+- **`create_component_from_node` honors `parentId`**: for primitive nodes the component was appended to the requested parent and then immediately re-inserted into the original parent (parentId silently ignored); the built-in FRAME/GROUP/INSTANCE path ignored it entirely. An explicit parentId now wins in all paths.
+- **Relay connection stats**: session deduplication decremented `activeConnections` twice per reconnect (manually + via the close handler), drifting the count negative over time.
+- **Real exponential backoff**: the MCP→relay reconnect delay was labeled exponential but used a random exponent, never growing with attempts. It now backs off per attempt (capped at 30s, with jitter) and resets on successful connect.
+- **Commands wait for reconnects instead of failing**: `sendCommandToFigma` rejected immediately with "Not connected" during the brief window of an auto-reconnect. Commands now wait up to 15s for the connection + channel join to come back before failing.
+- **Fractional font sizes**: `create_text` truncated `fontSize` with `parseInt` (13.5 → 13); now uses `parseFloat`. The `width` parameter also accepts numeric strings like every other numeric arg.
+- **Mixed-font text nodes**: `set_font_weight` threw on text nodes with multiple fonts (`fontName` is `figma.mixed`); it now samples the first character's family. Also fixed a broken branch in the smart-font-matching helper (`getRangeFontName(start, start[0])` — `start[0]` of a number is undefined).
+- **`get_document_info` pages array**: reported only the current page in `pages`, making single-page documents indistinguishable from multi-page ones. Now lists all pages with an `isCurrent` flag.
+- **Version drift**: `config.ts` still reported 1.1.0. The `sync-version` script now updates `config.ts` alongside `manifest.json`, so this can't recur.
+- Removed dead `processFigmaNodeResponse` helper (unused, and it logged to stdout — which would corrupt the stdio JSON-RPC stream if ever used).
+- Typo in the `design_strategy` prompt ("Mofifying" → "Modifying").
+
+### Changed
+- **Errors are machine-readable**: every tool error response now sets `isError: true`, so MCP clients can distinguish failures from successes programmatically (~100 call sites).
+- **Migrated to the SDK's `registerTool`/`registerResource`/`registerPrompt` APIs** (from the deprecated `server.tool()`/`.resource()`/`.prompt()`), adding tool annotations: read-only tools are marked `readOnlyHint`, `delete_*` tools `destructiveHint`.
+- **Structured output**: JSON-returning read tools (`get_document_info`, `get_selection`, `get_node_info`, `get_nodes_info`, `get_styles`, `get_variables`, `get_reactions`, `get_figjam_elements`, `get_pages`, `get_styled_text_segments`, and more) now also return `structuredContent` alongside the text payload.
+- **Scan highlighting is opt-in**: `scan_text_nodes` and `set_multiple_text_contents` no longer flash every node orange by default — that mutated user fills and added 100–500ms per node (a 100-node frame took ~1 minute longer). Pass `highlight: true` to re-enable; the inter-chunk pause also dropped from 1s to 250ms.
+- **`scan_assets` is faster by default**: it no longer fetches every image's full bytes just to report a byte size; pass `includeByteSizes: true` if you need sizes.
+- **`get_styles`** now returns the full `paints` array for color styles (multi-paint styles previously lost everything past `paints[0]`).
+- **`set_reactions`** returns a concise verification summary instead of echoing full debug JSON payloads.
+- **Dependencies pinned**: `@modelcontextprotocol/sdk`, `uuid`, and `ws` were `"latest"` (unreproducible builds); now pinned to caret ranges.
+- **CI**: the test workflow now also runs `typecheck` and the Bun socket relay tests, on Node 20/22.
+
+## [1.2.0] - 2026-06-05
+
+### Added
+- **🧼 Effects-aware extraction** — `extract_asset`: exports a node as a CLEAN asset with its effects temporarily stripped (so shadow/blur bleed isn't baked into the bitmap, and NOISE/TEXTURE effects that blank a node in SVG/browser are removed), then hands back the effects translated to ready-to-use CSS (`box-shadow` / `filter` / `backdrop-filter`). Reports the effect bleed past the layout box and flags any effect that can't be reproduced in CSS. Always restores the node's effects afterward.
+- **🧭 Asset-vs-SVG advisor** — `classify_asset`: inspects a node's subtree (image fills, vector/text counts, masks, blend modes, effect support, root fills) and recommends **raster PNG / inline SVG / pure CSS** with reasons — so you don't ship an SVG that embeds a photo, rasterize a one-line divider, or try to SVG-export a NOISE/mask/blend node that won't survive. The decision is a pure, unit-tested function fed by raw signals gathered in the plugin.
+
+### Changed
+- **📐 More accurate `compare_to_figma`**: the headline metric is now **SSIM (structural similarity)** instead of raw mean grayscale diff, so font anti-aliasing no longer drags text-heavy sections down to a false ~92% — the score reflects real layout/asset drift. Adds a **color delta**, recasts the 3×3 map as per-region structural mismatch, and writes a **diff HEATMAP png** (red = mismatch) you can open to see exactly where the render diverges. Verdict thresholds recalibrated for SSIM.
+
+### Tests
+- +33 tests (160 total): unit coverage for the effects→CSS translator, the asset classifier heuristics, and the SSIM/color/heatmap comparison; integration coverage for `extract_asset` and `classify_asset` wiring.
+
+## [1.1.0] - 2026-06-03
+
+### Added
+- **🔌 Zero-config connection**: The MCP server auto-routes tool calls to the single connected Figma plugin — no more copying a channel ID or saying "connect to channel XYZ". Clients self-identify on join (`role`), a friendly error tells the user to open the plugin when none is connected, and `join_channel` remains as an advanced override for multi-file disambiguation.
+- **❤️ Heartbeat & auto-reconnect**: Application-level ping/pong prunes stale/crashed plugin sockets so routing stays accurate; the Figma plugin now auto-reconnects (exponential backoff) through socket restarts and network blips. The plugin server port is restored from saved settings.
+- **👁️ Multimodal vision** — `get_visual_snapshot`: returns a PNG of the selection (auto-scaled to a max dimension for large frames) so the agent can *see* layout, spacing, and fonts and verify its work.
+- **📐 Objective fidelity check** — `compare_to_figma`: snapshots a Figma node and pixel-diffs it against a screenshot of the implemented UI, returning a similarity %, a 3×3 region diff map (to localize mismatches), an edge-overflow estimate, and an optional brand-color match. Turns "does it look right?" into measured numbers for a render → compare → fix loop. (Adds a lightweight `pngjs` dependency for PNG decoding.)
+- **🎯 High-fidelity extraction**:
+  - `get_css` — Figma's exact Dev-Mode CSS per node (optionally recursive).
+  - `get_fonts_used` — inventory of every font/style/size in a subtree.
+  - `scan_assets` + `get_asset` — inventory and extract real image bytes & SVG icons to files.
+- **📦 Operation batching** — `batch_operations`: apply many edits in one payload; streams progress (timeout-safe) and returns a per-operation success/failure summary.
+- **🧩 Native MCP surface**: live Resources (`figma://local/selection`, `figma://local/document`) and Prompts (`/audit-accessibility`, `/export-to-tailwind`).
+- **📦 Standalone executables** (`npm run build:compile`): compiles the MCP server and socket relay into single-file native binaries via `bun build --compile` (no Bun/Node needed at runtime). Cross-compile for all platforms with `npm run compile:all-platforms`. The relay port is now configurable via `--port=` or `FIGMA_SOCKET_PORT`, and `FIGMA_SOCKET_HOST` allows binding for WSL.
+
+### Fixed
+- **Type-safety gate restored**: the inner tsconfig used `NodeNext` resolution that broke `tsc`; switched to `bundler` so `npm run typecheck` works. This immediately surfaced and fixed 8 commands missing from the `FigmaCommand` union (`get_nodes_info`, `set_text_align`, `set_reactions`, `get_reactions`, `detach_instance`, `create_text_style`, `create_paint_style`, `create_effect_style`).
+- Progress updates now reset the relay's per-command timeout, so long-running operations (batches, bulk text/colour) aren't reaped mid-flight.
+- Standardized error handling in image tools (return error content instead of throwing protocol errors).
+
+### Changed
+- Removed dead, commented-out `get_image_bytes` (superseded by `get_asset`).
+- Re-enabled the 16 socket-queue unit tests via `bun test` (`npm run test:socket`); added `npm run typecheck` and `npm run test:all`.
+
 ## [1.0.0] - 2026-04-18
 
 ### Added

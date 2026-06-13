@@ -8,7 +8,9 @@ module.exports = {
     '**/tests/**/*.spec.ts'
   ],
   testPathIgnorePatterns: [
-    '/tests/unit/socket-queue.test.ts'
+    // bun:test suites (run via `npm run test:socket`)
+    '/tests/unit/socket-queue.test.ts',
+    '/tests/unit/relay-disconnect.test.ts'
   ],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { useESM: true }],

@@ -9,6 +9,9 @@ import { registerSvgTools } from "./svg-tools";
 import { registerVariableTools } from "./variable-tools";
 import { registerFigJamTools } from "./figjam-tools";
 import { registerStyleTools } from "./style-tools";
+import { registerVerifyTools } from "./verify-tools";
+import { registerAssetTools } from "./asset-tools";
+import { registerRestTools } from "./rest-tools";
 
 /**
  * Register all Figma tools to the MCP server
@@ -26,6 +29,10 @@ export function registerTools(server: McpServer): void {
   registerVariableTools(server);
   registerFigJamTools(server);
   registerStyleTools(server);
+  registerVerifyTools(server);
+  registerAssetTools(server);
+  // REST API tools (Figma personal access token) — self-skip when no token is set.
+  registerRestTools(server);
 }
 
 // Export all tool registration functions for individual usage if needed
@@ -40,4 +47,7 @@ export {
   registerVariableTools,
   registerFigJamTools,
   registerStyleTools,
+  registerVerifyTools,
+  registerAssetTools,
+  registerRestTools,
 };

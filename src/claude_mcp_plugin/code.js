@@ -69,6 +69,12 @@ figma.ui.onmessage = async (msg) => {
     case "update-settings":
       updateSettings(msg);
       break;
+    case "save-channel":
+      // Persist the per-file channel name in the document (see figma.on("run")).
+      try {
+        figma.root.setPluginData("mcp_channel_name", msg.channel || "");
+      } catch (e) { /* non-fatal: a new channel is generated next session */ }
+      break;
     case "notify":
       figma.notify(msg.message);
       break;
@@ -98,7 +104,33 @@ figma.ui.onmessage = async (msg) => {
 
 // Listen for plugin commands from menu
 figma.on("run", ({ command }) => {
-  figma.ui.postMessage({ type: "auto-connect" });
+  // Per-file channel name persisted in the DOCUMENT (not clientStorage, which
+  // is shared across files): keeps the channel stable across plugin reconnects
+  // and restarts, so manually-joined agents aren't stranded by a plugin blip.
+  let savedChannel = "";
+  try {
+    savedChannel = figma.root.getPluginData("mcp_channel_name") || "";
+  } catch (e) { /* plugin data unavailable — a fresh channel will be generated */ }
+
+  // Restore any saved server port before auto-connecting.
+  figma.clientStorage.getAsync("settings").then((settings) => {
+    if (settings && settings.serverPort) {
+      state.serverPort = settings.serverPort;
+    }
+    figma.ui.postMessage({
+      type: "init-settings",
+      serverPort: state.serverPort,
+      channelName: savedChannel || undefined,
+    });
+    figma.ui.postMessage({ type: "auto-connect" });
+  }).catch(() => {
+    figma.ui.postMessage({
+      type: "init-settings",
+      serverPort: state.serverPort,
+      channelName: savedChannel || undefined,
+    });
+    figma.ui.postMessage({ type: "auto-connect" });
+  });
 });
 
 // Update plugin settings
@@ -134,12 +166,12 @@ async function handleCommand(command, params) {
       if (!params || !params.nodeId) {
         throw new Error("Missing nodeId parameter");
       }
-      return await getNodeInfo(params.nodeId);
+      return await getNodeInfo(params.nodeId, params.depth);
     case "get_nodes_info":
       if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
         throw new Error("Missing or invalid nodeIds parameter");
       }
-      return await getNodesInfo(params.nodeIds);
+      return await getNodesInfo(params.nodeIds, params.depth);
     case "create_rectangle":
       return await createRectangle(params);
     case "create_frame":
@@ -168,6 +200,22 @@ async function handleCommand(command, params) {
       return await createComponentInstance(params);
     case "export_node_as_image":
       return await exportNodeAsImage(params);
+    case "get_visual_snapshot":
+      return await getVisualSnapshot(params);
+    case "batch_operations":
+      return await batchOperations(params);
+    case "get_css":
+      return await getCSS(params);
+    case "get_fonts_used":
+      return await getFontsUsed(params);
+    case "scan_assets":
+      return await scanAssets(params);
+    case "get_asset":
+      return await getAsset(params);
+    case "extract_asset":
+      return await extractAsset(params);
+    case "classify_asset":
+      return await classifyAssetSignals(params);
     case "set_corner_radius":
       return await setCornerRadius(params);
     case "set_text_content":
@@ -349,13 +397,13 @@ async function getDocumentInfo() {
       name: page.name,
       childCount: page.children.length,
     },
-    pages: [
-      {
-        id: page.id,
-        name: page.name,
-        childCount: page.children.length,
-      },
-    ],
+    // All pages in the document (children are only loaded for the current page,
+    // so childCount is reported there; use get_pages for full page info).
+    pages: figma.root.children.map((p) => ({
+      id: p.id,
+      name: p.name,
+      isCurrent: p.id === page.id,
+    })),
   };
 }
 
@@ -371,7 +419,24 @@ async function getSelection() {
   };
 }
 
-async function getNodeInfo(nodeId) {
+// Prune a JSON_REST_V1 document to `depth` levels of full detail; deeper
+// children become {id,name,type} stubs. This mirrors the server-side filter,
+// but running it HERE keeps megabytes of subtree JSON out of the transport
+// (UI postMessage + WebSocket + relay) for large sections. exportAsync itself
+// still serializes the full subtree — the Plugin API has no depth option —
+// but the pruned payload is what crosses the wire.
+function pruneNodeDocToDepth(doc, depth, currentDepth = 0) {
+  if (!doc || !Array.isArray(doc.children) || doc.children.length === 0) return doc;
+  if (currentDepth >= depth) {
+    doc.children = doc.children.map((child) => ({ id: child.id, name: child.name, type: child.type }));
+    doc._childrenTruncated = true;
+    return doc;
+  }
+  doc.children = doc.children.map((child) => pruneNodeDocToDepth(child, depth, currentDepth + 1));
+  return doc;
+}
+
+async function getNodeInfo(nodeId, depth) {
   const node = await getNodeByIdSafe(nodeId);
 
   if (!node) {
@@ -390,10 +455,15 @@ async function getNodeInfo(nodeId) {
     };
   }
 
+  // Depth pushdown: older servers omit depth (undefined) and get the full tree.
+  if (typeof depth === "number" && depth >= 0) {
+    pruneNodeDocToDepth(response.document, depth);
+  }
+
   return response.document;
 }
 
-async function getNodesInfo(nodeIds) {
+async function getNodesInfo(nodeIds, depth) {
   try {
     // Load all nodes in parallel
     const nodes = await Promise.all(
@@ -403,26 +473,36 @@ async function getNodesInfo(nodeIds) {
     // Filter out any null values (nodes that weren't found)
     const validNodes = nodes.filter((node) => node !== null);
 
-    // Export all valid nodes in parallel
-    const responses = await Promise.all(
-      validNodes.map(async (node) => {
-        const response = await node.exportAsync({
-          format: "JSON_REST_V1",
-        });
-        const doc = response.document;
-        // Add local coordinates if node supports positioning
-        if ("x" in node && "y" in node) {
-          doc.localPosition = {
-            x: node.x,
-            y: node.y
+    // Export in small batches: an unbounded Promise.all of JSON_REST_V1
+    // exports spikes sandbox memory on long ID lists.
+    const BATCH_SIZE = 5;
+    const responses = [];
+    for (let i = 0; i < validNodes.length; i += BATCH_SIZE) {
+      const batch = validNodes.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map(async (node) => {
+          const response = await node.exportAsync({
+            format: "JSON_REST_V1",
+          });
+          const doc = response.document;
+          // Add local coordinates if node supports positioning
+          if ("x" in node && "y" in node) {
+            doc.localPosition = {
+              x: node.x,
+              y: node.y
+            };
+          }
+          if (typeof depth === "number" && depth >= 0) {
+            pruneNodeDocToDepth(doc, depth);
+          }
+          return {
+            nodeId: node.id,
+            document: doc,
           };
-        }
-        return {
-          nodeId: node.id,
-          document: doc,
-        };
-      })
-    );
+        })
+      );
+      responses.push(...batchResults);
+    }
 
     return responses;
   } catch (error) {
@@ -625,21 +705,17 @@ async function createText(params) {
       style: getFontStyle(fontWeight),
     });
     textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
-    textNode.fontSize = parseInt(fontSize);
+    textNode.fontSize = parseFloat(fontSize);
   } catch (error) {
     console.error("Error setting font size", error);
   }
   await setCharacters(textNode, text);
 
   // Set text color
-  const paintStyle = {
+  const paintStyle = safePaint(fontColor) || {
     type: "SOLID",
-    color: {
-      r: parseFloat(fontColor.r) || 0,
-      g: parseFloat(fontColor.g) || 0,
-      b: parseFloat(fontColor.b) || 0,
-    },
-    opacity: parseFloat(fontColor.a) || 1,
+    color: { r: 0, g: 0, b: 0 },
+    opacity: 1,
   };
   textNode.fills = [paintStyle];
 
@@ -965,7 +1041,8 @@ async function getStyles() {
       id: style.id,
       name: style.name,
       key: style.key,
-      paint: style.paints[0],
+      paint: style.paints[0], // kept for backward compatibility
+      paints: style.paints,
     })),
     texts: styles.texts.map((style) => ({
       id: style.id,
@@ -1195,8 +1272,8 @@ async function exportNodeAsImage(params) {
         mimeType = "application/octet-stream";
     }
 
-    // Proper way to convert Uint8Array to base64
-    const base64 = customBase64Encode(bytes);
+    // Proper way to convert Uint8Array to base64 (native-fast when available)
+    const base64 = bytesToBase64(bytes);
     // const imageData = `data:${mimeType};base64,${base64}`;
 
     return {
@@ -1210,6 +1287,589 @@ async function exportNodeAsImage(params) {
     throw new Error(`Error exporting node as image: ${error.message}`);
   }
 }
+
+/**
+ * Capture a visual snapshot (Base64 PNG) of a node for multimodal review.
+ *
+ * Unlike exportNodeAsImage, this is selection-aware: when no nodeId is given it
+ * snapshots the current Figma selection, which lets the agent "look at what the
+ * user clicked". It also returns geometry (absolute bounding box) so the agent
+ * can correlate the rendered pixels with real coordinates — the key to catching
+ * placement drift and verifying layout/padding.
+ */
+async function getVisualSnapshot(params) {
+  const { nodeId, scale = 2, maxDimension = 2000 } = params || {};
+
+  // Resolve the target node: explicit nodeId wins, otherwise use the selection.
+  let node;
+  let selectionCount = 0;
+  if (nodeId) {
+    node = await getNodeByIdSafe(nodeId);
+    if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+  } else {
+    const selection = figma.currentPage.selection;
+    selectionCount = selection.length;
+    if (selectionCount === 0) {
+      throw new Error(
+        "Nothing is selected. Ask the user to select a node in Figma, or pass an explicit nodeId."
+      );
+    }
+    // When multiple nodes are selected we snapshot the first and report the count.
+    node = selection[0];
+  }
+
+  if (!("exportAsync" in node)) {
+    throw new Error(`Node "${node.name}" (${node.type}) does not support visual export.`);
+  }
+
+  // Cap the longest output dimension. Very tall/wide frames (e.g. a 10000px
+  // brochure) blow past the export timeout at 2x AND exceed the resolution the
+  // model can actually use. Clamp the effective scale so the longest side stays
+  // within maxDimension; normal-sized selections still render at the full scale.
+  const longest = Math.max(node.width || 1, node.height || 1);
+  let effectiveScale = scale;
+  let capped = false;
+  if (maxDimension && longest * effectiveScale > maxDimension) {
+    effectiveScale = maxDimension / longest;
+    capped = true;
+  }
+
+  const startTime = Date.now();
+  try {
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`Snapshot timed out after 90s for "${node.name}" (${node.width}x${node.height})`));
+      }, 90000);
+    });
+
+    const bytes = await Promise.race([
+      node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: effectiveScale } }),
+      timeoutPromise,
+    ]).finally(() => clearTimeout(timeoutId));
+
+    console.log(`[getVisualSnapshot] Exported "${node.name}" in ${Date.now() - startTime}ms, ${bytes.length} bytes @${effectiveScale.toFixed(3)}x (requested ${scale}x, capped=${capped})`);
+
+    const box = node.absoluteBoundingBox || null;
+    return {
+      nodeId: node.id,
+      name: node.name,
+      type: node.type,
+      mimeType: "image/png",
+      imageData: bytesToBase64(bytes),
+      scale: effectiveScale,
+      requestedScale: scale,
+      capped,
+      width: node.width,
+      height: node.height,
+      // Absolute canvas position — lets the agent map pixels back to coordinates.
+      absoluteBoundingBox: box ? { x: box.x, y: box.y, width: box.width, height: box.height } : null,
+      selectionCount,
+    };
+  } catch (error) {
+    throw new Error(`Error capturing visual snapshot: ${error.message}`);
+  }
+}
+
+/**
+ * Convert bytes to Base64, preferring Figma's native encoder.
+ *
+ * The fallback customBase64Encode uses string concatenation in a loop, which is
+ * effectively O(n^2) and blocks the plugin thread for seconds on large images
+ * (which then stalls the heartbeat). figma.base64Encode is native and fast — use
+ * it whenever the running Figma build provides it.
+ */
+function bytesToBase64(bytes) {
+  if (typeof figma !== "undefined" && typeof figma.base64Encode === "function") {
+    return figma.base64Encode(bytes);
+  }
+  return customBase64Encode(bytes);
+}
+
+/**
+ * Apply an array of operations in a single pass.
+ *
+ * Each operation is dispatched through the same handleCommand() used by single
+ * tool calls, so every existing command works in a batch for free. Progress
+ * updates are streamed throughout — this both shows an optimistic "Processing
+ * started…" status in the plugin UI AND keeps the MCP request alive (each update
+ * resets the client's inactivity timeout), so large batches never time out.
+ *
+ * Returns a per-operation success/failure summary so the agent can retry only
+ * the operations that failed.
+ */
+async function batchOperations(params) {
+  const { operations, stopOnError = false } = params || {};
+  // Use the incoming commandId (== the MCP request id) so progress updates route
+  // back to the waiting request and reset its timeout.
+  const commandId = (params && params.commandId) || generateCommandId();
+
+  if (!Array.isArray(operations) || operations.length === 0) {
+    throw new Error("batch_operations requires a non-empty 'operations' array");
+  }
+
+  const total = operations.length;
+  const results = [];
+  let succeeded = 0;
+  let failed = 0;
+
+  // Throttle progress messages on very large batches (still frequent enough to
+  // keep the timeout reset and the UI moving).
+  const step = Math.max(1, Math.floor(total / 50));
+
+  sendProgressUpdate(
+    commandId, "batch_operations", "started", 0, total, 0,
+    `Processing started… 0/${total} operations`
+  );
+
+  for (let i = 0; i < total; i++) {
+    const op = operations[i] || {};
+    const cmd = op.command;
+    const opParams = op.params || {};
+
+    if (cmd === "batch_operations") {
+      results.push({ index: i, command: cmd, ok: false, error: "Nested batch_operations is not allowed" });
+      failed++;
+      if (stopOnError) break;
+      continue;
+    }
+
+    try {
+      await handleCommand(cmd, opParams);
+      results.push({ index: i, command: cmd, ok: true });
+      succeeded++;
+    } catch (error) {
+      results.push({ index: i, command: cmd, ok: false, error: error && error.message ? error.message : String(error) });
+      failed++;
+      if (stopOnError) break;
+    }
+
+    const processed = i + 1;
+    if (processed % step === 0 || processed === total) {
+      sendProgressUpdate(
+        commandId, "batch_operations",
+        processed === total ? "completed" : "in_progress",
+        Math.round((processed / total) * 100),
+        total, processed,
+        `Processed ${processed}/${total} (${succeeded} ok, ${failed} failed)`
+      );
+    }
+  }
+
+  // Ensure a terminal "completed" update even if stopOnError broke out early.
+  const processedCount = results.length;
+  sendProgressUpdate(
+    commandId, "batch_operations", "completed",
+    100, total, processedCount,
+    `Batch finished: ${succeeded} ok, ${failed} failed${processedCount < total ? `, ${total - processedCount} skipped` : ""}`
+  );
+
+  return { total, succeeded, failed, results };
+}
+
+// ─── Resolve a node from params (explicit nodeId or current selection) ───────
+async function resolveTargetNode(params, what) {
+  const nodeId = params && params.nodeId;
+  if (nodeId) {
+    const node = await getNodeByIdSafe(nodeId);
+    if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+    return node;
+  }
+  const sel = figma.currentPage.selection;
+  if (!sel || sel.length === 0) {
+    throw new Error(`Nothing is selected. Select a node in Figma or pass an explicit nodeId to ${what}.`);
+  }
+  return sel[0];
+}
+
+/**
+ * Return Figma's own computed CSS (Dev Mode) for a node, optionally for the
+ * whole subtree. This is far more faithful than reconstructing CSS from raw
+ * node JSON — exact sizing, colors, gradients, radius, shadows, and typography.
+ */
+async function getCSS(params) {
+  const { recursive = false, maxNodes = 200 } = params || {};
+  const node = await resolveTargetNode(params, "get_css");
+
+  if (typeof node.getCSSAsync !== "function") {
+    throw new Error(`Node "${node.name}" (${node.type}) does not support getCSSAsync in this Figma build.`);
+  }
+
+  async function cssFor(n) {
+    let css = {};
+    try { css = await n.getCSSAsync(); } catch (e) { css = { error: e.message }; }
+    return { id: n.id, name: n.name, type: n.type, css };
+  }
+
+  if (!recursive) {
+    return await cssFor(node);
+  }
+
+  const nodes = [];
+  let truncated = false;
+  async function walk(n) {
+    if (nodes.length >= maxNodes) { truncated = true; return; }
+    if (typeof n.getCSSAsync === "function") nodes.push(await cssFor(n));
+    if ("children" in n) {
+      for (const child of n.children) {
+        if (nodes.length >= maxNodes) { truncated = true; break; }
+        await walk(child);
+      }
+    }
+  }
+  await walk(node);
+  return { root: node.id, count: nodes.length, truncated, nodes };
+}
+
+/**
+ * Inventory every font (family/style/size) used within a node's subtree, so the
+ * agent can set up @font-face or pick correct web-font equivalents up front.
+ */
+async function getFontsUsed(params) {
+  const node = await resolveTargetNode(params, "get_fonts_used");
+  const fonts = new Map(); // "family|style" -> { family, style, sizes:Set, occurrences }
+
+  function record(family, style, size) {
+    const key = `${family}|${style}`;
+    if (!fonts.has(key)) fonts.set(key, { family, style, sizes: new Set(), occurrences: 0 });
+    const f = fonts.get(key);
+    if (typeof size === "number") f.sizes.add(Math.round(size));
+    f.occurrences++;
+  }
+
+  function processText(t) {
+    try {
+      const segs = t.getStyledTextSegments(["fontName", "fontSize"]);
+      for (const s of segs) {
+        if (s.fontName && s.fontName.family) record(s.fontName.family, s.fontName.style, s.fontSize);
+      }
+    } catch (e) {
+      // Fallback to node-level font if segments unavailable
+      if (t.fontName && t.fontName !== figma.mixed) {
+        record(t.fontName.family, t.fontName.style, typeof t.fontSize === "number" ? t.fontSize : undefined);
+      }
+    }
+  }
+
+  function walk(n) {
+    if (n.type === "TEXT") processText(n);
+    if ("children" in n) n.children.forEach(walk);
+  }
+  walk(node);
+
+  return {
+    root: node.id,
+    fonts: Array.from(fonts.values()).map((f) => ({
+      family: f.family,
+      style: f.style,
+      sizes: Array.from(f.sizes).sort((a, b) => a - b),
+      occurrences: f.occurrences,
+    })),
+  };
+}
+
+// Detect image mime type from magic bytes (getBytesAsync returns original bytes).
+function detectImageMime(bytes) {
+  if (!bytes || bytes.length < 4) return "application/octet-stream";
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) return "image/png";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) return "image/jpeg";
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return "image/gif";
+  if (bytes.length > 11 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[8] === 0x57 && bytes[9] === 0x45) return "image/webp";
+  return "application/octet-stream";
+}
+
+function slugifyName(s) {
+  return (String(s || "asset").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40)) || "asset";
+}
+
+const VECTOR_NODE_TYPES = new Set([
+  "VECTOR", "BOOLEAN_OPERATION", "STAR", "LINE", "ELLIPSE", "POLYGON",
+]);
+
+/**
+ * Inventory the assets in a node's subtree: image fills (deduped by hash) and
+ * vector/icon nodes. Lightweight — no raw bytes — so the agent can choose what
+ * to pull via get_asset.
+ */
+async function scanAssets(params) {
+  const { includeImages = true, includeVectors = true, includeByteSizes = false } = params || {};
+  const node = await resolveTargetNode(params, "scan_assets");
+
+  const images = new Map(); // hash -> { hash, scaleMode, width, height, bytes, nodes:[] }
+  const vectors = [];
+
+  async function inspectImageFills(n) {
+    if (!("fills" in n) || !Array.isArray(n.fills)) return;
+    for (const fill of n.fills) {
+      if (fill && fill.type === "IMAGE" && fill.imageHash) {
+        if (!images.has(fill.imageHash)) {
+          let width, height, byteLen;
+          try {
+            const img = figma.getImageByHash(fill.imageHash);
+            if (img) {
+              const size = await img.getSizeAsync();
+              width = size.width; height = size.height;
+              // Fetching the full bytes just to report a length is expensive
+              // on image-heavy files, so it's opt-in.
+              if (includeByteSizes) {
+                const bytes = await img.getBytesAsync();
+                byteLen = bytes.length;
+              }
+            }
+          } catch (e) { /* metadata best-effort */ }
+          images.set(fill.imageHash, { hash: fill.imageHash, scaleMode: fill.scaleMode, width, height, bytes: byteLen, nodes: [] });
+        }
+        images.get(fill.imageHash).nodes.push({ id: n.id, name: n.name });
+      }
+    }
+  }
+
+  async function walk(n) {
+    if (includeImages) await inspectImageFills(n);
+    if (includeVectors && VECTOR_NODE_TYPES.has(n.type)) {
+      vectors.push({ nodeId: n.id, name: n.name, type: n.type, width: Math.round(n.width), height: Math.round(n.height) });
+    }
+    if ("children" in n) {
+      for (const child of n.children) await walk(child);
+    }
+  }
+  await walk(node);
+
+  const imageList = Array.from(images.values()).map((im) => ({
+    kind: "image",
+    hash: im.hash,
+    scaleMode: im.scaleMode,
+    width: im.width,
+    height: im.height,
+    bytes: im.bytes,
+    usedBy: im.nodes,
+    suggestedName: slugifyName(im.nodes[0] && im.nodes[0].name),
+  }));
+  const vectorList = vectors.map((v) => ({
+    kind: "vector",
+    nodeId: v.nodeId,
+    name: v.name,
+    type: v.type,
+    width: v.width,
+    height: v.height,
+    suggestedName: slugifyName(v.name) + ".svg",
+  }));
+
+  return {
+    root: node.id,
+    imageCount: imageList.length,
+    vectorCount: vectorList.length,
+    images: imageList,
+    vectors: vectorList,
+  };
+}
+
+/**
+ * Fetch a single asset's bytes:
+ *  - by image-fill `hash`  → original uploaded image bytes (PNG/JPG/…)
+ *  - by `nodeId`           → export the node, default SVG (for icons/vectors),
+ *                            or a raster format (PNG/JPG) at `scale`.
+ * Returns base64 so the MCP server can write it to a file (raw bytes never enter
+ * the agent's context). SVG is also returned base64 and decoded server-side.
+ */
+async function getAsset(params) {
+  const { hash, nodeId, format, scale = 2 } = params || {};
+
+  if (hash) {
+    const img = figma.getImageByHash(hash);
+    if (!img) throw new Error(`No image found for hash: ${hash}`);
+    const bytes = await img.getBytesAsync();
+    return {
+      kind: "image",
+      hash,
+      mimeType: detectImageMime(bytes),
+      dataBase64: bytesToBase64(bytes),
+      bytesLength: bytes.length,
+    };
+  }
+
+  if (nodeId) {
+    const node = await getNodeByIdSafe(nodeId);
+    if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+    if (!("exportAsync" in node)) throw new Error(`Node "${node.name}" (${node.type}) cannot be exported.`);
+
+    const fmt = (format || "SVG").toUpperCase();
+    if (fmt === "SVG") {
+      const svgBytes = await node.exportAsync({ format: "SVG" });
+      return {
+        kind: "svg",
+        nodeId,
+        name: node.name,
+        mimeType: "image/svg+xml",
+        dataBase64: bytesToBase64(svgBytes), // decoded to text server-side
+        bytesLength: svgBytes.length,
+      };
+    }
+
+    const raster = await node.exportAsync({ format: fmt, constraint: { type: "SCALE", value: scale } });
+    return {
+      kind: "image",
+      nodeId,
+      name: node.name,
+      mimeType: fmt === "JPG" ? "image/jpeg" : "image/png",
+      dataBase64: bytesToBase64(raster),
+      bytesLength: raster.length,
+    };
+  }
+
+  throw new Error("get_asset requires either 'hash' (an image fill) or 'nodeId' (a node to export).");
+}
+
+// Keep only the effect fields the server needs to reproduce them in CSS.
+function pickEffect(e) {
+  const out = { type: e.type, visible: e.visible !== false };
+  if (e.color) out.color = { r: e.color.r, g: e.color.g, b: e.color.b, a: e.color.a };
+  if (e.offset) out.offset = { x: e.offset.x, y: e.offset.y };
+  if (typeof e.radius === "number") out.radius = e.radius;
+  if (typeof e.spread === "number") out.spread = e.spread;
+  if (e.blendMode) out.blendMode = e.blendMode;
+  return out;
+}
+
+function boxOf(b) {
+  return b ? { x: b.x, y: b.y, width: b.width, height: b.height } : null;
+}
+
+/**
+ * Export a node CLEAN: temporarily disable effects (so shadow/blur bleed isn't
+ * baked in and NOISE/TEXTURE effects that blank a node in SVG are removed),
+ * export, then restore the effects. Returns the bytes plus the root node's
+ * effects (for the server to translate to CSS) and the layout-vs-render bounds
+ * (so the caller knows how far an effect bled past the box). Always restores
+ * effects, even on export failure.
+ */
+async function extractAsset(params) {
+  const { nodeId, format = "PNG", scale = 2, stripScope = "all" } = params || {};
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+  if (!("exportAsync" in node)) throw new Error(`Node "${node.name}" (${node.type}) cannot be exported.`);
+
+  const rootEffects =
+    "effects" in node && Array.isArray(node.effects) ? node.effects.map(pickEffect) : [];
+
+  // Capture bounds from the ORIGINAL — absoluteRenderBounds includes effect bleed.
+  const box = boxOf(node.absoluteBoundingBox);
+  const renderBounds = boxOf(node.absoluteRenderBounds);
+
+  // Strip effects on a temporary CLONE whenever the node supports cloning:
+  // mutating the user's real node risks permanently losing effects if the
+  // plugin dies mid-export (tab closed, Figma crash) before the restore runs.
+  // The clone appears briefly as a sibling and is always removed in `finally`.
+  // Nodes without clone() fall back to the old strip-then-restore approach.
+  const saved = [];
+  function strip(n) {
+    if ("effects" in n && Array.isArray(n.effects) && n.effects.length) {
+      saved.push({ node: n, effects: n.effects });
+      n.effects = [];
+    }
+  }
+  function stripTree(n) {
+    strip(n);
+    if ("children" in n) for (const c of n.children) stripTree(c);
+  }
+
+  let exportTarget = node;
+  let tempClone = null;
+  if (stripScope === "root" || stripScope === "all") {
+    if (typeof node.clone === "function") {
+      tempClone = node.clone();
+      tempClone.name = node.name + " (mcp temp export)";
+      exportTarget = tempClone;
+    }
+    if (stripScope === "root") strip(exportTarget);
+    else stripTree(exportTarget);
+  }
+
+  const fmt = String(format).toUpperCase();
+  try {
+    if (fmt === "SVG") {
+      const bytes = await exportTarget.exportAsync({ format: "SVG" });
+      return {
+        kind: "svg", name: node.name, mimeType: "image/svg+xml",
+        dataBase64: bytesToBase64(bytes), bytesLength: bytes.length,
+        rootEffects, strippedCount: saved.length, box, renderBounds,
+      };
+    }
+    const bytes = await exportTarget.exportAsync({ format: fmt, constraint: { type: "SCALE", value: scale } });
+    return {
+      kind: "image", name: node.name,
+      mimeType: fmt === "JPG" ? "image/jpeg" : "image/png",
+      dataBase64: bytesToBase64(bytes), bytesLength: bytes.length,
+      rootEffects, strippedCount: saved.length, box, renderBounds,
+    };
+  } finally {
+    if (tempClone) {
+      try { tempClone.remove(); } catch (e) { /* already removed */ }
+    } else {
+      // No clone was possible — restore the original's effects.
+      for (const s of saved) s.node.effects = s.effects;
+    }
+  }
+}
+
+const SUPPORTED_CSS_EFFECTS = new Set(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"]);
+
+/**
+ * Gather raw signals about a node's subtree (image fills, vector/text counts,
+ * masks, blend modes, effect support, root fills). The server's pure
+ * classifyAsset() turns these into a raster/svg/css recommendation.
+ */
+async function classifyAssetSignals(params) {
+  const node = await resolveTargetNode(params, "classify_asset");
+
+  let nodeCount = 0, vectorCount = 0, textCount = 0, effectCount = 0;
+  let hasMask = false, hasBlend = false, hasPhotoFill = false;
+  const unsupportedEffectTypes = [];
+  const imageHashes = new Set();
+
+  function inspectFills(n) {
+    if (!("fills" in n) || !Array.isArray(n.fills)) return;
+    for (const f of n.fills) {
+      if (f && f.type === "IMAGE" && f.imageHash) {
+        imageHashes.add(f.imageHash);
+        if (f.scaleMode === "FILL" || f.scaleMode === "CROP") hasPhotoFill = true;
+      }
+    }
+  }
+  function walk(n) {
+    nodeCount++;
+    if (VECTOR_NODE_TYPES.has(n.type)) vectorCount++;
+    if (n.type === "TEXT") textCount++;
+    if ("isMask" in n && n.isMask) hasMask = true;
+    if ("blendMode" in n && n.blendMode && n.blendMode !== "NORMAL" && n.blendMode !== "PASS_THROUGH") hasBlend = true;
+    if ("effects" in n && Array.isArray(n.effects)) {
+      for (const e of n.effects) {
+        if (e.visible === false) continue;
+        effectCount++;
+        if (!SUPPORTED_CSS_EFFECTS.has(e.type)) unsupportedEffectTypes.push(e.type);
+      }
+    }
+    inspectFills(n);
+    if ("children" in n) for (const c of n.children) walk(c);
+  }
+  walk(node);
+
+  const rootFillTypes =
+    "fills" in node && Array.isArray(node.fills)
+      ? Array.from(new Set(node.fills.filter((f) => f && f.visible !== false).map((f) => f.type)))
+      : [];
+  const isSinglePrimitive = !("children" in node) || !node.children || node.children.length === 0;
+
+  return {
+    nodeId: node.id, name: node.name, type: node.type,
+    width: node.width, height: node.height,
+    nodeCount, vectorCount, textCount,
+    imageFillCount: imageHashes.size, hasPhotoFill,
+    hasMask, hasBlend, unsupportedEffectTypes, effectCount,
+    isSinglePrimitive, rootFillTypes,
+  };
+}
+
 function customBase64Encode(bytes) {
   const chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -1548,9 +2208,10 @@ const buildLinearOrder = (node) => {
           spacesRangeEnd
         );
         if (spacesRangeFont === figma.mixed) {
+          // Mixed fonts within a single word: sample the first character's font
           const spacesRangeFont = node.getRangeFontName(
             spacesRangeStart,
-            spacesRangeStart[0]
+            spacesRangeStart + 1
           );
           fontTree.push({
             start: spacesRangeStart,
@@ -1670,7 +2331,7 @@ async function cloneNode(params) {
 
 async function scanTextNodes(params) {
   console.log(`Starting to scan text nodes from node ID: ${params.nodeId}`);
-  const { nodeId, useChunking = true, chunkSize = 10, commandId = generateCommandId() } = params || {};
+  const { nodeId, useChunking = true, chunkSize = 10, highlight = false, commandId = generateCommandId() } = params || {};
 
   const node = await getNodeByIdSafe(nodeId);
 
@@ -1706,7 +2367,7 @@ async function scanTextNodes(params) {
         null
       );
 
-      await findTextNodes(node, [], 0, textNodes);
+      await findTextNodes(node, [], 0, textNodes, highlight);
 
       // Send completed progress update
       sendProgressUpdate(
@@ -1821,7 +2482,7 @@ async function scanTextNodes(params) {
     for (const nodeInfo of chunkNodes) {
       if (nodeInfo.node.type === "TEXT") {
         try {
-          const textNodeInfo = await processTextNode(nodeInfo.node, nodeInfo.parentPath, nodeInfo.depth);
+          const textNodeInfo = await processTextNode(nodeInfo.node, nodeInfo.parentPath, nodeInfo.depth, highlight);
           if (textNodeInfo) {
             chunkTextNodes.push(textNodeInfo);
           }
@@ -1915,7 +2576,7 @@ async function collectNodesToProcess(node, parentPath = [], depth = 0, nodesToPr
 }
 
 // Process a single text node
-async function processTextNode(node, parentPath, depth) {
+async function processTextNode(node, parentPath, depth, highlight = false) {
   if (node.type !== "TEXT") return null;
 
   try {
@@ -1947,28 +2608,31 @@ async function processTextNode(node, parentPath, depth) {
       depth: depth,
     };
 
-    // Highlight the node briefly (optional visual feedback)
-    try {
-      const originalFills = JSON.parse(JSON.stringify(node.fills));
-      node.fills = [
-        {
-          type: "SOLID",
-          color: { r: 1, g: 0.5, b: 0 },
-          opacity: 0.3,
-        },
-      ];
-
-      // Brief delay for the highlight to be visible
-      await delay(100);
-
+    // Optionally highlight the node briefly (visual feedback; opt-in because
+    // it temporarily mutates fills and slows large scans considerably)
+    if (highlight) {
       try {
-        node.fills = originalFills;
-      } catch (err) {
-        console.error("Error resetting fills:", err);
+        const originalFills = JSON.parse(JSON.stringify(node.fills));
+        node.fills = [
+          {
+            type: "SOLID",
+            color: { r: 1, g: 0.5, b: 0 },
+            opacity: 0.3,
+          },
+        ];
+
+        // Brief delay for the highlight to be visible
+        await delay(100);
+
+        try {
+          node.fills = originalFills;
+        } catch (err) {
+          console.error("Error resetting fills:", err);
+        }
+      } catch (highlightErr) {
+        console.error("Error highlighting text node:", highlightErr);
+        // Continue anyway, highlighting is just visual feedback
       }
-    } catch (highlightErr) {
-      console.error("Error highlighting text node:", highlightErr);
-      // Continue anyway, highlighting is just visual feedback
     }
 
     return safeTextNode;
@@ -1984,7 +2648,7 @@ function delay(ms) {
 }
 
 // Keep the original findTextNodes for backward compatibility
-async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
+async function findTextNodes(node, parentPath = [], depth = 0, textNodes = [], highlight = false) {
   // Skip invisible nodes
   if (node.visible === false) return;
 
@@ -2021,29 +2685,32 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
         depth: depth,
       };
 
-      // Only highlight the node if it's not being done via API
-      try {
-        // Safe way to create a temporary highlight without causing serialization issues
-        const originalFills = JSON.parse(JSON.stringify(node.fills));
-        node.fills = [
-          {
-            type: "SOLID",
-            color: { r: 1, g: 0.5, b: 0 },
-            opacity: 0.3,
-          },
-        ];
-
-        // Promise-based delay instead of setTimeout
-        await delay(500);
-
+      // Optionally highlight the node (opt-in: mutates fills temporarily and
+      // adds a per-node delay, which is very slow on large frames)
+      if (highlight) {
         try {
-          node.fills = originalFills;
-        } catch (err) {
-          console.error("Error resetting fills:", err);
+          // Safe way to create a temporary highlight without causing serialization issues
+          const originalFills = JSON.parse(JSON.stringify(node.fills));
+          node.fills = [
+            {
+              type: "SOLID",
+              color: { r: 1, g: 0.5, b: 0 },
+              opacity: 0.3,
+            },
+          ];
+
+          // Promise-based delay instead of setTimeout
+          await delay(100);
+
+          try {
+            node.fills = originalFills;
+          } catch (err) {
+            console.error("Error resetting fills:", err);
+          }
+        } catch (highlightErr) {
+          console.error("Error highlighting text node:", highlightErr);
+          // Continue anyway, highlighting is just visual feedback
         }
-      } catch (highlightErr) {
-        console.error("Error highlighting text node:", highlightErr);
-        // Continue anyway, highlighting is just visual feedback
       }
 
       textNodes.push(safeTextNode);
@@ -2063,7 +2730,7 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
 
 // Replace text in a specific node
 async function setMultipleTextContents(params) {
-  const { nodeId, text } = params || {};
+  const { nodeId, text, highlight = false } = params || {};
   const commandId = params.commandId || generateCommandId();
 
   if (!nodeId || !text || !Array.isArray(text)) {
@@ -2193,22 +2860,25 @@ async function setMultipleTextContents(params) {
         console.log(`Original text: "${originalText}"`);
         console.log(`Will translate to: "${replacement.text}"`);
 
-        // Highlight the node before changing text
+        // Optionally highlight the node before changing text (opt-in: it
+        // temporarily mutates fills and adds a per-chunk delay)
         let originalFills;
-        try {
-          // Save original fills for restoration later
-          originalFills = JSON.parse(JSON.stringify(textNode.fills));
-          // Apply highlight color (orange with 30% opacity)
-          textNode.fills = [
-            {
-              type: "SOLID",
-              color: { r: 1, g: 0.5, b: 0 },
-              opacity: 0.3,
-            },
-          ];
-        } catch (highlightErr) {
-          console.error(`Error highlighting text node: ${highlightErr.message}`);
-          // Continue anyway, highlighting is just visual feedback
+        if (highlight) {
+          try {
+            // Save original fills for restoration later
+            originalFills = JSON.parse(JSON.stringify(textNode.fills));
+            // Apply highlight color (orange with 30% opacity)
+            textNode.fills = [
+              {
+                type: "SOLID",
+                color: { r: 1, g: 0.5, b: 0 },
+                opacity: 0.3,
+              },
+            ];
+          } catch (highlightErr) {
+            console.error(`Error highlighting text node: ${highlightErr.message}`);
+            // Continue anyway, highlighting is just visual feedback
+          }
         }
 
         // Use the existing setTextContent function to handle font loading and text setting
@@ -2278,8 +2948,7 @@ async function setMultipleTextContents(params) {
 
     // Add a small delay between chunks to avoid overloading Figma
     if (chunkIndex < chunks.length - 1) {
-      console.log('Pausing between chunks to avoid overloading Figma...');
-      await delay(1000); // 1 second delay between chunks
+      await delay(250);
     }
   }
 
@@ -2497,7 +3166,12 @@ async function setFontWeight(params) {
   }
 
   try {
-    const family = node.fontName.family;
+    // A text node with multiple fonts reports fontName as figma.mixed —
+    // sample the first character's font family in that case.
+    const currentFont = node.fontName === figma.mixed
+      ? node.getRangeFontName(0, 1)
+      : node.fontName;
+    const family = currentFont.family;
     const style = getFontStyle(weight);
     await figma.loadFontAsync({ family, style });
     node.fontName = { family, style };
@@ -3563,30 +4237,18 @@ async function createVector(params) {
 
   // Set fill color if provided
   if (fillColor) {
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fillColor.r) || 0,
-        g: parseFloat(fillColor.g) || 0,
-        b: parseFloat(fillColor.b) || 0,
-      },
-      opacity: parseFloat(fillColor.a) || 1,
-    };
-    vector.fills = [paintStyle];
+    const paintStyle = safePaint(fillColor);
+    if (paintStyle) {
+      vector.fills = [paintStyle];
+    }
   }
 
   // Set stroke color and weight if provided
   if (strokeColor) {
-    const strokeStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(strokeColor.r) || 0,
-        g: parseFloat(strokeColor.g) || 0,
-        b: parseFloat(strokeColor.b) || 0,
-      },
-      opacity: parseFloat(strokeColor.a) || 1,
-    };
-    vector.strokes = [strokeStyle];
+    const strokeStyle = safePaint(strokeColor);
+    if (strokeStyle) {
+      vector.strokes = [strokeStyle];
+    }
   }
 
   // Set stroke weight if provided
@@ -3671,14 +4333,10 @@ async function createLine(params) {
   }];
 
   // Set stroke color
-  const strokeStyle = {
+  const strokeStyle = safePaint(strokeColor) || {
     type: "SOLID",
-    color: {
-      r: parseFloat(strokeColor.r) || 0,
-      g: parseFloat(strokeColor.g) || 0,
-      b: parseFloat(strokeColor.b) || 0,
-    },
-    opacity: parseFloat(strokeColor.a) || 1
+    color: { r: 0, g: 0, b: 0 },
+    opacity: 1,
   };
   line.strokes = [strokeStyle];
 
@@ -3789,6 +4447,19 @@ async function createComponentFromNode(params) {
   if ("createComponentFromNode" in figma && (node.type === "FRAME" || node.type === "GROUP" || node.type === "INSTANCE")) {
     // Use Figma's built-in createComponentFromNode API
     component = figma.createComponentFromNode(node);
+
+    // Honor an explicit parentId (the built-in API leaves the component in
+    // the original node's parent).
+    if (parentId && component.parent && component.parent.id !== parentId) {
+      const parentNode = await getNodeByIdSafe(parentId);
+      if (!parentNode) {
+        throw new Error(`Parent node not found with ID: ${parentId}`);
+      }
+      if (!("appendChild" in parentNode)) {
+        throw new Error(`Parent node does not support children: ${parentId}`);
+      }
+      parentNode.appendChild(component);
+    }
   } else {
     // For other node types, we need a different approach
     // Create a new component and copy properties from the original node
@@ -3809,7 +4480,8 @@ async function createComponentFromNode(params) {
       clone.x = 0;
       clone.y = 0;
 
-      // If parentId is provided, append to that node, otherwise append to current page
+      // Place the component: an explicit parentId wins; otherwise the
+      // component takes the original node's place in its parent.
       if (parentId) {
         const parentNode = await getNodeByIdSafe(parentId);
         if (!parentNode) {
@@ -3819,17 +4491,12 @@ async function createComponentFromNode(params) {
           throw new Error(`Parent node does not support children: ${parentId}`);
         }
         parentNode.appendChild(component);
-      } else {
-        figma.currentPage.appendChild(component);
-      }
-      component.appendChild(clone);
-
-      // Add component to the same parent at the same position
-      if (parent && "insertChild" in parent) {
+      } else if (parent && "insertChild" in parent) {
         parent.insertChild(index, component);
       } else {
         figma.currentPage.appendChild(component);
       }
+      component.appendChild(clone);
 
       // Remove the original node
       node.remove();
@@ -3859,8 +4526,18 @@ async function createComponentFromNode(params) {
         component.cornerRadius = node.cornerRadius;
       }
 
-      // Add component to the same parent
-      if (parent && "insertChild" in parent) {
+      // Place the component: an explicit parentId wins; otherwise the
+      // component takes the original node's place in its parent.
+      if (parentId) {
+        const parentNode = await getNodeByIdSafe(parentId);
+        if (!parentNode) {
+          throw new Error(`Parent node not found with ID: ${parentId}`);
+        }
+        if (!("appendChild" in parentNode)) {
+          throw new Error(`Parent node does not support children: ${parentId}`);
+        }
+        parentNode.appendChild(component);
+      } else if (parent && "insertChild" in parent) {
         parent.insertChild(index, component);
       } else {
         figma.currentPage.appendChild(component);
@@ -4286,60 +4963,8 @@ async function replaceImageFill(params) {
   }
 }
 
-// COMMENTED OUT: getImageBytes - Issues pending investigation
-// Known issues: 400 errors, inconsistent behavior (black images), file save path needs discussion
-/*
-async function getImageBytes(params) {
-  try {
-    const { imageHash, nodeId } = params || {};
-
-    if (!imageHash && !nodeId) {
-      throw new Error("Either imageHash or nodeId must be provided");
-    }
-    let image;
-
-    if (imageHash) {
-      image = figma.getImageByHash(imageHash);
-      if (!image) {
-        throw new Error(`Image not found with hash: ${imageHash}`);
-      }
-    } else {
-      const node = await figma.getNodeByIdAsync(nodeId);
-      if (!node) {
-        throw new Error(`Node not found with ID: ${nodeId}`);
-      }
-
-      if (!("fills" in node)) {
-        throw new Error(`Node type ${node.type} does not support fills`);
-      }
-
-      const fills = Array.isArray(node.fills) ? node.fills : [];
-      const imageFill = fills.find(fill => fill.type === "IMAGE");
-
-      if (!imageFill) {
-        throw new Error(`Node does not have an image fill`);
-      }
-
-      image = figma.getImageByHash(imageFill.imageHash);
-      if (!image) {
-        throw new Error(`Image not found for node`);
-      }
-    }
-
-    const bytes = await image.getBytesAsync();
-    const base64 = customBase64Encode(bytes);
-
-    return {
-      imageData: base64,
-      mimeType: "image/png",
-      size: bytes.length,
-    };
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    throw new Error(`Error getting image bytes: ${errorMsg}`);
-  }
-}
-*/
+// (getImageBytes was removed — superseded by getAsset, which extracts image-fill
+//  bytes by hash with correct mime detection.)
 
 async function applyImageTransform(params) {
   try {
@@ -5958,44 +6583,28 @@ async function setReactions(params) {
   }
 
   // Set overlayPositionType on destination nodes for OVERLAY actions
-  const overlayDebug = [];
   for (const r of params.reactions) {
     if (r.actions && Array.isArray(r.actions)) {
       for (const a of r.actions) {
         if (a.type === "NODE" && a.navigation === "OVERLAY" && a.destinationId) {
           try {
             const destNode = await figma.getNodeByIdAsync(a.destinationId);
-            const info = { destId: a.destinationId, type: destNode ? destNode.type : "not found" };
             if (destNode) {
               // For instances, set overlay properties on the main component
               let targetNode = destNode;
               if (destNode.type === "INSTANCE") {
                 const mainComp = await destNode.getMainComponentAsync();
-                if (mainComp) {
-                  targetNode = mainComp;
-                  info.usingMainComponent = targetNode.id;
-                }
+                if (mainComp) targetNode = mainComp;
               }
-              info.targetType = targetNode.type;
-              info.hasOverlayPositionType = "overlayPositionType" in targetNode;
-              info.beforePositionType = targetNode.overlayPositionType;
-              info.beforeBgInteraction = targetNode.overlayBackgroundInteraction;
               try {
                 targetNode.overlayPositionType = a.overlayPositionType || "CENTER";
-                info.afterPositionType = targetNode.overlayPositionType;
-              } catch (e) {
-                info.positionTypeError = e.message || String(e);
-              }
+              } catch (e) { /* node type doesn't support overlay positioning */ }
               try {
                 targetNode.overlayBackgroundInteraction = a.overlayBackgroundInteraction || "CLOSE_ON_CLICK_OUTSIDE";
-                info.afterBgInteraction = targetNode.overlayBackgroundInteraction;
-              } catch (e) {
-                info.bgInteractionError = e.message || String(e);
-              }
+              } catch (e) { /* node type doesn't support overlay background interaction */ }
             }
-            overlayDebug.push(info);
           } catch (e) {
-            overlayDebug.push({ destId: a.destinationId, error: e.message || String(e) });
+            // Destination lookup failed — setReactionsAsync below will surface real errors
           }
         }
       }
@@ -6059,10 +6668,6 @@ async function setReactions(params) {
     return reaction;
   });
 
-  // Debug: log the exact reactions being set
-  const debugJson = JSON.stringify(reactions, null, 2);
-  console.log("setReactionsAsync input:", debugJson);
-
   try {
     await node.setReactionsAsync(reactions);
   } catch (e) {
@@ -6076,23 +6681,19 @@ async function setReactions(params) {
     } catch (e2) {
       const errStr = e ? (e.message || e.toString() || JSON.stringify(e)) : "unknown";
       const errStr2 = e2 ? (e2.message || e2.toString() || JSON.stringify(e2)) : "unknown";
-      throw new Error(`setReactionsAsync failed.\nNew API error: ${errStr}\nOld API error: ${errStr2}\nInput: ${debugJson}`);
+      throw new Error(`setReactionsAsync failed.\nNew API error: ${errStr}\nOld API error: ${errStr2}`);
     }
   }
 
   // Verify what was actually set by reading back
   const actualReactions = node.reactions;
   const actualCount = actualReactions ? actualReactions.length : 0;
-  const actualJson = JSON.stringify(actualReactions, null, 2);
 
   return {
     id: node.id,
     name: node.name,
     reactionsCount: reactions.length,
     actualReactionsCount: actualCount,
-    sentToFigma: debugJson,
-    readBackFromFigma: actualJson,
-    overlayDebug: overlayDebug.length > 0 ? overlayDebug : undefined,
     message: `Set ${reactions.length} reaction(s) on node "${node.name}" (verified: ${actualCount} persisted)`,
   };
 }

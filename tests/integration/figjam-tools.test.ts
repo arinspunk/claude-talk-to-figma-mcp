@@ -17,10 +17,11 @@ function makeServer() {
   const handlers: Record<string, Function> = {};
   const schemas: Record<string, z.ZodObject<any>> = {};
 
-  const originalTool = server.tool.bind(server);
-  jest.spyOn(server, "tool").mockImplementation((...args: any[]) => {
-    if (args.length === 4) {
-      const [name, , schema, handler] = args;
+  const originalTool = server.registerTool.bind(server);
+  jest.spyOn(server, "registerTool").mockImplementation((...args: any[]) => {
+    if (args.length === 3) {
+      const [name, config, handler] = args;
+      const schema = config.inputSchema ?? {};
       handlers[name] = handler;
       // schema may be empty object ({}) for no-param tools — wrap safely
       schemas[name] =
@@ -35,10 +36,24 @@ function makeServer() {
 
   const mockSendCommand: jest.Mock = require("../../src/talk_to_figma_mcp/utils/websocket").sendCommandToFigma;
 
+  // The relay has always required parentId for creation commands; since v1.4.0
+  // the tool schemas enforce it too. Inject a default so each test doesn't have
+  // to repeat it — tests that care pass their own.
+  const CREATION_TOOLS = new Set([
+    "create_sticky",
+    "create_shape_with_text",
+    "create_connector",
+    "create_section",
+  ]);
+
   async function call(toolName: string, args: any = {}) {
     mockSendCommand.mockClear();
     const schema = schemas[toolName];
-    const validated = schema.parse(args);
+    const effectiveArgs =
+      CREATION_TOOLS.has(toolName) && args.parentId === undefined
+        ? { ...args, parentId: "0:1" }
+        : args;
+    const validated = schema.parse(effectiveArgs);
     return handlers[toolName](validated, { meta: {} });
   }
 

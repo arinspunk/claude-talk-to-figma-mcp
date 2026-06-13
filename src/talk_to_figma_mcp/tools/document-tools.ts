@@ -1,8 +1,11 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { sendCommandToFigma, joinChannel } from "../utils/websocket.js";
-import { filterFigmaNode } from "../utils/figma-helpers.js";
-import { coerceJson } from "../utils/schema-helpers";
+import { sendCommandToFigma, joinChannel } from "../utils/websocket";
+import { filterFigmaNode } from "../utils/figma-helpers";
+import { coerceJson, coerceBoolean } from "../utils/schema-helpers";
+import { parseCommandResult } from "../utils/command-results";
+import fs from "fs";
+import path from "path";
 
 /**
  * Register document-related tools to the MCP server
@@ -10,10 +13,13 @@ import { coerceJson } from "../utils/schema-helpers";
  */
 export function registerDocumentTools(server: McpServer): void {
   // Document Info Tool
-  server.tool(
+  server.registerTool(
     "get_document_info",
-    "Get detailed information about the current Figma document",
-    {},
+    {
+      description: "Get detailed information about the current Figma document",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
     async () => {
       try {
         const result = await sendCommandToFigma("get_document_info");
@@ -23,7 +29,8 @@ export function registerDocumentTools(server: McpServer): void {
               type: "text",
               text: JSON.stringify(result)
             }
-          ]
+          ],
+          structuredContent: result as Record<string, unknown>,
         };
       } catch (error) {
         return {
@@ -33,16 +40,20 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error getting document info: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Selection Tool
-  server.tool(
+  server.registerTool(
     "get_selection",
-    "Get information about the current selection in Figma",
-    {},
+    {
+      description: "Get information about the current selection in Figma",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
     async () => {
       try {
         const result = await sendCommandToFigma("get_selection");
@@ -52,7 +63,8 @@ export function registerDocumentTools(server: McpServer): void {
               type: "text",
               text: JSON.stringify(result)
             }
-          ]
+          ],
+          structuredContent: result as Record<string, unknown>,
         };
       } catch (error) {
         return {
@@ -62,22 +74,29 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error getting selection: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Node Info Tool
-  server.tool(
+  server.registerTool(
     "get_node_info",
-    "Get detailed information about a specific node in Figma",
     {
+      description: "Get detailed information about a specific node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to get information about"),
       depth: z.number().int().min(0).optional().describe("How many child levels to include in full detail. Deeper levels return only id/name/type stubs."),
     },
+      annotations: { readOnlyHint: true },
+    },
     async ({ nodeId, depth }) => {
       try {
-        const result = await sendCommandToFigma("get_node_info", { nodeId });
+        // depth is pushed down so the plugin prunes the subtree BEFORE transport
+        // (a large section can be MBs of JSON otherwise). The MCP-side filter
+        // below stays as belt-and-braces for older plugins that ignore depth.
+        const result = await sendCommandToFigma("get_node_info", { nodeId, depth: depth ?? 1 });
         const filtered = filterFigmaNode(result, depth ?? 1);
         const coordinateNote = filtered.absoluteBoundingBox && filtered.localPosition
           ? "absoluteBoundingBox contains global coordinates (relative to canvas). localPosition contains local coordinates (relative to parent, use these for move_node)."
@@ -91,7 +110,8 @@ export function registerDocumentTools(server: McpServer): void {
               type: "text",
               text: JSON.stringify(payload)
             }
-          ]
+          ],
+          structuredContent: payload as Record<string, unknown>,
         };
       } catch (error) {
         return {
@@ -101,29 +121,36 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error getting node info: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Nodes Info Tool
-  server.tool(
+  server.registerTool(
     "get_nodes_info",
-    "Get detailed information about multiple nodes in Figma",
     {
+      description: "Get detailed information about multiple nodes in Figma",
+      inputSchema: {
       nodeIds: coerceJson(z.array(z.string())).describe("Array of node IDs to get information about"),
       depth: z.number().int().min(0).optional().describe("How many child levels to include in full detail. Deeper levels return only id/name/type stubs.")
     },
+      annotations: { readOnlyHint: true },
+    },
     async ({ nodeIds, depth }) => {
       try {
-        const results = await sendCommandToFigma('get_nodes_info', { nodeIds }) as any[];
+        // depth pushed down to the plugin (see get_node_info above).
+        const results = await sendCommandToFigma('get_nodes_info', { nodeIds, depth: depth ?? 1 }) as any[];
+        const nodes = results.map((result) => filterFigmaNode(result.document || result.info, depth ?? 1));
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(results.map((result) => filterFigmaNode(result.document || result.info, depth ?? 1)))
+              text: JSON.stringify(nodes)
             }
-          ]
+          ],
+          structuredContent: { nodes },
         };
       } catch (error) {
         return {
@@ -132,17 +159,21 @@ export function registerDocumentTools(server: McpServer): void {
               type: "text",
               text: `Error getting nodes info: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Get Styles Tool
-  server.tool(
+  server.registerTool(
     "get_styles",
-    "Get all styles from the current Figma document",
-    {},
+    {
+      description: "Get all styles from the current Figma document",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
     async () => {
       try {
         const result = await sendCommandToFigma("get_styles");
@@ -152,7 +183,8 @@ export function registerDocumentTools(server: McpServer): void {
               type: "text",
               text: JSON.stringify(result)
             }
-          ]
+          ],
+          structuredContent: result as Record<string, unknown>,
         };
       } catch (error) {
         return {
@@ -162,16 +194,20 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error getting styles: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Get Local Components Tool
-  server.tool(
+  server.registerTool(
     "get_local_components",
-    "Get all local components from the Figma document",
-    {},
+    {
+      description: "Get all local components from the Figma document",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
     async () => {
       try {
         const result = await sendCommandToFigma("get_local_components");
@@ -181,7 +217,8 @@ export function registerDocumentTools(server: McpServer): void {
               type: "text",
               text: JSON.stringify(result)
             }
-          ]
+          ],
+          structuredContent: result as Record<string, unknown>,
         };
       } catch (error) {
         return {
@@ -191,16 +228,20 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error getting local components: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Get Remote Components Tool
-  server.tool(
+  server.registerTool(
     "get_remote_components",
-    "Get available components from team libraries in Figma",
-    {},
+    {
+      description: "Get available components from team libraries in Figma",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
     async () => {
       try {
         const result = await sendCommandToFigma("get_remote_components");
@@ -219,32 +260,32 @@ export function registerDocumentTools(server: McpServer): void {
               type: "text",
               text: `Error getting remote components: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Text Node Scanning Tool
-  server.tool(
+  server.registerTool(
     "scan_text_nodes",
-    "Scan all text nodes in the selected Figma node",
     {
+      description: "Scan all text nodes in the selected Figma node",
+      inputSchema: {
       nodeId: z.string().describe("ID of the node to scan"),
+      highlight: z.coerce.boolean().optional().describe("Briefly highlight each text node as it is scanned (default false — slows down large scans)."),
     },
-    async ({ nodeId }) => {
+      annotations: { readOnlyHint: true },
+    },
+    async ({ nodeId, highlight }) => {
       try {
-        // Initial response to indicate we're starting the process
-        const initialStatus = {
-          type: "text" as const,
-          text: "Starting text node scanning. This may take a moment for large designs...",
-        };
-
         // Use the plugin's scan_text_nodes function with chunking flag
         const result = await sendCommandToFigma("scan_text_nodes", {
           nodeId,
           useChunking: true,  // Enable chunking on the plugin side
-          chunkSize: 10       // Process 10 nodes at a time
+          chunkSize: 10,      // Process 10 nodes at a time
+          highlight: highlight ?? false,
         });
 
         // If the result indicates chunking was used, format the response accordingly
@@ -265,7 +306,6 @@ export function registerDocumentTools(server: McpServer): void {
 
           return {
             content: [
-              initialStatus,
               {
                 type: "text" as const,
                 text: summaryText
@@ -281,7 +321,6 @@ export function registerDocumentTools(server: McpServer): void {
         // If chunking wasn't used or wasn't reported in the result format, return the result as is
         return {
           content: [
-            initialStatus,
             {
               type: "text",
               text: JSON.stringify(result, null, 2),
@@ -296,36 +335,23 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error scanning text nodes: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Join Channel Tool
-  server.tool(
+  server.registerTool(
     "join_channel",
-    "Join a specific channel to communicate with Figma",
     {
-      channel: z.string().describe("The name of the channel to join"),
+      description: "ADVANCED / rarely needed. Connection is zero-config: Figma tools auto-route to the connected plugin, so you normally do NOT call this. Only use it to disambiguate when MULTIPLE Figma files are connected, passing the specific channel ID the user provides.",
+      inputSchema: {
+      channel: z.string().min(1).describe("The name of the channel to join"),
+    },
     },
     async ({ channel }) => {
       try {
-        if (!channel) {
-          // If no channel provided, ask the user for input
-          return {
-            content: [
-              {
-                type: "text",
-                text: "Please provide a channel name to join:",
-              },
-            ],
-            followUp: {
-              tool: "join_channel",
-              description: "Join the specified channel",
-            },
-          };
-        }
-
         // Use joinChannel instead of sendCommandToFigma to ensure currentChannel is updated
         await joinChannel(channel);
 
@@ -345,22 +371,26 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error joining channel: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Export Node as Image Tool
-  server.tool(
+  server.registerTool(
     "export_node_as_image",
-    "Export a node as an image from Figma",
     {
+      description: "Export a node as an image from Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to export"),
       format: z
         .enum(["PNG", "JPG", "SVG", "PDF"])
         .optional()
         .describe("Export format"),
       scale: z.coerce.number().positive().optional().describe("Export scale"),
+    },
+      annotations: { readOnlyHint: true },
     },
     async ({ nodeId, format, scale }) => {
       try {
@@ -369,7 +399,19 @@ export function registerDocumentTools(server: McpServer): void {
           format: format || "PNG",
           scale: scale || 1,
         }, 120000); // 120 second timeout for image export
-        const typedResult = result as { imageData: string; mimeType: string };
+        const typedResult = parseCommandResult("export_node_as_image", result);
+
+        // PDF is not a valid MCP image content type — write it to disk and
+        // return the path instead (same pattern as get_asset).
+        if (typedResult.mimeType === "application/pdf") {
+          const dir = path.join(process.cwd(), "figma-assets");
+          fs.mkdirSync(dir, { recursive: true });
+          const filepath = path.join(dir, `export-${nodeId.replace(/[^a-z0-9]+/gi, "-")}-${Date.now()}.pdf`);
+          fs.writeFileSync(filepath, Buffer.from(typedResult.imageData, "base64"));
+          return {
+            content: [{ type: "text", text: `Exported PDF saved to: ${filepath}` }],
+          };
+        }
 
         return {
           content: [
@@ -388,17 +430,20 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error exporting node as image: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Create Page Tool
-  server.tool(
+  server.registerTool(
     "create_page",
-    "Create a new page in the current Figma document",
     {
+      description: "Create a new page in the current Figma document",
+      inputSchema: {
       name: z.string().describe("Name for the new page"),
+    },
     },
     async ({ name }) => {
       try {
@@ -420,17 +465,21 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error creating page: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Delete Page Tool
-  server.tool(
+  server.registerTool(
     "delete_page",
-    "Delete a page from the current Figma document",
     {
+      description: "Delete a page from the current Figma document",
+      inputSchema: {
       pageId: z.string().describe("ID of the page to delete"),
+    },
+      annotations: { destructiveHint: true },
     },
     async ({ pageId }) => {
       try {
@@ -452,18 +501,21 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error deleting page: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Rename Page Tool
-  server.tool(
+  server.registerTool(
     "rename_page",
-    "Rename an existing page in the Figma document",
     {
+      description: "Rename an existing page in the Figma document",
+      inputSchema: {
       pageId: z.string().describe("ID of the page to rename"),
       name: z.string().describe("New name for the page"),
+    },
     },
     async ({ pageId, name }) => {
       try {
@@ -485,16 +537,20 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error renaming page: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Get Pages Tool
-  server.tool(
+  server.registerTool(
     "get_pages",
-    "Get all pages in the current Figma document",
-    {},
+    {
+      description: "Get all pages in the current Figma document",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
     async () => {
       try {
         const result = await sendCommandToFigma("get_pages");
@@ -505,6 +561,7 @@ export function registerDocumentTools(server: McpServer): void {
               text: JSON.stringify(result),
             },
           ],
+          structuredContent: result as Record<string, unknown>,
         };
       } catch (error) {
         return {
@@ -514,17 +571,20 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error getting pages: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Current Page Tool
-  server.tool(
+  server.registerTool(
     "set_current_page",
-    "DEPRECATED — this stateful command is blocked by the relay server. Instead, pass the target page's node ID as parentId on creation commands (e.g., create_rectangle, create_frame). Use get_pages to discover page IDs.",
     {
+      description: "DEPRECATED — this stateful command is blocked by the relay server. Instead, pass the target page's node ID as parentId on creation commands (e.g., create_rectangle, create_frame). Use get_pages to discover page IDs.",
+      inputSchema: {
       pageId: z.string().describe("ID of the page to switch to"),
+    },
     },
     async ({ pageId }) => {
       try {
@@ -546,18 +606,21 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error switching page: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Duplicate Page Tool
-  server.tool(
+  server.registerTool(
     "duplicate_page",
-    "Duplicate an existing page in the Figma document, creating a complete copy of all its contents",
     {
+      description: "Duplicate an existing page in the Figma document, creating a complete copy of all its contents",
+      inputSchema: {
       pageId: z.string().describe("ID of the page to duplicate"),
       name: z.string().optional().describe("Optional name for the duplicated page (defaults to 'Original Name (Copy)')"),
+    },
     },
     async ({ pageId, name }) => {
       try {
@@ -579,6 +642,53 @@ export function registerDocumentTools(server: McpServer): void {
               text: `Error duplicating page: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Get CSS Tool — Figma's own Dev Mode CSS (highest-fidelity styling source)
+  server.registerTool(
+    "get_css",
+    {
+      description: "Get Figma's exact computed CSS (Dev Mode) for a node — sizing, padding, colors, gradients, border-radius, box-shadow, and the full font/line-height/letter-spacing. Prefer this over reconstructing styles from get_node_info: it removes guesswork and is the most faithful source for 1:1 code. Defaults to the current selection. Use recursive=true to get CSS for the whole subtree.",
+      inputSchema: {
+      nodeId: z.string().optional().describe("Node to inspect. Omit to use the current selection."),
+      recursive: coerceBoolean.optional().describe("If true, return CSS for the node and all descendants (capped). Default false."),
+    },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ nodeId, recursive }) => {
+      try {
+        const result = await sendCommandToFigma("get_css", { nodeId, recursive: recursive ?? false }, 60000);
+        const typed = parseCommandResult("get_css", result);
+
+        const fmtBlock = (n: { id: string; name: string; type: string; css: Record<string, string> }) => {
+          const decls = Object.entries(n.css).map(([k, v]) => `  ${k}: ${v};`).join("\n");
+          return `/* "${n.name}" (${n.type}, ${n.id}) */\n${decls || "  /* no CSS */"}`;
+        };
+
+        // Discriminate on the response shape (not the input flag) so an older
+        // plugin that ignores `recursive` still renders correctly.
+        let text: string;
+        if ("nodes" in typed) {
+          text = typed.nodes.map(fmtBlock).join("\n\n");
+          if (typed.truncated) text += `\n\n/* … output truncated at ${typed.count} nodes; query a sub-node for the rest */`;
+        } else {
+          text = fmtBlock(typed);
+        }
+
+        return { content: [{ type: "text", text }] };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error getting CSS: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+          isError: true,
         };
       }
     }

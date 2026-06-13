@@ -4,6 +4,20 @@
 
 Guide to resolving the most common errors.
 
+## Security model
+
+The relay (`localhost:3055`) gives full **read and write access to whatever Figma file has the plugin connected**. The plugin path needs no API token; a Figma **personal access token** is optional and only enables the REST API tools (see below). Keep these rules in mind:
+
+- **The personal access token is a secret.** If you set `FIGMA_PERSONAL_TOKEN`, it grants REST access to every file your Figma account can open. Prefer the DXT keychain field or an environment variable over committing it to a shared `mcp.json`; the server only ever sends it in the `X-Figma-Token` header and scrubs it from errors. Revoke it anytime in Figma → Settings → Security.
+
+- **Origin allowlist (CSWSH protection).** Browsers don't apply CORS to WebSockets, so the relay rejects browser connections from origins other than the Figma plugin sandbox (`null`) and `*.figma.com`. Non-browser clients (the MCP server) are unaffected. If you have a legitimate browser client (e.g. a local dashboard), allow it explicitly:
+  ```bash
+  FIGMA_SOCKET_ALLOWED_ORIGINS="http://localhost:5173" bun run socket
+  ```
+  A blocked request logs `Rejected request from disallowed origin …` on the relay.
+- **Don't bind beyond localhost casually.** `FIGMA_SOCKET_HOST=0.0.0.0` exposes the relay to your network, and the origin allowlist does **not** protect against non-browser clients. Only use it on a trusted network (e.g. Windows + WSL setups).
+- **Debug logging is opt-in.** Set `LOG_LEVEL=debug` (MCP server and/or relay) to see full message traffic. Debug payloads are truncated, but logs may still reference your design content — leave it off in normal use.
+
 ## Connection issues
 
 ### "Cannot connect to WebSocket"
@@ -86,6 +100,35 @@ Guide to resolving the most common errors.
 1. Try again
 2. Break the operation into smaller steps
 3. In large documents, work with specific selections
+
+## REST API (personal access token) issues
+
+### "No Figma personal access token is configured"
+
+**Cause:** A `rest_*` tool was called but no token is set.
+
+**Solution:**
+1. Create a token in Figma → Settings → Security → Personal access tokens.
+2. Set it as `FIGMA_PERSONAL_TOKEN` for the MCP server (DXT settings field, or an `env` block — see [Installation](INSTALLATION.md)).
+3. Restart your AI client, then run `rest_whoami` to confirm.
+
+### "The Figma personal access token is invalid or has been revoked" (401)
+
+**Cause:** The token is wrong, expired, or revoked.
+
+**Solution:** Generate a new token and update `FIGMA_PERSONAL_TOKEN`. The `rest_*` tools only appear when a token is present, so if they're missing entirely, the variable isn't reaching the server.
+
+### "The token does not grant access to this resource" (403)
+
+**Cause:** The token's user can't see the file, or the token lacks the needed scope.
+
+**Solution:** Confirm the token's Figma account has access to the file, and that the token has **File content** (reads) and **Comments** (for `rest_post_comment`) scopes.
+
+### "rate limit reached" (429)
+
+**Cause:** Too many REST calls in a short window. The server already retries with `Retry-After`/backoff; this message means retries were exhausted.
+
+**Solution:** Wait a minute, then retry. Prefer `rest_render_image` with specific node IDs over rendering whole files repeatedly.
 
 ## Performance issues
 

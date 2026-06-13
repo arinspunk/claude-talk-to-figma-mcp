@@ -10,7 +10,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 // Import configuration
-import { SERVER_CONFIG } from "./config/config";
+import { SERVER_CONFIG, SERVER_INSTRUCTIONS } from "./config/config";
 
 // Import utilities
 import { logger } from "./utils/logger";
@@ -22,19 +22,27 @@ import { registerTools } from "./tools";
 // Import prompts registration function from prompts/index.ts
 import { registerPrompts } from "./prompts";
 
+// Import resources registration function from resources/index.ts
+import { registerResources } from "./resources";
+
 /**
  * Initialize and start the MCP server
  */
 async function main() {
   try {
-    // Create MCP server instance with configuration
-    const server = new McpServer(SERVER_CONFIG);
+    // Create MCP server instance with configuration.
+    // Instructions tell Claude to call Figma tools directly (zero-config),
+    // removing the old "Connect to Figma, channel XYZ" prompt tax.
+    const server = new McpServer(SERVER_CONFIG, { instructions: SERVER_INSTRUCTIONS });
     
     // Register all tools with the server
     registerTools(server);
     
     // Register all prompts with the server
     registerPrompts(server);
+
+    // Register all resources with the server (live selection/document)
+    registerResources(server);
     
     // Try to connect to Figma socket server
     try {

@@ -8,15 +8,17 @@ import { sendCommandToFigma } from "../utils/websocket";
  */
 export function registerSvgTools(server: McpServer): void {
   // Import SVG Tool
-  server.tool(
+  server.registerTool(
     "set_svg",
-    "Import an SVG string as a vector node in Figma. The SVG is sanitized (scripts and external resources are stripped) before import. Max 500KB.",
     {
+      description: "Import an SVG string as a vector node in Figma. The SVG is sanitized (scripts and external resources are stripped) before import. Max 500KB.",
+      inputSchema: {
       svgString: z.string().max(500_000).describe("SVG markup string (max 500KB). Must contain a valid <svg> element."),
       x: z.coerce.number().optional().describe("X position for the imported SVG (default: 0)"),
       y: z.coerce.number().optional().describe("Y position for the imported SVG (default: 0)"),
       name: z.string().optional().describe("Optional name for the imported node"),
-      parentId: z.string().optional().describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+      parentId: z.string().describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+    },
     },
     async ({ svgString, x, y, name, parentId }) => {
       try {
@@ -44,17 +46,21 @@ export function registerSvgTools(server: McpServer): void {
               text: `Error importing SVG: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Export SVG Tool
-  server.tool(
+  server.registerTool(
     "get_svg",
-    "Export a single node as an SVG string from Figma. Returns the SVG markup including all nested children.",
     {
+      description: "Export a single node as an SVG string from Figma. Returns the SVG markup including all nested children.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to export as SVG"),
+    },
+      annotations: { readOnlyHint: true },
     },
     async ({ nodeId }) => {
       try {
@@ -76,6 +82,7 @@ export function registerSvgTools(server: McpServer): void {
               text: `Error exporting SVG: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }

@@ -11,7 +11,8 @@ export function rgbaToHex(color: any): string {
   const r = Math.round(color.r * 255);
   const g = Math.round(color.g * 255);
   const b = Math.round(color.b * 255);
-  const a = Math.round(color.a * 255);
+  // Missing alpha means opaque; a === 0 must stay 0 (transparent), so no `||`.
+  const a = Math.round((color.a ?? 1) * 255);
 
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}${a === 255 ? '' : a.toString(16).padStart(2, '0')}`;
 }
@@ -155,34 +156,4 @@ export function localToGlobal(
     x: localX + parentGlobalX,
     y: localY + parentGlobalY
   };
-}
-
-/**
- * Procesa un nodo de respuesta de Figma para propósitos de logging.
- * @param result - El resultado a procesar
- * @returns El resultado original sin modificaciones
- */
-export function processFigmaNodeResponse(result: unknown): any {
-  if (!result || typeof result !== "object") {
-    return result;
-  }
-
-  // Check if this looks like a node response
-  const resultObj = result as Record<string, unknown>;
-  if ("id" in resultObj && typeof resultObj.id === "string") {
-    // It appears to be a node response, log the details
-    console.info(
-      `Processed Figma node: ${resultObj.name || "Unknown"} (ID: ${resultObj.id})`
-    );
-
-    if ("x" in resultObj && "y" in resultObj) {
-      console.debug(`Node position: (${resultObj.x}, ${resultObj.y})`);
-    }
-
-    if ("width" in resultObj && "height" in resultObj) {
-      console.debug(`Node dimensions: ${resultObj.width}×${resultObj.height}`);
-    }
-  }
-
-  return result;
 }

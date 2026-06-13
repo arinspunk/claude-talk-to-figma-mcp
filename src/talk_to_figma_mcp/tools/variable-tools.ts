@@ -9,10 +9,13 @@ import { sendCommandToFigma } from "../utils/websocket";
  */
 export function registerVariableTools(server: McpServer): void {
   // Get Variables Tool
-  server.tool(
+  server.registerTool(
     "get_variables",
-    "List all variable collections and their variables in the current Figma file. Returns collections with their modes and variables.",
-    {},
+    {
+      description: "List all variable collections and their variables in the current Figma file. Returns collections with their modes and variables.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
     async () => {
       try {
         const result = await sendCommandToFigma("get_variables", {});
@@ -24,6 +27,7 @@ export function registerVariableTools(server: McpServer): void {
               text: JSON.stringify(typedResult, null, 2),
             },
           ],
+          structuredContent: typedResult as unknown as Record<string, unknown>,
         };
       } catch (error) {
         return {
@@ -33,22 +37,25 @@ export function registerVariableTools(server: McpServer): void {
               text: `Error getting variables: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Variable Tool
-  server.tool(
+  server.registerTool(
     "set_variable",
-    "Create or update a variable in a Figma variable collection. Creates the collection if collectionName is provided and it doesn't exist.",
     {
+      description: "Create or update a variable in a Figma variable collection. Creates the collection if collectionName is provided and it doesn't exist.",
+      inputSchema: {
       collectionId: z.string().optional().describe("ID of an existing variable collection"),
       collectionName: z.string().optional().describe("Name for a new collection (used if collectionId not provided)"),
       name: z.string().describe("Variable name"),
       resolvedType: z.enum(["COLOR", "FLOAT", "STRING", "BOOLEAN"]).describe("Variable type"),
       value: z.any().describe("Variable value. COLOR: {r,g,b,a} (0-1). FLOAT: number. STRING: string. BOOLEAN: boolean."),
       modeId: z.string().optional().describe("Mode ID to set the value for (uses default mode if omitted)"),
+    },
     },
     async ({ collectionId, collectionName, name, resolvedType, value, modeId }) => {
       try {
@@ -77,19 +84,22 @@ export function registerVariableTools(server: McpServer): void {
               text: `Error setting variable: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Apply Variable to Node Tool
-  server.tool(
+  server.registerTool(
     "apply_variable_to_node",
-    "Bind a variable to a node property in Figma. Call once per field — for multiple fields, call multiple times.",
     {
+      description: "Bind a variable to a node property in Figma. Call once per field — for multiple fields, call multiple times.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to bind the variable to"),
       variableId: z.string().describe("The ID of the variable to bind"),
       field: z.string().describe("The node property field to bind (e.g., 'fills/0/color', 'opacity', 'width', 'height')"),
+    },
     },
     async ({ nodeId, variableId, field }) => {
       try {
@@ -115,19 +125,22 @@ export function registerVariableTools(server: McpServer): void {
               text: `Error applying variable to node: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Switch Variable Mode Tool
-  server.tool(
+  server.registerTool(
     "switch_variable_mode",
-    "Switch the variable mode on a node for a specific collection. This changes which mode's values are used for bound variables.",
     {
+      description: "Switch the variable mode on a node for a specific collection. This changes which mode's values are used for bound variables.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to switch mode on"),
       collectionId: z.string().describe("The ID of the variable collection"),
       modeId: z.string().describe("The ID of the mode to switch to"),
+    },
     },
     async ({ nodeId, collectionId, modeId }) => {
       try {
@@ -153,6 +166,7 @@ export function registerVariableTools(server: McpServer): void {
               text: `Error switching variable mode: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }

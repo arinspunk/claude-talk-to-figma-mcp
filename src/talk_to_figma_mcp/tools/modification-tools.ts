@@ -12,15 +12,17 @@ import { coerceJson, coerceBoolean } from "../utils/schema-helpers";
  */
 export function registerModificationTools(server: McpServer): void {
   // Set Fill Color Tool
-  server.tool(
+  server.registerTool(
     "set_fill_color",
-    "Set the fill color of a node in Figma. Alpha component defaults to 1 (fully opaque) if not specified. Use alpha 0 for fully transparent.",
     {
+      description: "Set the fill color of a node in Figma. Alpha component defaults to 1 (fully opaque) if not specified. Use alpha 0 for fully transparent.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
       g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
       b: z.coerce.number().min(0).max(1).describe("Blue component (0-1)"),
       a: z.coerce.number().min(0).max(1).optional().describe("Alpha component (0-1, defaults to 1 if not specified)"),
+    },
     },
     async ({ nodeId, r, g, b, a }) => {
       try {
@@ -54,22 +56,25 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error setting fill color: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Stroke Color Tool
-  server.tool(
+  server.registerTool(
     "set_stroke_color",
-    "Set the stroke color of a node in Figma (defaults: opacity 1, weight 1)",
     {
+      description: "Set the stroke color of a node in Figma (defaults: opacity 1, weight 1)",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
       g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
       b: z.coerce.number().min(0).max(1).describe("Blue component (0-1)"),
       a: z.coerce.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
       strokeWeight: z.coerce.number().min(0).optional().describe("Stroke weight >= 0)"),
+    },
     },
     async ({ nodeId, r, g, b, a, strokeWeight }) => {
       try {
@@ -105,21 +110,24 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error setting stroke color: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Selection Colors Tool - recursively change all descendant stroke/fill colors
-  server.tool(
+  server.registerTool(
     "set_selection_colors",
-    "Recursively change all stroke and fill colors of a node and all its descendants. Works like Figma's 'Selection colors' feature - perfect for recoloring icon instances.",
     {
+      description: "Recursively change all stroke and fill colors of a node and all its descendants. Works like Figma's 'Selection colors' feature - perfect for recoloring icon instances.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify (typically an icon instance)"),
       r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
       g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
       b: z.coerce.number().min(0).max(1).describe("Blue component (0-1)"),
       a: z.coerce.number().min(0).max(1).optional().describe("Alpha component (0-1, defaults to 1)"),
+    },
     },
     async ({ nodeId, r, g, b, a }) => {
       try {
@@ -153,19 +161,22 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error setting selection colors: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Move Node Tool
-  server.tool(
+  server.registerTool(
     "move_node",
-    "Move a node to a new position in Figma",
     {
+      description: "Move a node to a new position in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to move"),
       x: z.coerce.number().describe("New X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("New Y position (local coordinates, relative to parent)"),
+    },
     },
     async ({ nodeId, x, y }) => {
       try {
@@ -187,19 +198,22 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error moving node: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Resize Node Tool
-  server.tool(
+  server.registerTool(
     "resize_node",
-    "Resize a node in Figma",
     {
+      description: "Resize a node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to resize"),
       width: z.coerce.number().positive().describe("New width"),
       height: z.coerce.number().positive().describe("New height"),
+    },
     },
     async ({ nodeId, width, height }) => {
       try {
@@ -225,17 +239,21 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error resizing node: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Delete Node Tool
-  server.tool(
+  server.registerTool(
     "delete_node",
-    "Delete a node from Figma",
     {
+      description: "Delete a node from Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to delete"),
+    },
+      annotations: { destructiveHint: true },
     },
     async ({ nodeId }) => {
       try {
@@ -256,16 +274,18 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error deleting node: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Corner Radius Tool
-  server.tool(
+  server.registerTool(
     "set_corner_radius",
-    "Set the corner radius of a node in Figma",
     {
+      description: "Set the corner radius of a node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       radius: z.coerce.number().min(0).describe("Corner radius value"),
       corners: coerceJson(z
@@ -275,6 +295,7 @@ export function registerModificationTools(server: McpServer): void {
         .describe(
           "Optional array of 4 booleans to specify which corners to round [topLeft, topRight, bottomRight, bottomLeft]"
         ),
+    },
     },
     async ({ nodeId, radius, corners }) => {
       try {
@@ -300,16 +321,18 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error setting corner radius: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Auto Layout Tool
-  server.tool(
+  server.registerTool(
     "set_auto_layout",
-    "Configure auto layout properties for a node in Figma",
     {
+      description: "Configure auto layout properties for a node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to configure auto layout"),
       layoutMode: z.enum(["HORIZONTAL", "VERTICAL", "NONE"]).describe("Layout direction"),
       paddingTop: z.coerce.number().optional().describe("Top padding in pixels"),
@@ -321,6 +344,7 @@ export function registerModificationTools(server: McpServer): void {
       counterAxisAlignItems: z.enum(["MIN", "CENTER", "MAX"]).optional().describe("Alignment along counter axis"),
       layoutWrap: z.enum(["WRAP", "NO_WRAP"]).optional().describe("Whether items wrap to new lines"),
       strokesIncludedInLayout: coerceBoolean.optional().describe("Whether strokes are included in layout calculations")
+    },
     },
     async ({ nodeId, layoutMode, paddingTop, paddingBottom, paddingLeft, paddingRight,
              itemSpacing, primaryAxisAlignItems, counterAxisAlignItems, layoutWrap, strokesIncludedInLayout }) => {
@@ -355,17 +379,19 @@ export function registerModificationTools(server: McpServer): void {
               type: "text",
               text: `Error setting auto layout: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Effects Tool
-  server.tool(
+  server.registerTool(
     "set_effects",
-    "Set the visual effects of a node in Figma",
     {
+      description: "Set the visual effects of a node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       effects: coerceJson(z.array(
         z.object({
@@ -386,6 +412,7 @@ export function registerModificationTools(server: McpServer): void {
           blendMode: z.string().optional().describe("Blend mode")
         })
       )).describe("Array of effects to apply")
+    },
     },
     async ({ nodeId, effects }) => {
       try {
@@ -411,19 +438,22 @@ export function registerModificationTools(server: McpServer): void {
               type: "text",
               text: `Error setting effects: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Effect Style ID Tool
-  server.tool(
+  server.registerTool(
     "set_effect_style_id",
-    "Apply an effect style to a node in Figma",
     {
+      description: "Apply an effect style to a node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       effectStyleId: z.string().describe("The ID of the effect style to apply")
+    },
     },
     async ({ nodeId, effectStyleId }) => {
       try {
@@ -449,20 +479,23 @@ export function registerModificationTools(server: McpServer): void {
               type: "text",
               text: `Error setting effect style: ${error instanceof Error ? error.message : String(error)}`
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
   );
 
   // Rotate Node Tool
-  server.tool(
+  server.registerTool(
     "rotate_node",
-    "Rotate a node in Figma by a specified angle in degrees (clockwise). Use relative=true to add to the current rotation instead of setting an absolute value. Note: locked nodes can still be rotated — the Plugin API bypasses the UI lock by design.",
     {
+      description: "Rotate a node in Figma by a specified angle in degrees (clockwise). Use relative=true to add to the current rotation instead of setting an absolute value. Note: locked nodes can still be rotated — the Plugin API bypasses the UI lock by design.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to rotate"),
       angle: z.coerce.number().describe("Rotation angle in degrees (clockwise)"),
       relative: coerceBoolean.optional().describe("If true, add angle to current rotation instead of setting absolute value (default: false)"),
+    },
     },
     async ({ nodeId, angle, relative }) => {
       try {
@@ -488,20 +521,23 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error rotating node: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Node Properties Tool (visibility, lock, opacity)
-  server.tool(
+  server.registerTool(
     "set_node_properties",
-    "Set visibility, lock state, and/or opacity of a node in Figma. Only provided properties are changed; omitted properties remain unchanged.",
     {
+      description: "Set visibility, lock state, and/or opacity of a node in Figma. Only provided properties are changed; omitted properties remain unchanged.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       visible: coerceBoolean.optional().describe("Set node visibility (true = visible, false = hidden)"),
       locked: coerceBoolean.optional().describe("Set node lock state (true = locked, false = unlocked)"),
       opacity: z.coerce.number().min(0).max(1).optional().describe("Set node opacity (0 = fully transparent, 1 = fully opaque)"),
+    },
     },
     async ({ nodeId, visible, locked, opacity }) => {
       try {
@@ -532,19 +568,22 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error setting node properties: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Reorder Node Tool (z-order within same parent)
-  server.tool(
+  server.registerTool(
     "reorder_node",
-    "Change the z-order (layer order) of a node within its parent. Distinct from insert_child which re-parents a node — reorder_node changes position within the same parent.",
     {
+      description: "Change the z-order (layer order) of a node within its parent. Distinct from insert_child which re-parents a node — reorder_node changes position within the same parent.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to reorder"),
       position: z.enum(["front", "back", "forward", "backward"]).optional().describe("Move to front/back or one step forward/backward"),
       index: z.coerce.number().optional().describe("Direct index position within parent's children (0 = bottom). Overrides position if both provided."),
+    },
     },
     async ({ nodeId, position, index }) => {
       try {
@@ -570,17 +609,20 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error reordering node: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Convert to Frame Tool
-  server.tool(
+  server.registerTool(
     "convert_to_frame",
-    "Convert a group or shape node into a frame in Figma. Preserves position, size, visual properties, and children. Useful for converting groups into auto-layout-capable frames.",
     {
+      description: "Convert a group or shape node into a frame in Figma. Preserves position, size, visual properties, and children. Useful for converting groups into auto-layout-capable frames.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to convert to a frame"),
+    },
     },
     async ({ nodeId }) => {
       try {
@@ -602,16 +644,18 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error converting to frame: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Gradient Fill Tool
-  server.tool(
+  server.registerTool(
     "set_gradient",
-    "Set a gradient fill on a node in Figma. Supports linear, radial, angular, and diamond gradients. Replaces all existing fills (same behavior as set_fill_color).",
     {
+      description: "Set a gradient fill on a node in Figma. Supports linear, radial, angular, and diamond gradients. Replaces all existing fills (same behavior as set_fill_color).",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       type: z.enum(["GRADIENT_LINEAR", "GRADIENT_RADIAL", "GRADIENT_ANGULAR", "GRADIENT_DIAMOND"]).describe("Gradient type"),
       stops: coerceJson(z.array(z.object({
@@ -624,6 +668,7 @@ export function registerModificationTools(server: McpServer): void {
         }),
       })).min(2)).describe("Array of gradient color stops (minimum 2)"),
       gradientTransform: coerceJson(z.array(z.array(z.coerce.number()))).optional().describe("2x3 affine transform matrix [[a,b,tx],[c,d,ty]]. Defaults to left-to-right linear: [[1,0,0],[0,1,0]]"),
+    },
     },
     async ({ nodeId, type, stops, gradientTransform }) => {
       try {
@@ -653,19 +698,22 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error setting gradient: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Image Fill Tool
-  server.tool(
+  server.registerTool(
     "set_image",
-    "Set an image fill on a node from base64-encoded image data. Supports PNG, JPEG, GIF, WebP. Max ~5MB after decode.",
     {
+      description: "Set an image fill on a node from base64-encoded image data. Supports PNG, JPEG, GIF, WebP. Max ~5MB after decode.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to apply the image fill to"),
       imageData: z.string().max(7_000_000).describe("Base64-encoded image data (PNG, JPEG, GIF, or WebP). Max ~5MB after decode."),
       scaleMode: z.enum(["FILL", "FIT", "CROP", "TILE"]).optional().describe("How the image is scaled within the node (default: FILL)"),
+    },
     },
     async ({ nodeId, imageData, scaleMode }) => {
       try {
@@ -691,16 +739,18 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Layout Grid Tool
-  server.tool(
+  server.registerTool(
     "set_grid",
-    "Apply layout grids to a frame node in Figma. Supports columns, rows, and grid patterns.",
     {
+      description: "Apply layout grids to a frame node in Figma. Supports columns, rows, and grid patterns.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the frame node to apply grids to"),
       grids: coerceJson(z.array(
         z.object({
@@ -719,6 +769,7 @@ export function registerModificationTools(server: McpServer): void {
           }).optional().describe("Grid color")
         })
       )).describe("Array of layout grids to apply")
+    },
     },
     async ({ nodeId, grids }) => {
       try {
@@ -740,17 +791,21 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error setting layout grids: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Get Layout Grid Tool
-  server.tool(
+  server.registerTool(
     "get_grid",
-    "Read layout grids from a frame node in Figma",
     {
+      description: "Read layout grids from a frame node in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the frame node to read grids from"),
+    },
+      annotations: { readOnlyHint: true },
     },
     async ({ nodeId }) => {
       try {
@@ -772,16 +827,18 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error getting layout grids: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Guide Tool
-  server.tool(
+  server.registerTool(
     "set_guide",
-    "Set guides on a page in Figma. Replaces all existing guides on the page.",
     {
+      description: "Set guides on a page in Figma. Replaces all existing guides on the page.",
+      inputSchema: {
       pageId: z.string().describe("The ID of the page to add guides to"),
       guides: coerceJson(z.array(
         z.object({
@@ -789,6 +846,7 @@ export function registerModificationTools(server: McpServer): void {
           offset: z.coerce.number().describe("Offset position of the guide in pixels")
         })
       )).describe("Array of guides to set on the page")
+    },
     },
     async ({ pageId, guides }) => {
       try {
@@ -810,17 +868,21 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error setting guides: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Get Guide Tool
-  server.tool(
+  server.registerTool(
     "get_guide",
-    "Read guides from a page in Figma",
     {
+      description: "Read guides from a page in Figma",
+      inputSchema: {
       pageId: z.string().describe("The ID of the page to read guides from"),
+    },
+      annotations: { readOnlyHint: true },
     },
     async ({ pageId }) => {
       try {
@@ -842,18 +904,21 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error getting guides: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Set Annotation Tool
-  server.tool(
+  server.registerTool(
     "set_annotation",
-    "Add an annotation label to a node in Figma. Uses the proposed Annotations API — requires Figma Desktop with enableProposedApi.",
     {
+      description: "Add an annotation label to a node in Figma. Uses the proposed Annotations API — requires Figma Desktop with enableProposedApi.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to annotate"),
       label: z.string().describe("The annotation label text"),
+    },
     },
     async ({ nodeId, label }) => {
       try {
@@ -875,17 +940,21 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error setting annotation: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Get Annotation Tool
-  server.tool(
+  server.registerTool(
     "get_annotation",
-    "Read annotations from a node in Figma. Uses the proposed Annotations API.",
     {
+      description: "Read annotations from a node in Figma. Uses the proposed Annotations API.",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to read annotations from"),
+    },
+      annotations: { readOnlyHint: true },
     },
     async ({ nodeId }) => {
       try {
@@ -907,18 +976,21 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error getting annotations: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
         };
       }
     }
   );
 
   // Rename Node Tool
-  server.tool(
+  server.registerTool(
     "rename_node",
-    "Rename a node (frame, component, group, etc.) in Figma",
     {
+      description: "Rename a node (frame, component, group, etc.) in Figma",
+      inputSchema: {
       nodeId: z.string().describe("The ID of the node to rename"),
       name: z.string().describe("The new name for the node"),
+    },
     },
     async ({ nodeId, name }) => {
       try {
@@ -943,6 +1015,80 @@ export function registerModificationTools(server: McpServer): void {
               text: `Error renaming node: ${error instanceof Error ? error.message : String(error)}`,
             },
           ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Batch Operations Tool — apply many edits in ONE payload (timeout-safe)
+  server.registerTool(
+    "batch_operations",
+    {
+      description: "Apply MANY edits to Figma in a single call instead of one tool call per node. " +
+      "Pass an array of { command, params } operations (e.g. set_text_content, move_node, resize_node, " +
+      "set_fill_color, set_corner_radius, rename_node, …). The plugin processes them in one pass while " +
+      "streaming progress (so the connection never times out) and returns a per-operation success/failure " +
+      "summary so you can retry only what failed. Use this whenever you need to update 3+ nodes.",
+      inputSchema: {
+      operations: coerceJson(
+        z
+          .array(
+            z.object({
+              command: z
+                .string()
+                .describe("The Figma command to run, e.g. 'set_text_content', 'move_node', 'set_fill_color'."),
+              params: z
+                .record(z.any())
+                .describe("Parameters object for that command (must include nodeId where the command requires one)."),
+            })
+          )
+          .min(1)
+          .describe("Array of operations to apply in order.")
+      ),
+      stopOnError: coerceBoolean
+        .optional()
+        .describe("If true, halt at the first failed operation. Default false (apply all, collect failures)."),
+    },
+    },
+    async ({ operations, stopOnError }) => {
+      try {
+        const result = await sendCommandToFigma(
+          "batch_operations",
+          { operations, stopOnError: stopOnError ?? false },
+          600000 // 10 min ceiling; progress updates keep the request alive
+        );
+        const typed = result as {
+          total: number;
+          succeeded: number;
+          failed: number;
+          results: { index: number; command: string; ok: boolean; error?: string }[];
+        };
+
+        const failures = typed.results.filter((r) => !r.ok);
+        const lines = [
+          `Batch complete: ${typed.succeeded}/${typed.total} succeeded, ${typed.failed} failed.`,
+        ];
+        if (failures.length > 0) {
+          lines.push("", "Failed operations:");
+          for (const f of failures) {
+            lines.push(`  [#${f.index}] ${f.command}: ${f.error}`);
+          }
+          lines.push("", "Fix the inputs above and re-send just the failed operations.");
+        }
+
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error running batch operations: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+          isError: true,
         };
       }
     }
