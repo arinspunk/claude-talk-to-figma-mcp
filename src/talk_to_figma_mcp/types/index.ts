@@ -83,6 +83,8 @@ export type FigmaCommand =
   | "set_effects"
   | "set_effect_style_id"
   | "set_text_style_id"
+  | "set_fill_style_id"
+  | "set_stroke_style_id"
   | "group_nodes"
   | "ungroup_nodes"
   | "flatten_node"

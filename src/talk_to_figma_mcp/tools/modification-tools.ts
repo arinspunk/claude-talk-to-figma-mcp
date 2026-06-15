@@ -455,6 +455,82 @@ export function registerModificationTools(server: McpServer): void {
     }
   );
 
+  // Set Fill Style ID Tool
+  server.tool(
+    "set_fill_style_id",
+    "Apply a paint style to a node's fill in Figma. Use get_styles to find available paint style IDs.",
+    {
+      nodeId: z.string().describe("The ID of the node to modify"),
+      fillStyleId: z.string().describe("The ID of the paint style to apply as the node's fill")
+    },
+    async ({ nodeId, fillStyleId }) => {
+      try {
+        const result = await sendCommandToFigma("set_fill_style_id", {
+          nodeId,
+          fillStyleId
+        });
+
+        const typedResult = result as { name: string, fillStyleId: string };
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Successfully applied fill style to node "${typedResult.name}"`
+            }
+          ]
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting fill style: ${error instanceof Error ? error.message : String(error)}`
+            }
+          ]
+        };
+      }
+    }
+  );
+
+  // Set Stroke Style ID Tool
+  server.tool(
+    "set_stroke_style_id",
+    "Apply a paint style to a node's stroke in Figma. Use get_styles to find available paint style IDs.",
+    {
+      nodeId: z.string().describe("The ID of the node to modify"),
+      strokeStyleId: z.string().describe("The ID of the paint style to apply as the node's stroke")
+    },
+    async ({ nodeId, strokeStyleId }) => {
+      try {
+        const result = await sendCommandToFigma("set_stroke_style_id", {
+          nodeId,
+          strokeStyleId
+        });
+
+        const typedResult = result as { name: string, strokeStyleId: string };
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Successfully applied stroke style to node "${typedResult.name}"`
+            }
+          ]
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting stroke style: ${error instanceof Error ? error.message : String(error)}`
+            }
+          ]
+        };
+      }
+    }
+  );
+
   // Rotate Node Tool
   server.tool(
     "rotate_node",

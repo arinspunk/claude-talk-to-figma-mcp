@@ -211,6 +211,10 @@ async function handleCommand(command, params) {
       return await setEffectStyleId(params);
     case "set_text_style_id":
       return await setTextStyleId(params);
+    case "set_fill_style_id":
+      return await setFillStyleId(params);
+    case "set_stroke_style_id":
+      return await setStrokeStyleId(params);
     case "group_nodes":
       return await groupNodes(params);
     case "ungroup_nodes":
@@ -3102,6 +3106,166 @@ async function setTextStyleId(params) {
       throw new Error(`The selected node is not a text node. Only text nodes can have text styles applied.`);
     } else {
       throw new Error(`Error setting text style ID: ${error.message}`);
+    }
+  }
+}
+
+// Set Fill Style ID Tool
+async function setFillStyleId(params) {
+  const { nodeId, fillStyleId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!fillStyleId) {
+    throw new Error("Missing fillStyleId parameter");
+  }
+
+  try {
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error("Timeout while setting fill style ID (8s). The operation took too long to complete."));
+      }, 8000);
+    });
+
+    console.log(`Starting to set fill style ID ${fillStyleId} on node ${nodeId}...`);
+
+    const nodePromise = (async () => {
+      const node = await getNodeByIdSafe(nodeId);
+      if (!node) {
+        throw new Error(`Node not found with ID: ${nodeId}`);
+      }
+
+      if (!("fillStyleId" in node)) {
+        throw new Error(`Node with ID ${nodeId} does not support fill styles (type: ${node.type})`);
+      }
+
+      console.log(`Fetching paint styles to validate style ID: ${fillStyleId}`);
+      const paintStyles = await figma.getLocalPaintStylesAsync();
+      // LLMs often pass the key (a clean hex string) rather than the full Figma ID
+      const foundStyle = paintStyles.find(style => style.id === fillStyleId || style.key === fillStyleId);
+
+      if (!foundStyle) {
+        throw new Error(`Paint style with ID "${fillStyleId}" not found. Available styles: ${paintStyles.length}`);
+      }
+
+      const actualStyleId = foundStyle.id;
+      console.log(`Paint style "${foundStyle.name}" found, applying as fill...`);
+
+      // Prefer the async setter when available; fall back to the direct property
+      if (typeof node.setFillStyleIdAsync === "function") {
+        await node.setFillStyleIdAsync(actualStyleId);
+      } else {
+        node.fillStyleId = actualStyleId;
+      }
+
+      return {
+        id: node.id,
+        name: node.name,
+        fillStyleId: node.fillStyleId,
+        styleName: foundStyle.name
+      };
+    })();
+
+    const result = await Promise.race([nodePromise, timeoutPromise])
+      .finally(() => clearTimeout(timeoutId));
+
+    console.log(`Successfully set fill style ID on node ${nodeId}`);
+    return result;
+  } catch (error) {
+    console.error(`Error setting fill style ID: ${error.message || "Unknown error"}`);
+
+    if (error.message.includes("timeout") || error.message.includes("Timeout")) {
+      throw new Error(`The operation timed out after 8 seconds. Try with a simpler node.`);
+    } else if (error.message.includes("not found") && error.message.includes("Node")) {
+      throw new Error(`Node with ID "${nodeId}" not found. Make sure the node exists in the current document.`);
+    } else if (error.message.includes("not found") && error.message.includes("style")) {
+      throw new Error(`Paint style with ID "${fillStyleId}" not found. Make sure the style exists in your local styles.`);
+    } else if (error.message.includes("does not support")) {
+      throw new Error(`The selected node type does not support fill styles.`);
+    } else {
+      throw new Error(`Error setting fill style ID: ${error.message}`);
+    }
+  }
+}
+
+// Set Stroke Style ID Tool
+async function setStrokeStyleId(params) {
+  const { nodeId, strokeStyleId } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!strokeStyleId) {
+    throw new Error("Missing strokeStyleId parameter");
+  }
+
+  try {
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error("Timeout while setting stroke style ID (8s). The operation took too long to complete."));
+      }, 8000);
+    });
+
+    console.log(`Starting to set stroke style ID ${strokeStyleId} on node ${nodeId}...`);
+
+    const nodePromise = (async () => {
+      const node = await getNodeByIdSafe(nodeId);
+      if (!node) {
+        throw new Error(`Node not found with ID: ${nodeId}`);
+      }
+
+      if (!("strokeStyleId" in node)) {
+        throw new Error(`Node with ID ${nodeId} does not support stroke styles (type: ${node.type})`);
+      }
+
+      console.log(`Fetching paint styles to validate style ID: ${strokeStyleId}`);
+      const paintStyles = await figma.getLocalPaintStylesAsync();
+      const foundStyle = paintStyles.find(style => style.id === strokeStyleId || style.key === strokeStyleId);
+
+      if (!foundStyle) {
+        throw new Error(`Paint style with ID "${strokeStyleId}" not found. Available styles: ${paintStyles.length}`);
+      }
+
+      const actualStyleId = foundStyle.id;
+      console.log(`Paint style "${foundStyle.name}" found, applying as stroke...`);
+
+      if (typeof node.setStrokeStyleIdAsync === "function") {
+        await node.setStrokeStyleIdAsync(actualStyleId);
+      } else {
+        node.strokeStyleId = actualStyleId;
+      }
+
+      return {
+        id: node.id,
+        name: node.name,
+        strokeStyleId: node.strokeStyleId,
+        styleName: foundStyle.name
+      };
+    })();
+
+    const result = await Promise.race([nodePromise, timeoutPromise])
+      .finally(() => clearTimeout(timeoutId));
+
+    console.log(`Successfully set stroke style ID on node ${nodeId}`);
+    return result;
+  } catch (error) {
+    console.error(`Error setting stroke style ID: ${error.message || "Unknown error"}`);
+
+    if (error.message.includes("timeout") || error.message.includes("Timeout")) {
+      throw new Error(`The operation timed out after 8 seconds. Try with a simpler node.`);
+    } else if (error.message.includes("not found") && error.message.includes("Node")) {
+      throw new Error(`Node with ID "${nodeId}" not found. Make sure the node exists in the current document.`);
+    } else if (error.message.includes("not found") && error.message.includes("style")) {
+      throw new Error(`Paint style with ID "${strokeStyleId}" not found. Make sure the style exists in your local styles.`);
+    } else if (error.message.includes("does not support")) {
+      throw new Error(`The selected node type does not support stroke styles.`);
+    } else {
+      throw new Error(`Error setting stroke style ID: ${error.message}`);
     }
   }
 }
