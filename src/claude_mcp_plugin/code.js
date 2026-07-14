@@ -325,6 +325,31 @@ async function handleCommand(command, params) {
       return await createPaintStyle(params);
     case "create_effect_style":
       return await createEffectStyle(params);
+    // ── Slides commands ──────────────────────────────────────────────────
+    case "slides_list_slides":
+      return await slidesListSlides();
+    case "slides_get_slide_content":
+      return await slidesGetSlideContent(params);
+    case "slides_create_slide":
+      return await slidesCreateSlide(params);
+    case "slides_delete_slide":
+      return await slidesDeleteSlide(params);
+    case "slides_duplicate_slide":
+      return await slidesDuplicateSlide(params);
+    case "slides_get_slide_transition":
+      return await slidesGetSlideTransition(params);
+    case "slides_set_slide_transition":
+      return await slidesSetSlideTransition(params);
+    case "slides_get_focused_slide":
+      return await slidesGetFocusedSlide();
+    case "slides_focus_slide":
+      return await slidesFocusSlide(params);
+    case "slides_skip_slide":
+      return await slidesSkipSlide(params);
+    case "slides_add_text_to_slide":
+      return await slidesAddTextToSlide(params);
+    case "slides_add_shape_to_slide":
+      return await slidesAddShapeToSlide(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -6231,6 +6256,363 @@ async function createEffectStyle(params) {
     name: style.name,
     key: style.key,
     effectCount: style.effects.length,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SLIDES COMMANDS  (available in slides editorType)
+// See: https://www.figma.com/plugin-docs/api/slides/
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Guard: ensure we are running in a Slides editor context.
+ */
+function requireSlidesContext() {
+  if (figma.editorType !== 'slides') {
+    throw new Error('This command is only available in Figma Slides editor. Open a Slides file first.');
+  }
+  if (typeof figma.slides === 'undefined' || !figma.slides) {
+    throw new Error('Figma Slides API is not available. Make sure you are in a Slides file with the slides editorType.');
+  }
+}
+
+/**
+ * Serialize a slide node to a lightweight response object.
+ */
+function serializeSlide(slide) {
+  if (!slide) return null;
+  var children = [];
+  if (slide.children && slide.children.length > 0) {
+    children = slide.children.map(function(c) {
+      return { id: c.id, name: c.name, type: c.type, visible: c.visible };
+    });
+  }
+  return {
+    id: slide.id,
+    name: slide.name,
+    type: slide.type,
+    childCount: slide.children ? slide.children.length : 0,
+    width: slide.width,
+    height: slide.height,
+    visible: slide.visible,
+    locked: slide.locked,
+    children: children,
+  };
+}
+
+/**
+ * List all slides in the current presentation.
+ */
+async function slidesListSlides() {
+  requireSlidesContext();
+  var slides = figma.slides;
+  if (!slides || !slides.length) {
+    return { success: true, slides: [], totalCount: 0 };
+  }
+  var result = slides.map(function(s) { return serializeSlide(s); });
+  return { success: true, slides: result, totalCount: result.length };
+}
+
+/**
+ * Get the full node tree of a specific slide.
+ */
+async function slidesGetSlideContent(params) {
+  requireSlidesContext();
+  if (!params || !params.slideId) {
+    throw new Error('Missing slideId parameter');
+  }
+  var node = await figma.getNodeByIdAsync(params.slideId);
+  if (!node) {
+    throw new Error('Slide not found: ' + params.slideId);
+  }
+  var response = await node.exportAsync({ format: 'JSON_REST_V1' });
+  return response.document;
+}
+
+/**
+ * Create a new blank slide.
+ */
+async function slidesCreateSlide(params) {
+  requireSlidesContext();
+  var index = (params && params.index !== undefined) ? params.index : undefined;
+  var name = (params && params.name) ? params.name : undefined;
+  var slide = figma.createSlide(index);
+  if (name) { slide.name = name; }
+  return serializeSlide(slide);
+}
+
+/**
+ * Delete a slide.
+ */
+async function slidesDeleteSlide(params) {
+  requireSlidesContext();
+  if (!params || !params.slideId) {
+    throw new Error('Missing slideId parameter');
+  }
+  var node = await figma.getNodeByIdAsync(params.slideId);
+  if (!node) {
+    throw new Error('Slide not found: ' + params.slideId);
+  }
+  var info = { id: node.id, name: node.name };
+  node.remove();
+  return { success: true, deleted: info };
+}
+
+/**
+ * Duplicate a slide (clones it and appends after the original).
+ */
+async function slidesDuplicateSlide(params) {
+  requireSlidesContext();
+  if (!params || !params.slideId) {
+    throw new Error('Missing slideId parameter');
+  }
+  var original = await figma.getNodeByIdAsync(params.slideId);
+  if (!original) {
+    throw new Error('Slide not found: ' + params.slideId);
+  }
+  var clone = original.clone();
+  // Find the index of the original and insert after it
+  var slides = figma.slides;
+  var originalIndex = -1;
+  for (var i = 0; i < slides.length; i++) {
+    if (slides[i].id === original.id) {
+      originalIndex = i;
+      break;
+    }
+  }
+  if (originalIndex >= 0) {
+    // Insert after the original slide
+    figma.insertSlide(clone, originalIndex + 1);
+  } else {
+    // Fallback: append at end
+    figma.appendSlide(clone);
+  }
+  return serializeSlide(clone);
+}
+
+/**
+ * Get the transition settings for a slide.
+ */
+async function slidesGetSlideTransition(params) {
+  requireSlidesContext();
+  if (!params || !params.slideId) {
+    throw new Error('Missing slideId parameter');
+  }
+  var node = await figma.getNodeByIdAsync(params.slideId);
+  if (!node) {
+    throw new Error('Slide not found: ' + params.slideId);
+  }
+  var transition = ('slideTransition' in node) ? node.slideTransition : null;
+  return {
+    slideId: node.id,
+    slideName: node.name,
+    transition: transition ? {
+      type: transition.type,
+      duration: transition.duration,
+      direction: transition.direction || null,
+    } : null,
+  };
+}
+
+/**
+ * Set the transition effect on a slide.
+ * transitionType: dissolve, push, slide, smart_animate, fade, none
+ * duration: seconds (0.1 - 10)
+ * direction: left, right, up, down (for push/slide)
+ */
+async function slidesSetSlideTransition(params) {
+  requireSlidesContext();
+  if (!params || !params.slideId) {
+    throw new Error('Missing slideId parameter');
+  }
+  if (!params.transitionType) {
+    throw new Error('Missing transitionType parameter. Options: dissolve, push, slide, smart_animate, fade, none');
+  }
+  var node = await figma.getNodeByIdAsync(params.slideId);
+  if (!node) {
+    throw new Error('Slide not found: ' + params.slideId);
+  }
+  if (!('slideTransition' in node)) {
+    throw new Error('Slide does not support transitions: ' + params.slideId);
+  }
+  node.slideTransition = {
+    type: params.transitionType,
+    duration: params.duration || 0.5,
+    direction: params.direction || undefined,
+  };
+  return {
+    slideId: node.id,
+    slideName: node.name,
+    transition: {
+      type: node.slideTransition.type,
+      duration: node.slideTransition.duration,
+      direction: node.slideTransition.direction || null,
+    },
+  };
+}
+
+/**
+ * Get the currently focused slide.
+ */
+async function slidesGetFocusedSlide() {
+  requireSlidesContext();
+  var focused = figma.currentSlide;
+  if (!focused) {
+    return { success: true, slide: null, message: 'No slide is currently focused.' };
+  }
+  return { success: true, slide: serializeSlide(focused) };
+}
+
+/**
+ * Focus (navigate to) a specific slide.
+ */
+async function slidesFocusSlide(params) {
+  requireSlidesContext();
+  if (!params || !params.slideId) {
+    throw new Error('Missing slideId parameter');
+  }
+  var node = await figma.getNodeByIdAsync(params.slideId);
+  if (!node) {
+    throw new Error('Slide not found: ' + params.slideId);
+  }
+  figma.currentSlide = node;
+  return { success: true, slide: serializeSlide(node) };
+}
+
+/**
+ * Toggle skip on a slide (hide/unhide from presentation).
+ */
+async function slidesSkipSlide(params) {
+  requireSlidesContext();
+  if (!params || !params.slideId) {
+    throw new Error('Missing slideId parameter');
+  }
+  var node = await figma.getNodeByIdAsync(params.slideId);
+  if (!node) {
+    throw new Error('Slide not found: ' + params.slideId);
+  }
+  var skip = params.skip !== undefined ? !!params.skip : !node.visible;
+  node.visible = !skip;
+  return {
+    success: true,
+    slideId: node.id,
+    slideName: node.name,
+    skipped: !node.visible,
+    visible: node.visible,
+  };
+}
+
+/**
+ * Add a text element to a slide.
+ */
+async function slidesAddTextToSlide(params) {
+  requireSlidesContext();
+  if (!params || !params.slideId) {
+    throw new Error('Missing slideId parameter');
+  }
+  var parent = await figma.getNodeByIdAsync(params.slideId);
+  if (!parent) {
+    throw new Error('Slide not found: ' + params.slideId);
+  }
+  if (!('appendChild' in parent)) {
+    throw new Error('Slide does not support children: ' + params.slideId);
+  }
+
+  var textNode = figma.createText();
+  textNode.x = params.x || 0;
+  textNode.y = params.y || 0;
+  textNode.name = params.name || 'Text';
+
+  try {
+    await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
+    textNode.fontName = { family: 'Inter', style: 'Regular' };
+  } catch (e) {
+    console.warn('Could not load Inter font, using default');
+  }
+
+  if (params.text !== undefined) {
+    textNode.characters = String(params.text);
+  }
+  if (params.fontSize) {
+    textNode.fontSize = params.fontSize;
+  }
+  if (params.fillColor) {
+    var fillPaint = safePaint(params.fillColor);
+    if (fillPaint) textNode.fills = [fillPaint];
+  }
+  if (params.textAlignHorizontal) {
+    textNode.textAlignHorizontal = params.textAlignHorizontal;
+  }
+
+  parent.appendChild(textNode);
+  return {
+    id: textNode.id,
+    name: textNode.name,
+    type: textNode.type,
+    x: textNode.x,
+    y: textNode.y,
+    width: textNode.width,
+    height: textNode.height,
+    characters: textNode.characters,
+    fontSize: textNode.fontSize,
+  };
+}
+
+/**
+ * Add a shape (rectangle or ellipse) to a slide.
+ */
+async function slidesAddShapeToSlide(params) {
+  requireSlidesContext();
+  if (!params || !params.slideId) {
+    throw new Error('Missing slideId parameter');
+  }
+  var parent = await figma.getNodeByIdAsync(params.slideId);
+  if (!parent) {
+    throw new Error('Slide not found: ' + params.slideId);
+  }
+  if (!('appendChild' in parent)) {
+    throw new Error('Slide does not support children: ' + params.slideId);
+  }
+
+  var shapeType = (params.shapeType || 'rectangle').toLowerCase();
+  var node;
+  if (shapeType === 'ellipse') {
+    node = figma.createEllipse();
+  } else {
+    node = figma.createRectangle();
+  }
+
+  node.x = params.x || 0;
+  node.y = params.y || 0;
+  node.name = params.name || (shapeType === 'ellipse' ? 'Ellipse' : 'Rectangle');
+  node.resize(params.width || 200, params.height || 200);
+
+  if (params.fillColor) {
+    var fillPaint = safePaint(params.fillColor);
+    if (fillPaint) node.fills = [fillPaint];
+  }
+  if (params.strokeColor) {
+    var strokePaint = safePaint(params.strokeColor);
+    if (strokePaint) node.strokes = [strokePaint];
+  }
+  if (params.strokeWeight !== undefined) {
+    node.strokeWeight = params.strokeWeight;
+  }
+  if (params.cornerRadius !== undefined && 'cornerRadius' in node) {
+    node.cornerRadius = params.cornerRadius;
+  }
+
+  parent.appendChild(node);
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    x: node.x,
+    y: node.y,
+    width: node.width,
+    height: node.height,
+    fills: node.fills,
+    strokes: node.strokes,
   };
 }
 
