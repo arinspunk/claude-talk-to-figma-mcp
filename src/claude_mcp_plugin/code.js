@@ -6274,13 +6274,15 @@ function requireSlidesContext() {
   if (figma.editorType !== 'slides') {
     throw new Error('This command is only available in Figma Slides editor. Open a Slides file first.');
   }
-  if (typeof figma.slides === 'undefined' || !figma.slides) {
-    throw new Error('Figma Slides API is not available. Make sure you are in a Slides file with the slides editorType.');
+  // Verify createSlide is available (core Slides API)
+  if (typeof figma.createSlide !== 'function') {
+    throw new Error('Figma createSlide() API is not available in this version.');
   }
 }
 
 /**
  * Serialize a slide node to a lightweight response object.
+ * In slides mode, slides are SlideNode instances (similar to PageNode).
  */
 function serializeSlide(slide) {
   if (!slide) return null;
@@ -6293,7 +6295,7 @@ function serializeSlide(slide) {
   return {
     id: slide.id,
     name: slide.name,
-    type: slide.type,
+    type: slide.type || 'SLIDE',
     childCount: slide.children ? slide.children.length : 0,
     width: slide.width,
     height: slide.height,
@@ -6305,14 +6307,20 @@ function serializeSlide(slide) {
 
 /**
  * List all slides in the current presentation.
+ * Slides are the root-level children in slides mode.
  */
 async function slidesListSlides() {
   requireSlidesContext();
-  var slides = figma.slides;
+  var slides = figma.root.children;
   if (!slides || !slides.length) {
     return { success: true, slides: [], totalCount: 0 };
   }
-  var result = slides.map(function(s) { return serializeSlide(s); });
+  var result = [];
+  for (var i = 0; i < slides.length; i++) {
+    var s = serializeSlide(slides[i]);
+    s.index = i;
+    result.push(s);
+  }
   return { success: true, slides: result, totalCount: result.length };
 }
 
@@ -6334,6 +6342,7 @@ async function slidesGetSlideContent(params) {
 
 /**
  * Create a new blank slide.
+ * figma.createSlide(index) creates a new slide at the given position.
  */
 async function slidesCreateSlide(params) {
   requireSlidesContext();
@@ -6362,7 +6371,8 @@ async function slidesDeleteSlide(params) {
 }
 
 /**
- * Duplicate a slide (clones it and appends after the original).
+ * Duplicate a slide using clone().
+ * Finds the position of the original and inserts the clone after it.
  */
 async function slidesDuplicateSlide(params) {
   requireSlidesContext();
@@ -6374,8 +6384,9 @@ async function slidesDuplicateSlide(params) {
     throw new Error('Slide not found: ' + params.slideId);
   }
   var clone = original.clone();
-  // Find the index of the original and insert after it
-  var slides = figma.slides;
+  // Find the index of the original and insert after it using figma.createSlide
+  // then move the clone content into it, or simply append at end
+  var slides = figma.root.children;
   var originalIndex = -1;
   for (var i = 0; i < slides.length; i++) {
     if (slides[i].id === original.id) {
@@ -6383,18 +6394,21 @@ async function slidesDuplicateSlide(params) {
       break;
     }
   }
+  // Clone is already added to the document (clone() adds to parent)
+  // Try to reorder: insert at originalIndex + 1
   if (originalIndex >= 0) {
-    // Insert after the original slide
-    figma.insertSlide(clone, originalIndex + 1);
-  } else {
-    // Fallback: append at end
-    figma.appendSlide(clone);
+    try {
+      figma.reorderNode(clone, originalIndex + 1);
+    } catch (e) {
+      console.warn('Could not reorder clone, keeping at end:', e.message);
+    }
   }
   return serializeSlide(clone);
 }
 
 /**
  * Get the transition settings for a slide.
+ * slideTransition is a property on SlideNode in slides mode.
  */
 async function slidesGetSlideTransition(params) {
   requireSlidesContext();
@@ -6436,7 +6450,7 @@ async function slidesSetSlideTransition(params) {
     throw new Error('Slide not found: ' + params.slideId);
   }
   if (!('slideTransition' in node)) {
-    throw new Error('Slide does not support transitions: ' + params.slideId);
+    throw new Error('Slide node does not support transitions: ' + params.slideId);
   }
   node.slideTransition = {
     type: params.transitionType,
@@ -6456,6 +6470,7 @@ async function slidesSetSlideTransition(params) {
 
 /**
  * Get the currently focused slide.
+ * figma.currentSlide returns the active slide in slides mode.
  */
 async function slidesGetFocusedSlide() {
   requireSlidesContext();
@@ -6468,6 +6483,7 @@ async function slidesGetFocusedSlide() {
 
 /**
  * Focus (navigate to) a specific slide.
+ * figma.currentSlide = node sets the active slide.
  */
 async function slidesFocusSlide(params) {
   requireSlidesContext();
@@ -6484,6 +6500,7 @@ async function slidesFocusSlide(params) {
 
 /**
  * Toggle skip on a slide (hide/unhide from presentation).
+ * Sets node.visible to control whether the slide shows in presentation.
  */
 async function slidesSkipSlide(params) {
   requireSlidesContext();
