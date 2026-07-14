@@ -1419,8 +1419,11 @@ async function setTextContent(params) {
       type: "init-settings",
       settings: {
         serverPort: state.serverPort,
+        editorType: figma.editorType,
       },
     });
+    // Log editor type for debugging
+    console.log('Plugin initialized, editorType:', figma.editorType);
   } catch (error) {
     console.error("Error loading settings:", error);
   }

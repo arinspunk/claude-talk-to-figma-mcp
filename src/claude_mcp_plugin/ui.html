@@ -209,6 +209,33 @@
       .operation-error {
         color: #f87359ff;
       }
+      .mcp-plugin__debug {
+        margin-top: 8px;
+        padding: 6px 8px;
+        background: #f0e6f5;
+        border-radius: 4px;
+        font-size: 10px;
+        font-family: monospace;
+        color: #400B55;
+        line-height: 1.5;
+        display: none;
+      }
+      .dark .mcp-plugin__debug {
+        background: #3a3a3a;
+        color: #ccc;
+      }
+      .mcp-plugin__debug.visible { display: block; }
+      .mcp-plugin__debug-row { display: flex; gap: 4px; }
+      .mcp-plugin__debug-label { font-weight: 600; min-width: 80px; }
+      .mcp-plugin__badge {
+        display: inline-block; font-size: 9px; font-weight: 700;
+        padding: 1px 5px; border-radius: 3px; margin-left: 4px;
+        vertical-align: middle;
+      }
+      .badge-slides { background: #18a0fb; color: #fff; }
+      .badge-design { background: #a259ff; color: #fff; }
+      .badge-figjam { background: #f24e1e; color: #fff; }
+      .badge-version { background: #732392; color: #fff; }
     </style>
   </head>
   <body class="dark">
@@ -231,12 +258,38 @@
             <path d="M454-794.31V-902h52v107.69zM454-58v-107.69h52V-58zm340.31-396v-52H902v52zM58-454v-52h107.69v52zm660.31-227.15-37.16-37.16L759-798.38 798.38-759zM202-162.62 162.62-202l79.07-76.85 37.16 37.16zm557 0-77.85-79.07 37.16-37.16L798.38-202zM241.69-681.15 162.62-759 202-798.38l76.85 80.07zm82.54 356.92Q260-388.46 260-480t64.23-155.77T480-700t155.77 64.23T700-480t-64.23 155.77T480-260t-155.77-64.23M599-360.5q49-49.5 49-119.75 0-70.24-48.75-119-48.76-48.75-119-48.75Q410-648 361-599.25q-49 48.76-49 119 0 70.25 48.75 119.75 48.76 49.5 119 49.5Q550-311 599-360.5M481-481"/></svg>
       </div>
       <div class="header mcp-plugin__header">
-        <h1 class="mcp-plugin__header-title">🤖🎨 Claude Talk to Figma</h1>
-        <p class="mcp-plugin__header-description">AI agents reading and modifing Figma designs</p>
+        <h1 class="mcp-plugin__header-title">
+          🤖🎨 Claude Talk to Figma
+          <span class="mcp-plugin__badge badge-version">v1.1.0-slides</span>
+          <span id="editor-badge" class="mcp-plugin__badge badge-design">Design</span>
+        </h1>
+        <p class="mcp-plugin__header-description">AI agents reading and modifying Figma designs + Slides</p>
       </div>
       <div class="content mcp-plugin__content">   
         <div id="connection-status" class="disconnected mcp-plugin__connection-status">
           Disconnected from server…<br>Try to reconnect clicking the button
+        </div>
+        <div id="debug-info" class="mcp-plugin__debug">
+          <div class="mcp-plugin__debug-row">
+            <span class="mcp-plugin__debug-label">Editor:</span>
+            <span id="debug-editor">—</span>
+          </div>
+          <div class="mcp-plugin__debug-row">
+            <span class="mcp-plugin__debug-label">Version:</span>
+            <span id="debug-version">1.1.0-slides</span>
+          </div>
+          <div class="mcp-plugin__debug-row">
+            <span class="mcp-plugin__debug-label">Channel:</span>
+            <span id="debug-channel">—</span>
+          </div>
+          <div class="mcp-plugin__debug-row">
+            <span class="mcp-plugin__debug-label">Port:</span>
+            <span id="debug-port">3055</span>
+          </div>
+          <div class="mcp-plugin__debug-row">
+            <span class="mcp-plugin__debug-label">Figma API:</span>
+            <span id="debug-api">1.0.0</span>
+          </div>
         </div>
         <div class="mcp-plugin__content-activity">
           <div id="progress-container" class="hidden mcp-plugin__progress">
@@ -305,6 +358,12 @@
           // Mode toggle
           this.ui.modeToggle.addEventListener("click", () => this.toggleMode());
 
+          // Debug toggle: double-click title
+          document.querySelector('.mcp-plugin__header-title')?.addEventListener('dblclick', () => {
+            const debug = document.getElementById('debug-info');
+            if (debug) debug.classList.toggle('visible');
+          });
+
           // Figma messages
           window.onmessage = (event) => this.handleFigmaMessage(event.data.pluginMessage);
         }
@@ -312,7 +371,7 @@
         /**
          * Update the connection status UI
          */
-        updateStatus(isConnected, message) {
+        updateStatus(isConnected, message, channelName) {
           this.state.connected = isConnected;
           this.ui.connectionStatus.innerHTML =
             message ||
@@ -326,6 +385,12 @@
 
           this.ui.connectBtn.disabled = isConnected;
           this.ui.disconnectBtn.disabled = !isConnected;
+
+          // Update debug channel
+          const debugChannel = document.getElementById('debug-channel');
+          if (debugChannel && channelName) {
+            debugChannel.textContent = channelName;
+          }
         }
 
         /**
@@ -368,7 +433,8 @@
                     const channelName = data.channel;
                     this.updateStatus(
                       true,
-                      `Connected on port ${port}!<br>Copy the channel ID: <span class="mcp-plugin__channel-name" title="Click to copy">${channelName}</span>`
+                      `Connected on port ${port}!<br>Copy the channel ID: <span class="mcp-plugin__channel-name" title="Click to copy">${channelName}</span>`,
+                      channelName
                     );
 
                     parent.postMessage(
@@ -492,6 +558,32 @@
               this.updateProgress(message);
               this.sendProgressUpdate(message);
               break;
+            case "init-settings":
+              if (message.settings) {
+                const editorType = message.settings.editorType || figma.editorType || 'unknown';
+                this.updateDebugInfo(editorType, message.settings);
+              }
+              break;
+          }
+        }
+
+        /**
+         * Update debug info and editor badge
+         */
+        updateDebugInfo(editorType, settings) {
+          const editorBadge = document.getElementById('editor-badge');
+          const debugEditor = document.getElementById('debug-editor');
+          const debugPanel = document.getElementById('debug-info');
+
+          if (debugEditor) debugEditor.textContent = editorType;
+          if (debugPanel) debugPanel.classList.add('visible');
+
+          if (editorBadge) {
+            editorBadge.textContent = editorType.charAt(0).toUpperCase() + editorType.slice(1);
+            editorBadge.className = 'mcp-plugin__badge';
+            if (editorType === 'slides') editorBadge.classList.add('badge-slides');
+            else if (editorType === 'figma') editorBadge.classList.add('badge-design');
+            else if (editorType === 'figjam') editorBadge.classList.add('badge-figjam');
           }
         }
 
