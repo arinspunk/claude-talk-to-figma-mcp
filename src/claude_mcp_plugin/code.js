@@ -6464,14 +6464,17 @@ async function slidesSetSlideTransition(params) {
   if (!node) {
     throw new Error('Slide not found: ' + params.slideId);
   }
-  if (!('slideTransition' in node)) {
-    throw new Error('Slide node does not support transitions: ' + params.slideId);
+  // Try setting slideTransition - may not be enumerated on all SLIDE nodes
+  try {
+    node.slideTransition = {
+      type: params.transitionType,
+      duration: params.duration || 0.5,
+      direction: params.direction || undefined,
+    };
+  } catch (e) {
+    throw new Error('Slide does not support transitions in this Figma version. ' +
+      'Transitions may be set on the SLIDE_ROW container instead. Error: ' + e.message);
   }
-  node.slideTransition = {
-    type: params.transitionType,
-    duration: params.duration || 0.5,
-    direction: params.direction || undefined,
-  };
   return {
     slideId: node.id,
     slideName: node.name,
