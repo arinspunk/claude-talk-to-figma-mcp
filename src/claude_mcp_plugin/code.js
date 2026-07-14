@@ -6312,14 +6312,28 @@ function serializeSlide(slide) {
 async function slidesListSlides() {
   requireSlidesContext();
   await figma.loadAllPagesAsync();
-  var slides = figma.root.children;
-  if (!slides || !slides.length) {
-    return { success: true, slides: [], totalCount: 0 };
+  var slides = [];
+  // Find the SLIDE_GRID container (the actual slides are inside it)
+  for (var i = 0; i < figma.root.children.length; i++) {
+    var page = figma.root.children[i];
+    if (page.children && page.children.length > 0) {
+      for (var j = 0; j < page.children.length; j++) {
+        var child = page.children[j];
+        if (child.type === 'SLIDE_GRID') {
+          slides = child.children || [];
+          break;
+        }
+      }
+    }
+  }
+  // Fallback: if no SLIDE_GRID found, use root children directly
+  if (slides.length === 0 && figma.root.children.length > 0) {
+    slides = figma.root.children;
   }
   var result = [];
-  for (var i = 0; i < slides.length; i++) {
-    var s = serializeSlide(slides[i]);
-    s.index = i;
+  for (var k = 0; k < slides.length; k++) {
+    var s = serializeSlide(slides[k]);
+    s.index = k;
     result.push(s);
   }
   return { success: true, slides: result, totalCount: result.length };
