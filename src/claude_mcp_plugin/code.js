@@ -6311,6 +6311,7 @@ function serializeSlide(slide) {
  */
 async function slidesListSlides() {
   requireSlidesContext();
+  await figma.loadAllPagesAsync();
   var slides = figma.root.children;
   if (!slides || !slides.length) {
     return { success: true, slides: [], totalCount: 0 };
