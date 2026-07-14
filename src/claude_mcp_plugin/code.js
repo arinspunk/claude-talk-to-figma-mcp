@@ -6313,13 +6313,13 @@ async function slidesListSlides() {
   requireSlidesContext();
   await figma.loadAllPagesAsync();
   var slides = [];
-  // Find the SLIDE_GRID container (the actual slides are inside it)
+  // Find the SLIDE_GRID or SLIDE_ROW container (the actual slides are inside it)
   for (var i = 0; i < figma.root.children.length; i++) {
     var page = figma.root.children[i];
     if (page.children && page.children.length > 0) {
       for (var j = 0; j < page.children.length; j++) {
         var child = page.children[j];
-        if (child.type === 'SLIDE_GRID') {
+        if (child.type === 'SLIDE_GRID' || child.type === 'SLIDE_ROW') {
           slides = child.children || [];
           break;
         }
