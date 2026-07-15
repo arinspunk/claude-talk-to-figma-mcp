@@ -2,7 +2,11 @@
 
 # <del>Claude</del> <ins>AI Agents</ins> Talk to Figma MCP
 
-Enable your AI agents to read, analyze, and modify Figma designs.
+> **🌟 Figma Slides Support — Fork Edition**  
+> This fork adds **12 new MCP tools** for managing Figma Slides presentations.  
+> See [What's New](#-whats-new-figma-slides-support) below.
+
+Enable your AI agents to read, analyze, and modify Figma designs — **including Figma Slides presentations**.
 
 Works with your favorite agentic tools:
 
@@ -48,6 +52,46 @@ Generate production-ready code directly from designs:
 
 **Developer handoff:**
 > "Generate the React component for 'CardProduct' including PropTypes and styles in CSS modules"
+
+---
+
+## 🌟 What's New: Figma Slides Support
+
+This fork adds **full support for Figma Slides** — Figma's presentation product.  
+You can now create, read, update, and delete slides programmatically via AI agents.
+
+**12 new Slides tools:**
+
+| Tool | Description |
+|------|-------------|
+| `slides_list_slides` | List all slides with IDs, names, positions |
+| `slides_get_slide_content` | Get full node tree of a slide |
+| `slides_create_slide` | Create a new blank slide |
+| `slides_delete_slide` | Delete a slide |
+| `slides_duplicate_slide` | Clone a slide |
+| `slides_set_slide_transition` | Set transition effect (dissolve, push, slide, fade, etc.) |
+| `slides_get_slide_transition` | Read transition settings |
+| `slides_get_focused_slide` | Get currently focused slide |
+| `slides_focus_slide` | Navigate to a specific slide |
+| `slides_skip_slide` | Toggle skip in presentation mode |
+| `slides_add_text_to_slide` | Add text element to a slide |
+| `slides_add_shape_to_slide` | Add rectangle/ellipse to a slide |
+
+**Example prompts for Slides:**
+
+```
+"List all slides in my presentation"
+"Create a new slide and add a title 'Q3 Revenue'"
+"Set a dissolve transition on all slides with 0.5 second duration"
+"Add a blue rectangle background to the first slide"
+"Duplicate slide 3"
+"Skip slides 2 and 4 from the presentation"
+```
+
+**Note:** These tools only work in **Figma Slides** files (editorType: `"slides"`).  
+The plugin UI shows a badge indicating the current editor type.
+
+---
 
 ## ⚡️ Quick installation
 
@@ -157,6 +201,11 @@ If you prefer Docker or need to run the WebSocket server in a team environment, 
 - Auto-layout, advanced typography
 - Local components and team library components
 
+**Figma Slides (new)**
+- List, create, delete, duplicate slides
+- Add text and shapes to slides
+- Set transitions, skip slides, navigate between slides
+
 See [complete command list](COMMANDS.md).
 
 ## 📚 Documentation
@@ -171,6 +220,8 @@ See [complete command list](COMMANDS.md).
 
 Based on [cursor-talk-to-figma-mcp](https://github.com/sonnylazuardi/cursor-talk-to-figma-mcp) by Sonny Lazuardi. Adapted for Claude Desktop and extended with new tools by [Xúlio Zé](https://github.com/arinspunk).
 
+**Figma Slides support** added by [cukabeka](https://github.com/cukabeka) — see the [fork](https://github.com/cukabeka/claude-talk-to-figma-mcp) for the full slides feature set.
+
 If you want to know about all project contributions, you can visit the ["Contributors" chapter of the contribution guide](CONTRIBUTING.md#contributors).
 
 [MIT License](LICENSE)
@@ -184,6 +235,7 @@ If you want to know about all project contributions, you can visit the ["Contrib
 🚀 **Under active development:**
 - Complete support for Figma Variables
 - Enhanced export to Tailwind CSS/SwiftUI
+- Figma Slides transitions (depends on Figma API version)
 
 ### Need something specific?
 
