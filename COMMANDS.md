@@ -108,6 +108,25 @@ Complete reference of the tools Claude can use to interact with Figma.
 | `create_connector` | Draw connector arrow | Link stickies or shapes with flow arrows |
 | `create_section` | Create section region | Group and organise content areas on the board |
 
+## Figma Slides tools
+
+| Command | Purpose | Usage example |
+|---------|---------|---------------|
+| `slides_list_slides` | List all slides | Show me all slides in my presentation |
+| `slides_get_slide_content` | Get slide node tree | Get the full content of slide 2 |
+| `slides_create_slide` | Create new slide | Add a blank slide at the end |
+| `slides_delete_slide` | Delete a slide | Remove slide 3 |
+| `slides_duplicate_slide` | Clone a slide | Duplicate the current slide |
+| `slides_get_slide_transition` | Read transition | What transition does slide 1 have? |
+| `slides_set_slide_transition` | Set transition | Set a dissolve transition on all slides |
+| `slides_get_focused_slide` | Get active slide | Which slide am I on? |
+| `slides_focus_slide` | Navigate to slide | Go to slide 5 |
+| `slides_skip_slide` | Toggle skip in presentation | Hide slide 2 from the presentation |
+| `slides_add_text_to_slide` | Add text element | Add a title "Q3 Results" to slide 1 |
+| `slides_add_shape_to_slide` | Add rectangle/ellipse | Add a blue rectangle background to slide 3 |
+
+**Note:** These tools only work in **Figma Slides** files. Open a presentation (editorType: "slides") before using them.
+
 ## Understanding coordinate systems
 
 Figma uses two coordinate systems:

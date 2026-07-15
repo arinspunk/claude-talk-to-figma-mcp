@@ -18,5 +18,5 @@ export const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://$
 export const SERVER_CONFIG = {
   name: "ClaudeTalkToFigmaMCP",
   description: "Claude MCP Plugin for Figma",
-  version: "0.4.0",
+  version: "1.2.0",
 };
