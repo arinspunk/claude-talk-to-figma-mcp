@@ -92,6 +92,10 @@ export function filterFigmaNode(node: any, maxDepth: number = Infinity, currentD
     filtered.localPosition = node.localPosition;
   }
 
+  if (node.constraints) {
+    filtered.constraints = node.constraints;
+  }
+
   if (node.characters) {
     filtered.characters = node.characters;
   }

@@ -66,6 +66,7 @@ Complete reference of the tools Claude can use to interact with Figma.
 | `delete_node` | Delete elements | Clean up designs |
 | `set_corner_radius` | Rounded corners | Modern UI styles |
 | `set_auto_layout` | Flexbox-like layout | Component spacing |
+| `set_constraints` | Resize behavior relative to parent | Responsive anchoring |
 | `set_effects` | Shadows/blurs | Visual finishing |
 | `set_effect_style_id` | Apply effect styles | Consistent shadows |
 

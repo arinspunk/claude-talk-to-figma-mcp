@@ -361,6 +361,50 @@ export function registerModificationTools(server: McpServer): void {
     }
   );
 
+  // Set Constraints Tool
+  server.tool(
+    "set_constraints",
+    "Set how a node responds when its parent frame is resized. Constraints are what makes a design responsive, so set them explicitly rather than leaving the MIN/MIN default, which pins a node to the top-left corner.",
+    {
+      nodeId: z.string().describe("The ID of the node to modify"),
+      horizontal: z.enum(["MIN", "CENTER", "MAX", "STRETCH", "SCALE"]).optional()
+        .describe("Horizontal constraint: MIN (left), CENTER, MAX (right), STRETCH (both edges), SCALE (proportional)"),
+      vertical: z.enum(["MIN", "CENTER", "MAX", "STRETCH", "SCALE"]).optional()
+        .describe("Vertical constraint: MIN (top), CENTER, MAX (bottom), STRETCH (both edges), SCALE (proportional)")
+    },
+    async ({ nodeId, horizontal, vertical }) => {
+      try {
+        const result = await sendCommandToFigma("set_constraints", {
+          nodeId,
+          horizontal,
+          vertical
+        });
+
+        const typedResult = result as {
+          name: string;
+          constraints: { horizontal: string; vertical: string };
+        };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Set constraints on node "${typedResult.name}": horizontal=${typedResult.constraints.horizontal}, vertical=${typedResult.constraints.vertical}`
+            }
+          ]
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error setting constraints: ${error instanceof Error ? error.message : String(error)}`
+            }
+          ]
+        };
+      }
+    }
+  );
+
   // Set Effects Tool
   server.tool(
     "set_effects",
