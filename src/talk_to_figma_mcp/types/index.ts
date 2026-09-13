@@ -69,6 +69,7 @@ export type FigmaCommand =
   | "scan_text_nodes"
   | "set_multiple_text_contents"
   | "set_auto_layout"
+  | "set_constraints"
   | "set_font_name"
   | "set_font_size"
   | "set_font_weight"

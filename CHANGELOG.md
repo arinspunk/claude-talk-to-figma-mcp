@@ -7,6 +7,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **📐 Layout Constraints**: Added a `set_constraints` tool to control how a node responds when its parent frame is resized (`MIN`, `CENTER`, `MAX`, `STRETCH`, `SCALE` per axis). Constraints are what make a Figma design responsive, and they were previously the one layout property an agent could neither read nor write — leaving every generated node pinned to the top-left `MIN`/`MIN` default.
+- `get_node_info` and `get_nodes_info` now return each node's `constraints`, so an agent can read existing responsive behavior instead of inferring it from coordinates, and verify what it just set.
+
 ## [1.0.0] - 2026-04-18
 
 ### Added

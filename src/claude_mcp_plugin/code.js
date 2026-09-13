@@ -180,6 +180,8 @@ async function handleCommand(command, params) {
       return await setMultipleTextContents(params);
     case "set_auto_layout":
       return await setAutoLayout(params);
+    case "set_constraints":
+      return await setConstraints(params);
     // Nuevos comandos para propiedades de texto
     case "set_font_name":
       return await setFontName(params);
@@ -2404,6 +2406,44 @@ async function setAutoLayout(params) {
     counterAxisAlignItems: node.counterAxisAlignItems,
     layoutWrap: node.layoutWrap,
     strokesIncludedInLayout: node.strokesIncludedInLayout
+  };
+}
+
+async function setConstraints(params) {
+  const { nodeId, horizontal, vertical } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (horizontal === undefined && vertical === undefined) {
+    throw new Error("Provide at least one of horizontal or vertical");
+  }
+
+  const node = await getNodeByIdSafe(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  // Group and BooleanOperation nodes have no constraints of their own; Figma
+  // applies their children's constraints when the parent frame resizes.
+  if (!("constraints" in node)) {
+    throw new Error(`Node does not support constraints: ${nodeId} (${node.type})`);
+  }
+
+  // constraints is a plain object, so assign a whole new one rather than mutating it.
+  node.constraints = {
+    horizontal: horizontal !== undefined ? horizontal : node.constraints.horizontal,
+    vertical: vertical !== undefined ? vertical : node.constraints.vertical
+  };
+
+  return {
+    id: node.id,
+    name: node.name,
+    constraints: {
+      horizontal: node.constraints.horizontal,
+      vertical: node.constraints.vertical
+    }
   };
 }
 
