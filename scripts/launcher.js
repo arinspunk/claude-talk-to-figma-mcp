@@ -75,7 +75,8 @@ async function main() {
             const success = await installBun();
             if (success) {
                 // Try to find bun if it was just installed
-                const bunPath = path.join(os.homedir(), '.bun', 'bin', 'bun');
+                const bunExe = process.platform === 'win32' ? 'bun.exe' : 'bun';
+                const bunPath = path.join(os.homedir(), '.bun', 'bin', bunExe);
                 if (fs.existsSync(bunPath)) {
                     engine = bunPath;
                 }
@@ -89,25 +90,45 @@ async function main() {
         }
     }
 
-    // 1. Check for repository
-    if (!fs.existsSync(FOLDER_NAME)) {
-        console.log(`\n📥 Cloning repository from ${REPO_URL}...`);
-        execSync(`git clone ${REPO_URL}`, { stdio: 'inherit' });
-    }
+    // 1. Check for repository - check if already inside the repository
+    const isAlreadyInRepo = fs.existsSync('package.json') && (() => {
+        try {
+            return JSON.parse(fs.readFileSync('package.json', 'utf8')).name === FOLDER_NAME;
+        } catch {
+            return false;
+        }
+    })();
 
-    process.chdir(FOLDER_NAME);
+    if (!isAlreadyInRepo) {
+        if (!fs.existsSync(FOLDER_NAME)) {
+            console.log(`\n📥 Cloning repository from ${REPO_URL}...`);
+            execSync(`git clone ${REPO_URL}`, { stdio: 'inherit' });
+        }
+        process.chdir(FOLDER_NAME);
+    }
 
     // 2. Install dependencies
     console.log(`\n📦 Installing dependencies using ${engine === 'npm' ? 'NPM' : 'Bun'}...`);
+    const isWindows = process.platform === 'win32';
     if (engine === 'npm') {
         execSync('npm install', { stdio: 'inherit' });
         console.log('🏗️ Building project (required for NPM execution)...');
-        execSync('npm run build', { stdio: 'inherit' });
+        try {
+            execSync(isWindows ? 'npm run build:win' : 'npm run build', { stdio: 'inherit' });
+        } catch {
+            execSync('npm run build', { stdio: 'inherit' });
+        }
     } else {
         execSync(`${engine} install`, { stdio: 'inherit' });
-        if (!fs.existsSync('dist')) {
+        const socketDist = path.join('dist', 'socket.js');
+        const serverDist = path.join('dist', 'talk_to_figma_mcp', 'server.js');
+        if (!fs.existsSync(socketDist) || !fs.existsSync(serverDist)) {
             console.log('🏗️ Building project (required for execution)...');
-            execSync(`${engine} run build`, { stdio: 'inherit' });
+            try {
+                execSync(isWindows ? `${engine} run build:win` : `${engine} run build`, { stdio: 'inherit' });
+            } catch {
+                execSync(`${engine} run build`, { stdio: 'inherit' });
+            }
         }
     }
 
@@ -121,8 +142,7 @@ async function main() {
     const startArgs = engine === 'npm' ? ['dist/socket.js'] : ['run', 'socket'];
 
     const child = spawn(startCmd, startArgs, {
-        stdio: 'inherit',
-        shell: true
+        stdio: 'inherit'
     });
 
     child.on('exit', (code) => {

@@ -11,9 +11,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Determine the location of Claude Desktop configuration file
-const configPath = os.platform() === 'darwin' 
-  ? path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json')
-  : path.join(os.homedir(), 'AppData', 'Roaming', 'Claude', 'claude_desktop_config.json');
+const getConfigPath = () => {
+  if (os.platform() === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+  } else if (os.platform() === 'win32') {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Claude', 'claude_desktop_config.json');
+  } else {
+    return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'Claude', 'claude_desktop_config.json');
+  }
+};
+const configPath = getConfigPath();
 
 // Get the absolute path of package.json
 const packageJsonPath = path.join(__dirname, '..', 'package.json');
@@ -88,4 +95,4 @@ try {
 } catch (e) {
   console.error(`Error writing configuration: ${e.message}`);
   console.error(`Make sure you have write permissions for: ${configPath}`);
-} 
+}
