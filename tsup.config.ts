@@ -1,4 +1,5 @@
 import { defineConfig } from 'tsup';
+import fs from 'fs';
 
 export default defineConfig({
   entry: ['src/talk_to_figma_mcp/server.ts', 'src/socket.ts'],
@@ -11,4 +12,14 @@ export default defineConfig({
   minify: false,
   splitting: false,
   bundle: true,
-}); 
+  onSuccess: async () => {
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync('dist/talk_to_figma_mcp/server.js', 0o755);
+        fs.chmodSync('dist/socket.js', 0o755);
+      } catch (err) {
+        // ignore if files are not present
+      }
+    }
+  },
+});

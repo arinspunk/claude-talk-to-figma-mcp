@@ -331,7 +331,7 @@
         /**
          * Connect to WebSocket server
          */
-        async connect(port = 3055) {
+        async connect(port = 3055, host = "localhost") {
           try {
             if (this.state.connected && this.state.socket) {
               this.updateStatus(true, "Already connected to server");
@@ -342,10 +342,13 @@
             this.ui.connectionStatus.className = "mcp-plugin__connection-status info";
             
             this.state.serverPort = port;
-            this.state.socket = new WebSocket(`ws://localhost:${port}`);
+            const wsUrl = `ws://${host}:${port}`;
+            this.state.socket = new WebSocket(wsUrl);
+            let hasConnected = false;
 
             this.state.socket.onopen = () => {
-              const channelName = this.generateChannelName();
+              hasConnected = true;
+              const channelName = this.state.channel || this.generateChannelName();
               console.log("Joining channel:", channelName);
               this.state.channel = channelName;
 
@@ -363,9 +366,12 @@
                 console.log("Received message:", data);
 
                 if (data.type === "system") {
-                  if (data.message && data.message.result) {
+                  const channelName = data.channel || this.state.channel;
+                  const isJoinConfirmation = (data.message && data.message.result) || 
+                    (typeof data.message === "string" && data.message.includes("Joined channel"));
+
+                  if (isJoinConfirmation && channelName) {
                     this.state.connected = true;
-                    const channelName = data.channel;
                     this.updateStatus(
                       true,
                       `Connected on port ${port}!<br>Copy the channel ID: <span class="mcp-plugin__channel-name" title="Click to copy">${channelName}</span>`
@@ -394,6 +400,12 @@
             };
 
             this.state.socket.onclose = () => {
+              if (!hasConnected && host === "localhost") {
+                console.log("Failed connecting to localhost, retrying with 127.0.0.1...");
+                this.state.socket = null;
+                this.connect(port, "127.0.0.1");
+                return;
+              }
               this.state.connected = false;
               this.state.socket = null;
               this.updateStatus(false, "Disconnected from server…<br>Try to reconnect clicking the button");
@@ -401,6 +413,9 @@
 
             this.state.socket.onerror = (error) => {
               console.error("WebSocket error:", error);
+              if (!hasConnected && host === "localhost") {
+                return;
+              }
               this.updateStatus(false, "Connection error");
               this.state.connected = false;
               this.state.socket = null;

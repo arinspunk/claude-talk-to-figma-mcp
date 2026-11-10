@@ -11,11 +11,17 @@
   "permissions": ["teamlibrary"],
   "networkAccess": {
     "allowedDomains": [
-      "https://google.com"
+      "https://google.com",
+      "http://localhost:3055",
+      "ws://localhost:3055",
+      "http://127.0.0.1:3055",
+      "ws://127.0.0.1:3055"
     ],
     "devAllowedDomains": [
       "http://localhost:3055",
-      "ws://localhost:3055"
+      "ws://localhost:3055",
+      "http://127.0.0.1:3055",
+      "ws://127.0.0.1:3055"
     ]
   },
   "documentAccess": "dynamic-page",
